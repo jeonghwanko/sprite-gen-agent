@@ -26,6 +26,7 @@ user's choice (`gen.run_on_default`).
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import os
 import re
@@ -329,7 +330,45 @@ def _decode_png(b64: str, dest: Path) -> None:
     verify_png(dest)
 
 
-def _build_prompt(user_prompt: str, *, native_alpha: bool = False) -> str:
+def _image_tool_trace(rollout: Path) -> dict:
+    """Keep observed image-tool inputs, not chat/system content or image payloads.
+
+    A recorded call is dispatch evidence, not proof that a model followed it.
+    Execution wrappers are retained as source; never eval or infer dynamic refs.
+    """
+    calls, seen = [], set()
+    try:
+        handle = rollout.open(encoding="utf-8")
+    except OSError as exc:
+        return {"status": "unavailable", "calls": [], "reason": type(exc).__name__}
+    with handle:
+        for line in handle:
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            payload = row.get("payload", {})
+            if row.get("type") != "response_item" or payload.get("type") not in ("custom_tool_call", "function_call"):
+                continue
+            name = payload.get("name", "")
+            value = payload.get("input", payload.get("arguments", ""))
+            source = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+            direct = "image_gen" in name or name == "imagegen"
+            wrapped = name == "exec" and re.search(r"\btools\.image_gen__imagegen\s*\(", source)
+            if not (direct or wrapped):
+                continue
+            sha = hashlib.sha256(source.encode("utf-8")).hexdigest()
+            key = payload.get("call_id") or payload.get("id") or sha
+            if key in seen:
+                continue
+            seen.add(key)
+            calls.append({"name": name, "call_id": key, "input": source[:65536],
+                          "input_sha256": sha, "truncated": len(source) > 65536})
+    return {"status": "captured" if calls else "unavailable", "calls": calls,
+            "meaning": "observed tool-call source; reference use and pose compliance require inspection"}
+
+
+def _build_prompt(user_prompt: str, *, native_alpha: bool = False, refs: list[Path] | None = None) -> str:
     """Wrap the caller's prompt in the transport-level skill trigger.
 
     The sprite-request prompt is the caller's SSoT and is passed through verbatim;
@@ -338,12 +377,15 @@ def _build_prompt(user_prompt: str, *, native_alpha: bool = False) -> str:
     (`_NATIVE_ALPHA_INSTRUCTION`) — that is how image_gen is told to return alpha.
     """
     alpha_line = f"{_NATIVE_ALPHA_INSTRUCTION}\n" if native_alpha else ""
+    reference_line = ("Pass ALL of these local images to image_gen in this exact order using referenced_image_paths. "
+                      "Preserve the supplied reference roles and target coordinates; do not replace them with a summary.\n"
+                      + json.dumps([str(Path(p).resolve()) for p in refs], ensure_ascii=False) + "\n") if refs else ""
     return (
         f"{_SKILL_TRIGGER} 스킬로 built-in image_gen 도구를 정확히 1번 호출해서 "
         "다음 프롬프트의 이미지 1장만 생성해줘.\n"
         "미리보기 전용이라 생성된 파일은 기본 경로에 그대로 두면 된다.\n"
         "파일 저장·이동·복사·셸 명령·코드 작성·경로 보고 전부 금지. 생성만 하고 끝.\n"
-        f"{alpha_line}\n"
+        f"{alpha_line}{reference_line}\n"
         "프롬프트:\n"
         f"{user_prompt}\n"
     )
@@ -434,7 +476,7 @@ class CodexProvider:
             cmd += ["-i", str(Path(ref).expanduser().resolve())]
         cmd += ["-", ]
 
-        prompt = _build_prompt(request.prompt, native_alpha=request.native_alpha)
+        prompt = _build_prompt(request.prompt, native_alpha=request.native_alpha, refs=request.refs)
         started = time.monotonic()
         child_env = provider_subprocess_env()
         if "CODEX_HOME" in os.environ:
@@ -476,6 +518,7 @@ class CodexProvider:
             raise SystemExit(_no_image_records_message(rollout, codex_home))
         final = results[-1]
         _decode_png(final.result, request.raw)
+        trace = _image_tool_trace(rollout)
 
         if not self.keep_session:
             try:
@@ -492,6 +535,7 @@ class CodexProvider:
                 "auth_source": login.source,
                 "inline_results": len(results),
                 "rollout_cleaned": not self.keep_session,
+                "image_tool_trace": trace,
                 # codex's own claim about the output; the orchestrator measures
                 # the real alpha and publishes that, not this flag.
                 "transparent_background_reported": final.transparent_background,

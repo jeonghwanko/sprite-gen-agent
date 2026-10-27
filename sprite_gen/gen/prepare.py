@@ -30,6 +30,7 @@ from sprite_gen.video.body_plan import Body
 
 from .base import flags_over_spec
 from sprite_gen.util.console import utf8_streams
+from .motion_contract import normalize_motion, prompt_text
 
 
 # Default safe margin is proportional to the cell dimension (floored), not a fixed
@@ -502,6 +503,8 @@ def normalize_states(raw: dict[str, Any] | None, bodies: list[Body] | None = Non
             "action": str(entry.get("action") if raw and "action" in entry
                           else defaults.get(state, DEFAULT_STATES.get(state, {}).get("action", state))),
         }
+        if "motion" in entry:
+            normalized[state]["motion"] = normalize_motion(entry["motion"], frames)
     return normalized
 
 
@@ -518,7 +521,7 @@ REQUEST_KEYS_CARRIED = ("cell", "states", "style", "subject",
 # note names it separately: `character` comes from --character-id/--description/
 # --base-image, `chroma_key` from --chroma-key + the base image.
 REQUEST_KEYS_REGENERATED = ("version", "kind", "engine", "character", "chroma_key", "layout")
-STATE_KEYS_CARRIED = ("frames", "fps", "loop", "action")
+STATE_KEYS_CARRIED = ("frames", "fps", "loop", "action", "motion")
 
 
 def dropped_key_notes(raw_request: dict[str, Any]) -> list[str]:
@@ -955,7 +958,7 @@ Layout requirements:
 - Avoid motion blur. Use clear pose changes readable at {runtime_size}.
 - Preserve the same silhouette, face, proportions, palette, material, and props across every frame.
 
-Output only the sprite strip image."""
+Output only the sprite strip image.""" + (prompt_text(entry["motion"]) if entry.get("motion") else "")
 
 
 BODY_PLAN_HELP = ("what the character stands on: biped (default), quadruped or legless; a scene of several figures "

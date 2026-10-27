@@ -1,0 +1,60 @@
+{
+  "kind": "sprite-gen-gait-profile",
+  "version": 1,
+  "name": "Mocha short-legged boxer proxy",
+  "provenance": "Authored approximation of the approved stout capybara boxer: large head/muzzle, broad trunk, short visible legs and broad feet. Original SHA256 28b723b2141df15245f490a9d0a8e4c999e70c55ca67b2531a1ac1d7dddfaf36, 1312x1199. Hidden hip depth and bone lengths are design assumptions, not recovered measurements. Diagnostic guide only; no artwork copied or generated.",
+  "body": {
+    "upper_leg": 0.38,
+    "lower_leg": 0.36,
+    "hip_half_width": 0.26,
+    "foot_length": 0.46,
+    "foot_width": 0.3,
+    "foot_height": 0.13,
+    "thigh_radius": 0.14,
+    "shin_radius": 0.11,
+    "torso_radii": [
+      0.52,
+      0.45,
+      0.57
+    ],
+    "head_radii": [
+      0.52,
+      0.41,
+      0.43
+    ],
+    "muzzle_radii": [
+      0.3,
+      0.35,
+      0.23
+    ],
+    "torso_height": 0.43,
+    "head_height": 1.0,
+    "muzzle_forward": 0.51,
+    "muzzle_height": 0.93
+  },
+  "camera": {
+    "yaw_degrees": 50,
+    "pixels_per_unit": 145
+  },
+  "motions": {
+    "walk": {
+      "frames": 16,
+      "period": 1.28,
+      "speed": 0.45,
+      "duty": 0.625,
+      "clearance": 0.14,
+      "hip_height": 0.78,
+      "bob": 0.02
+    },
+    "run": {
+      "frames": 12,
+      "period": 0.84,
+      "speed": 0.9,
+      "duty": 0.4,
+      "clearance": 0.33,
+      "hip_height": 0.78,
+      "bob": 0.045,
+      "flight_lift": 0.15
+    }
+  }
+}

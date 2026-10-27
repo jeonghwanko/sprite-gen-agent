@@ -448,6 +448,7 @@ def generate_image(
     white_check: Path | None = None,
     trim_alpha: bool = False,
     keep_session: bool = False,
+    timeout_retry: bool = True,
     workdir: Path | None = None,
     decontam: str = "off",
     layout_guide: bool | str | None = False,
@@ -542,6 +543,8 @@ def generate_image(
         try:
             run = backend.generate(request, workdir)
         except GenTimeoutError as exc:
+            if not timeout_retry:
+                raise
             print(f"[gen] {exc} — retrying once", file=sys.stderr)
             run = backend.generate(request, workdir)
         verify_png(raw)
@@ -732,6 +735,7 @@ def _run(args: argparse.Namespace) -> int:
         white_check=args.white_check,
         trim_alpha=bool(getattr(args, "trim_alpha", False)),
         keep_session=args.keep_session,
+        timeout_retry=not getattr(args, "no_timeout_retry", False),
         workdir=args.workdir,
         decontam=str(getattr(args, "decontam", None) or "off"),
         layout_guide=getattr(args, "layout_guide", None),
@@ -855,6 +859,7 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument("--white-check", type=Path, help="write a white-composite check image")
     parser.add_argument("--keep-session", action="store_true", help="codex: do not delete the rollout jsonl")
+    parser.add_argument("--no-timeout-retry", action="store_true", help="preserve unknown generation outcomes; never call the provider again after a timeout")
     parser.add_argument("--report", type=Path, help="write the generation report JSON here")
     parser.add_argument("--workdir", type=Path, help="reuse this working dir instead of a temp dir")
 

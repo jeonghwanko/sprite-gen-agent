@@ -1308,12 +1308,14 @@ def connected_components(image: Image.Image) -> list[dict[str, Any]]:
     return components
 
 
-def component_group_image(source: Image.Image, components: list[dict[str, Any]], padding: int = 4) -> Image.Image:
+def component_group_image(source: Image.Image, components: list[dict[str, Any]], padding: int = 4, *, preserve_y: bool = False) -> Image.Image:
     width, height = source.size
     min_x = max(0, min(component["bbox"][0] for component in components) - padding)
     min_y = max(0, min(component["bbox"][1] for component in components) - padding)
     max_x = min(width, max(component["bbox"][2] for component in components) + padding)
     max_y = min(height, max(component["bbox"][3] for component in components) + padding)
+    if preserve_y:
+        min_y, max_y = 0, height
     output = Image.new("RGBA", (max_x - min_x, max_y - min_y), (0, 0, 0, 0))
     source_pixels = source.load()
     output_pixels = output.load()
@@ -2700,7 +2702,7 @@ def fit_component_to_bbox(component: Image.Image, cell_width: int, cell_height: 
     return target, mapping
 
 
-def extract_component_images(strip: Image.Image, frame_count: int) -> list[Image.Image] | None:
+def extract_component_images(strip: Image.Image, frame_count: int, *, preserve_y: bool = False) -> list[Image.Image] | None:
     components = connected_components(strip)
     if not components:
         return None
@@ -2743,7 +2745,53 @@ def extract_component_images(strip: Image.Image, frame_count: int) -> list[Image
     if dropped:
         print(f"[extract] dropped {dropped} stray satellite component(s) outside seed proximity", file=sys.stderr)
 
-    return [component_group_image(strip, group) for group in groups]
+    return [component_group_image(strip, group, preserve_y=preserve_y) for group in groups]
+
+
+def fit_row_preserving_y(images: list[Image.Image], cell_width: int, cell_height: int,
+                         safe_margin_x: int, safe_margin_y: int, fit: dict[str, Any]) -> list[Image.Image]:
+    """One scale and vertical translation for a painted row, before source Y is lost.
+
+    Only placement is preserved: an image's bottom is not proof of foot contact.
+    source_ground_y, when supplied, is measured in the raw strip's coordinates.
+    Otherwise the deepest opaque pixel supplies a shared placement baseline.
+    """
+    if len({image.height for image in images}) > 1:
+        raise SystemExit("ground_frames=false requires a common source Y canvas")
+    boxes = [image.getbbox() for image in images]
+    occupied = [box for box in boxes if box]
+    if not occupied:
+        return [Image.new("RGBA", (cell_width, cell_height)) for _ in images]
+    ground = fit.get("source_ground_y", max(box[3] for box in occupied))
+    if (isinstance(ground, bool) or not isinstance(ground, (int, float)) or
+            not math.isfinite(ground) or ground < max(box[3] for box in occupied) or ground > images[0].height):
+        raise SystemExit("source_ground_y must enclose the opaque row and lie inside its source canvas")
+    align_x = str(fit.get("align_x", "foot-centroid")).lower()
+    sprites = [image.crop(box) for image, box in zip(images, boxes) if box]
+    scale = min(fit_scale(sprites, cell_width, cell_height, safe_margin_x, safe_margin_y, align_x),
+                (cell_height - 2 * safe_margin_y) / (ground - min(box[1] for box in occupied)))
+    if scale <= 0:
+        raise SystemExit("No safe vertical area for common row placement")
+    result = []
+    for image, box in zip(images, boxes):
+        target = Image.new("RGBA", (cell_width, cell_height))
+        if box:
+            sprite = image.crop(box)
+            size = (max(1, round(sprite.width * scale)), max(1, round(sprite.height * scale)))
+            if fit.get("resample") == "nearest":
+                sprite = sprite.resize(size, Image.Resampling.NEAREST)
+            elif fit.get("resample") == "kcentroid":
+                sprite = _kcentroid_downscale(sprite, *size)
+            else:
+                sprite = resize_cell(sprite, size)
+            anchor = _anchor_x(sprite, align_x) if align_x in ("centroid", "foot-centroid", "alpha-centroid") else sprite.width / 2
+            left = round(cell_width / 2 - anchor)
+            top = round(cell_height - safe_margin_y - (ground - box[1]) * scale)
+            if left < 0 or top < 0 or left + sprite.width > cell_width or top + sprite.height > cell_height:
+                raise SystemExit("Common row placement would clip a frame")
+            target.alpha_composite(sprite, (left, top))
+        result.append(target)
+    return result
 
 
 def fit_row_to_cells(images: list[Image.Image], cell_width: int, cell_height: int,
@@ -2752,6 +2800,8 @@ def fit_row_to_cells(images: list[Image.Image], cell_width: int, cell_height: in
     # The prop's reach changes a pose's bounds, not the character's physical size. One scale for the
     # complete row (fit_scale) keeps every pose inside the safe area where its anchor puts it, so a
     # weapon held far out neither shrinks its pose alone nor pushes that pose off its anchor.
+    if (fit or {}).get("ground_frames") is False:
+        return fit_row_preserving_y(images, cell_width, cell_height, safe_margin_x, safe_margin_y, fit)
     align_x = str((fit or {}).get("align_x", "foot-centroid")).lower()
     sprites = [image.crop(bbox) for image in images if (bbox := image.getbbox()) is not None]
     scale = fit_scale(sprites, cell_width, cell_height, safe_margin_x, safe_margin_y, align_x) if sprites else 1.0
@@ -2760,7 +2810,7 @@ def fit_row_to_cells(images: list[Image.Image], cell_width: int, cell_height: in
 
 
 def extract_component_frames(strip: Image.Image, frame_count: int, cell_width: int, cell_height: int, safe_margin_x: int, safe_margin_y: int, fit: dict[str, Any] | None = None) -> list[Image.Image] | None:
-    images = extract_component_images(strip, frame_count)
+    images = extract_component_images(strip, frame_count, preserve_y=(fit or {}).get("ground_frames") is False)
     if images is None:
         return None
     return fit_row_to_cells(images, cell_width, cell_height, safe_margin_x, safe_margin_y, fit)

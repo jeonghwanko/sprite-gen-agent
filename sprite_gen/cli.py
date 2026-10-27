@@ -16,7 +16,7 @@ from sprite_gen.compose import game_pack
 from sprite_gen.qa import correction_loop, inspect, preview, score, motion
 from sprite_gen.qa import handed as handed_check
 from sprite_gen.frames import cutout, extract, slice_sheet, ui_kit, unpack_atlas
-from sprite_gen.gen import gen_set, logo, pixel_draw, prepare, video
+from sprite_gen.gen import gen_motion, gait_motion, gen_set, logo, pixel_draw, prepare, video
 from sprite_gen.video import batch as video_batch
 from sprite_gen.video import canvas as video_canvas
 from sprite_gen.video import frames as video_frames
@@ -36,6 +36,7 @@ from sprite_gen.video import rife_install
 from sprite_gen.video import face_bake, face_pack
 from sprite_gen.effects import breathe, recolor, shadow
 from sprite_gen.scene import render, inspect_scene
+from sprite_gen.scene import gait
 from sprite_gen.serve import serve_compose, serve_curation
 from sprite_gen.spec import migrate_breathe, migrate_request
 from sprite_gen.workflow import guide, preferences
@@ -218,6 +219,8 @@ def _add_correction_loop(p: argparse.ArgumentParser) -> None:
 
 
 COMMANDS: dict[str, tuple[str, Callable[[argparse.ArgumentParser], None], Callable[..., int]]] = {
+    "gait-guide": ("Author phase/IK/foot-lock guides without AI generation", gait.add_arguments, gait.run),
+    "gait-motion": ("Prepare calibrated GPT inputs from continuous gait/depth guides; no generation", gait_motion.add_arguments, gait_motion.run),
     "game-pack": ("Resize finished assets into game atlases with playback policies.", game_pack.add_arguments, game_pack.run),
     "sound": ("Generate a named game sound or instrumental music with browser audio exports.", sound.add_arguments, sound.run),
     "background-tile": ("Quilt a repeating RGBA background and measure its join.", tile.add_arguments, tile.run),
@@ -289,6 +292,11 @@ COMMANDS: dict[str, tuple[str, Callable[[argparse.ArgumentParser], None], Callab
         "Cut a uniform (white/ivory/solid) background off an imported image into a clean transparent PNG.",
         _add_cutout,
         cutout.run,
+    ),
+    "gen-motion": (
+        "Experimental GPT poses: authored joint guides, reviewed anchors, fixed canvas and cycle review.",
+        gen_motion.add_arguments,
+        gen_motion.run,
     ),
     "gen-set": (
         "Generate every state row of a prepared run, N at a time — one report per row, table.md, non-zero exit on any failure.",

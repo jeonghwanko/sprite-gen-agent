@@ -39,6 +39,7 @@ from sprite_gen.gen.base import ask_codex_unavailable, child_asked, codex_unavai
 from sprite_gen.spec import layout
 from sprite_gen.spec.runio import atomic_write_text
 from sprite_gen.util.console import utf8_streams
+from sprite_gen.gen.motion_contract import motion_refs, input_fingerprint
 
 DEFAULT_CONCURRENCY = 6  # lead-verified 2026-08 (no provider throttling at 6-wide); serial one-by-one is the anti-pattern
 REPORT_DIR = "reports"  # <run>/reports/gen-set/<state>.json — outside raw/ and frames/, the run contract's derived areas
@@ -140,16 +141,27 @@ def run_item(
     report_dir.mkdir(parents=True, exist_ok=True)
     report = report_dir / f"{state.replace('/', '_')}.json"
     log = report_dir / f"{state.replace('/', '_')}.log"
-    result: dict[str, Any] = {"state": state, "out": str(out), "report": str(report)}
+    result: dict[str, Any] = {"state": state, "out": str(out), "report": str(report), "motion_quality": "unverified"}
     started = time.monotonic()
     try:
         if not prompt_file.is_file():
             raise SystemExit(f"prompt missing: {prompt_file} — run `sprite-gen prepare` first")
         if not guide.is_file():
             raise SystemExit(f"layout guide missing: {guide} — run `sprite-gen prepare` first")
+        motion = request["states"][state].get("motion")
+        extra_refs = motion_refs(run_dir, motion, request["states"][state]["frames"]) if motion else []
+        identity = anchor_mod.identity_ref(run_dir, state, request, quiet=True)
+        refs = [identity, *extra_refs, guide]
+        result["refs"] = [str(r) for r in refs]
+        fingerprint = input_fingerprint(prompt_file, refs, motion, provider, model) if motion else None
+        attempt = report.with_suffix(".attempt.json")
+        if motion and attempt.exists() and json.loads(attempt.read_text(encoding="utf-8")).get("status") != "complete":
+            raise SystemExit("GENERATION_OUTCOME_UNKNOWN: inspect the previous request and outputs before any retry")
         if out.is_file() and not force:
             prior, why = read_report(report)
             bad_image = _row_image_ok(out)
+            if motion and (prior is None or bad_image or prior.get("motion_input_sha256") != fingerprint):
+                raise SystemExit("MOTION_INPUT_CHANGED_OR_UNPROVEN: preserve this output and inspect it; use a new run for an authorized revision")
             if prior is not None and bad_image is None:
                 result["reused"] = True
                 result["provider"] = prior.get("provider")
@@ -158,18 +170,23 @@ def run_item(
                 result["ok"] = True
                 return result
             result["regenerated_because"] = why or bad_image  # the files exist but do not prove a finished row — generate again, say why
-        identity = anchor_mod.identity_ref(run_dir, state, request, quiet=True)
-        refs = [identity, guide]
-        result["refs"] = [str(r) for r in refs]
+        if motion and force and out.exists():
+            raise SystemExit("Preserve existing motion versions; prepare a new run for a revision")
         out.parent.mkdir(parents=True, exist_ok=True)
         # The report is the commit marker of a finished row. Drop the previous one BEFORE the
         # provider runs: a provider that half-overwrites the image and exits non-zero must not
         # leave a valid-looking report next to a broken image (validator finding 2026-09-09).
         report.unlink(missing_ok=True)
+        if motion:
+            atomic_write_text(attempt, json.dumps({"status": "running", "motion_input_sha256": fingerprint}) + "\n")
         rc = gen_runner(prompt_file, out, refs, report, provider=provider, model=model, log=log)
         gen_report, why = read_report(report) if rc == 0 else (None, None)
         bad_image = _row_image_ok(out) if rc == 0 else None
         if rc != 0 or gen_report is None or bad_image is not None:
+            if motion:
+                if (question := child_asked(rc, log)) is not None:
+                    result["asked"] = question
+                raise SystemExit(f"GENERATION_OUTCOME_UNKNOWN: gen exited {rc}; preserve output, report and log for inspection")
             for partial in (out, report):  # no half state: an unproven row is removed so the next run regenerates
                 if partial.exists():
                     partial.unlink()
@@ -187,6 +204,10 @@ def run_item(
         if gen_report.get("provider_fallback"):
             result["provider_fallback"] = gen_report["provider_fallback"]
         result["elapsed_seconds"] = round(time.monotonic() - started, 1)
+        if motion:
+            gen_report.update(motion_input_sha256=fingerprint, motion_quality="unverified", refs=result["refs"])
+            atomic_write_text(report, json.dumps(gen_report, ensure_ascii=False, indent=2) + "\n")
+            atomic_write_text(attempt, json.dumps({"status": "complete", "motion_input_sha256": fingerprint}) + "\n")
         result["ok"] = True
     except SystemExit as exc:
         result["ok"] = False
@@ -207,7 +228,7 @@ def write_table(results: list[dict[str, Any]], path: Path) -> str:
             lines.append(f"| {r['state']} | {r.get('provider') or '-'} | {r.get('provider_resolved_from') or '-'} | {r.get('elapsed_seconds', '-')} | OK |")
         else:
             lines.append(f"| {r['state']} | - | - | {r.get('elapsed_seconds', '-')} | FAIL: {r.get('error', '')[:100]} |")
-    text = "\n".join(lines) + "\n"
+    text = "\n".join(lines) + "\n\nOK/reused means image generation completed. Motion quality remains unverified until actual gait review.\n"
     atomic_write_text(path, text)
     return text
 

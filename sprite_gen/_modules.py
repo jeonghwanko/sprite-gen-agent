@@ -6,6 +6,8 @@ the reorg tooling. Keep in sync with the physical folder layout.
 """
 
 MODULE_DOMAIN = {
+    'gait': 'scene',
+    'gait_render': 'scene',
     'sound': 'audio',
     'guide': 'workflow',
     'preferences': 'workflow',
@@ -23,6 +25,11 @@ MODULE_DOMAIN = {
     'migrate_breathe': 'spec',
     'video': 'gen',
     'gen_set': 'gen',
+    'gen_motion': 'gen',
+    'gait_motion': 'gen',
+    'gait_inputs': 'spec',
+    'pose_geometry': 'spec',
+    'pose_plan': 'spec',
     'pixel_draw': 'gen',
     'logo': 'gen',
     'canvas': 'video',
