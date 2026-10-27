@@ -1,8 +1,5 @@
 # sprite-gen documentation index
 
-Authored motion preview without AI: [Gait phase, IK and foot locking](gait-guide.md)
-(`gait-guide`; deterministic proxy animation, not generated character approval).
-
 One CLI, two sprite pipelines, independent tool groups and optional scene creation.
 Each doc owns one concern. Start with the result you want, then follow its contract;
 the code domains describe ownership rather than an execution order.
@@ -82,6 +79,7 @@ grouping is derived from `sprite_gen/_modules.py`, the one taxonomy table.
 | Doc | Owns |
 |---|---|
 | [pose-motion.md](pose-motion.md) | Experimental authored pose guides, reviewed anchors, and fixed-canvas GPT locomotion |
+| [gait-guide.md](gait-guide.md) | `gait-guide`: authored gait phase, IK and foot locking as a deterministic proxy preview without AI — not generated character approval |
 | [gen.md](gen.md) | `sprite-gen gen` / `gen-set`: providers, default resolution and what a default codex that cannot run turns into, transparency strategy per provider, when a refused provider request is sent again, row usage |
 | [`sprite-gen sound`](sound.md) | Generate normalized SFX and BGM audio assets with Opus and AAC encoding, SQLite raw request caching, and Web Audio loop metadata. |
 | [pixel-draw.md](pixel-draw.md) | `sprite-gen pixel-draw` (experimental): Claude Opus draws 8–48 px pixel art as a pixel grid — the inputs, the safe area, the style (`--style`), a set of up to 64 frames drawn four at a time and one motion (`--motion`), the run folder and its report, gates G1–G8, the row repair and the one redraw, the pick between candidates, Message Batches and `--resume`, re-rendering an edited `grid.txt` |
