@@ -2,7 +2,7 @@
 """Hash-bound gait design inputs. Never generated-image observations."""
 from __future__ import annotations
 import hashlib,json,math,re
-import numpy as np
+from sprite_gen._deps import np
 from pathlib import Path
 from PIL import Image,ImageDraw,ImageFont
 

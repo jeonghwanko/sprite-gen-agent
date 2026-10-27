@@ -13,7 +13,8 @@ import json
 import math
 from pathlib import Path
 
-import numpy as np
+from sprite_gen._deps import np
+from sprite_gen.util.console import utf8_streams
 
 
 def _positive(value, name, low=0., high=100.):
@@ -259,6 +260,7 @@ def run(profile, out_dir, motion="both"):
 
 
 def main():
+    utf8_streams()
     parser=argparse.ArgumentParser(description=__doc__);add_arguments(parser)
     return run(**vars(parser.parse_args()))
 

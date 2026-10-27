@@ -12,7 +12,7 @@ import json
 import math
 from pathlib import Path
 
-import numpy as np
+from sprite_gen._deps import np
 from PIL import Image, ImageDraw, ImageFont
 
 COLORS={1:(239,126,46),2:(42,133,209),3:(194,137,67),4:(214,162,85),5:(39,133,143),6:(110,54,66),7:(100,72,48),8:(40,35,30)}

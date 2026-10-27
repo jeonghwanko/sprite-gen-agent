@@ -13,7 +13,7 @@ import math
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageChops
-import numpy as np
+from sprite_gen._deps import np
 
 LIMITS = {"scale_min": .85, "scale_max": 1.15, "shift_fraction": .08,
           "body_fraction": .012, "contact_fraction": .003,

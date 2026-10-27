@@ -4,7 +4,7 @@ from __future__ import annotations
 import argparse,copy,hashlib,json,math,shutil
 from types import SimpleNamespace
 from pathlib import Path
-import numpy as np
+from sprite_gen._deps import np
 from PIL import Image,ImageDraw,ImageFont
 from sprite_gen.scene import gait,gait_render
 from sprite_gen.spec import pose_geometry,pose_plan,gait_inputs
