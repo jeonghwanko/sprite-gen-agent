@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (pose-plan GPT motion; see NOTICE).
 """`sprite-gen video-face` — a face pack: the lower face of a talking clip, cut to be laid on body motions.
 
 The request (docs/face-parts.md "The request") names a reference cell and the face on it, a talking clip (keyed
@@ -35,9 +36,12 @@ import argparse
 import csv
 import hashlib
 import json
+import multiprocessing
+import multiprocessing.connection
 import os
 import shutil
 import tempfile
+import threading
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -207,6 +211,12 @@ _WORK: dict[str, Any] = {}
 
 def _work_init(work: dict[str, Any]) -> None:
     _WORK.update(work)
+    # A parent killed outright (a timeout, a crashed test worker) does not take spawned workers with it on
+    # Windows: each would go on holding its memory. The worker leaves as soon as its parent is gone.
+    parent = multiprocessing.parent_process()
+    if parent is not None:
+        threading.Thread(target=lambda: (multiprocessing.connection.wait([parent.sentinel]), os._exit(1)),
+                         daemon=True).start()
 
 
 def _anchor(task: tuple[str, tuple[int, int, int]]) -> dict[str, Any]:
