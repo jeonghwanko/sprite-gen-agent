@@ -1,4 +1,7 @@
-<h1 align="center">sprite-gen</h1>
+<h1 align="center">sprite-gen-agent</h1>
+
+> **sprite-gen-agent** is an independent fork of [sprite-gen](https://github.com/aldegad/sprite-gen) by Alex Kim ([@aldegad](https://github.com/aldegad)), maintained by jeonghwan.ko ([@jeonghwanko](https://github.com/jeonghwanko)) for the AI Fighter creator kit. It is not an official sprite-gen release and is not endorsed by its author.
+> It follows upstream `main` and adds pose-plan GPT motion, gait guides and per-stance contact coverage — see [pose-motion](docs/pose-motion.md) and [gait-guide](docs/gait-guide.md). The rest of this README is upstream's; the package and CLI keep the name `sprite-gen`. Apache-2.0, like the original — see [NOTICE](NOTICE).
 
 <p align="center"><b>输入一张画稿，输出可直接用于游戏的精灵图 —— 以图集形式，或以透明动态循环形式。</b></p>
 

@@ -1,4 +1,7 @@
-<h1 align="center">sprite-gen</h1>
+<h1 align="center">sprite-gen-agent</h1>
+
+> **sprite-gen-agent**는 Alex Kim([@aldegad](https://github.com/aldegad))의 [sprite-gen](https://github.com/aldegad/sprite-gen)을 포크한 독립 프로젝트로, AI Fighter 크리에이터 키트를 위해 jeonghwan.ko([@jeonghwanko](https://github.com/jeonghwanko))가 관리합니다. sprite-gen 공식 배포판이 아니며 원작자의 보증을 받은 것이 아닙니다.
+> upstream `main`을 따라가면서 포즈 플랜 기반 GPT 모션, 보행(gait) 가이드, 디딤 구간별 접지 커버리지를 더했습니다 — [pose-motion](docs/pose-motion.md), [gait-guide](docs/gait-guide.md) 참고. 아래 내용은 upstream 문서 그대로이며, 패키지와 CLI 이름은 `sprite-gen`을 유지합니다. 원본과 같은 Apache-2.0 — [NOTICE](NOTICE) 참고.
 
 <p align="center"><b>그림 한 장을 넣으면, 게임에 바로 쓸 수 있는 스프라이트가 나온다 — 아틀라스로, 또는 투명 모션 루프로.</b></p>
 

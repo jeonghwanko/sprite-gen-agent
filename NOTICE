@@ -38,3 +38,18 @@ the flows averaged at every level — follows rife-ncnn-vulkan 20221029
 (https://github.com/nihui/rife-ncnn-vulkan, src/rife.cpp RIFE::process_v4 and its
 rife_*_tta shaders), Copyright (c) 2020 nihui, MIT License. It reads its weights
 from that release's rife-v4.6 model, which sprite-gen does not ship.
+
+---
+
+sprite-gen-agent
+Copyright 2026 jeonghwan.ko
+
+sprite-gen-agent is a fork of sprite-gen (https://github.com/aldegad/sprite-gen),
+Copyright 2026 Alex Kim, Apache License 2.0. The notices above are sprite-gen's
+and are kept unchanged. sprite-gen-agent is not an official sprite-gen release
+and is not endorsed by its author.
+
+sprite-gen-agent adds pose-plan GPT motion, the gait-guide utility, the
+gait-motion bridge and per-stance contact coverage, first written for the
+AI Fighter creator kit. Source files it changed carry a "Modified for
+sprite-gen-agent" line; the files it added carry their own SPDX header.

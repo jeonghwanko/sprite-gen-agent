@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (pose-plan GPT motion; see NOTICE).
 """Single sprite-gen CLI entrypoint."""
 
 from __future__ import annotations

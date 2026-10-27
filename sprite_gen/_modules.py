@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (pose-plan GPT motion; see NOTICE).
 """Domain of each pipeline module — the single source for the package taxonomy.
 
 Used at runtime to run a pipeline step as `-m sprite_gen.<domain>.<step>` and by

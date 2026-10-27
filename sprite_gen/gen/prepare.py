@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (pose-plan GPT motion; see NOTICE).
 """Prepare a sprite-gen component-row run.
 
 This script owns the numeric sprite recipe. It writes one request JSON, one

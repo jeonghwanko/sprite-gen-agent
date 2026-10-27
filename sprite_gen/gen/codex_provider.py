@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (pose-plan GPT motion; see NOTICE).
 """Codex `image_gen` provider (ChatGPT OAuth, no API key).
 
 Ported from the standalone `image-gen` skill (MIT, aldegad/image-gen). codex

@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (pose-plan GPT motion; see NOTICE).
 """`sprite-gen gen-set` — generate every state row of a prepared run, N at a time.
 
 The atlas pipeline's one AI step, as a command instead of prose. `prepare` already
