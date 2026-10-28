@@ -135,6 +135,20 @@ def announce_codex_billing(login: CodexLogin, what: str = "") -> None:
 # `image_gen.generation`.
 _RESULT_TYPES = ("image_generation_call", "image_generation_end")
 _IMAGE_GEN_EXTENSION_KIND = "image_gen.generation"
+# v0.164.0 made the item's image either inline data (`result`) or an attachment-store reference (`fileId`;
+# codex-rs/ext/items/src/image_generation.rs `GeneratedImageRef`). Which one is written is the store's choice: through
+# rust-v0.165.0 `codex exec` runs on `passthrough_image_store()` (`InlineAttachmentStore`, app-server
+# message_processor.rs), so the result stays inline. A `fileId` item names a file this adapter has no way to read.
+
+
+def _attachment_store_message(file_id: object, rollout: Path) -> str:
+    return (
+        f"codex-gen: codex kept this image in its attachment store (fileId={file_id!r}) instead of inline in {rollout}\n"
+        "  this provider reads only the inline `result`; `codex exec` wrote it inline through codex 0.165.0, so the "
+        "codex that ran stores images another way — pin a codex that writes them inline (`codex --version`)."
+    )
+
+
 # The session id that names the rollout jsonl. v0.144.1 `codex exec --json` emits
 # it as `{"type":"thread.started","thread_id":"<uuid>"}` on stdout; older codex
 # printed a `session id: <uuid>` text line. Both are canonical per version.
@@ -378,6 +392,8 @@ def _collect_inline_results(rollout: Path) -> list[InlineResult]:
                         f"codex-gen: image_gen call ended with status={status!r} in {rollout}"
                     )
                 result = item.get("result")
+                if not result and item.get("fileId"):
+                    raise SystemExit(_attachment_store_message(item["fileId"], rollout))
                 if not result:
                     raise SystemExit(
                         f"codex-gen: completed image_gen call has no result in {rollout}"

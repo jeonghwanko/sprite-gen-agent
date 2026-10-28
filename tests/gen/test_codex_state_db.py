@@ -2,7 +2,10 @@
 """Codex sessions found through codex's state DB, and through the sessions-root scan without one.
 
 Fixtures (tests/fixtures/codex): a rollout shaped as codex 0.153.4 writes one (no state DB is consulted), a rollout
-shaped as codex 0.165.0 writes one, and the `threads` table of codex's `state_5.sqlite`.
+shaped as codex 0.165.0 writes one (with that version's `inputImages`, `imagegenRequestId` and `generationId`), the
+same rollout with the image as an attachment-store `fileId` (the 0.164+ `GeneratedImageRef::File` shape), and the
+`threads` table of codex's `state_5.sqlite`. The three older record shapes (`image_generation_call`,
+`image_generation_end`, the inline `image_gen.generation` item) are covered in test_gen.py.
 """
 
 from __future__ import annotations
@@ -210,6 +213,17 @@ def test_codex_sqlite_home_is_where_the_state_db_is_read(tmp_path: Path, monkeyp
     result = _generate(tmp_path, monkeypatch, INDEXED_SESSION, _codex_ran)
 
     assert result.extra["state_db"] == {"status": "indexed"}
+
+
+def test_an_attachment_store_image_names_the_file_id_instead_of_no_result(tmp_path: Path, monkeypatch,
+                                                                         codex_home: Path) -> None:
+    # codex 0.164+ can write the image as an attachment-store `fileId` instead of an inline `result`; `codex exec`
+    # did not through 0.165.0, and a codex that does must say so rather than "has no result".
+    sessions = codex_home / "sessions" / "2026" / "10" / "28"
+
+    with pytest.raises(SystemExit, match=r"attachment store \(fileId='file-fixture-0001'\)"):
+        _generate(tmp_path, monkeypatch, INDEXED_SESSION,
+                  lambda: _place_rollout("rollout-codex-file-id.jsonl", INDEXED_SESSION, sessions))
 
 
 def test_state_db_without_a_threads_table_is_absent(tmp_path: Path, codex_home: Path) -> None:

@@ -213,6 +213,19 @@ keeps the `image_gen` records in it (`codex-rs/rollout/src/policy.rs`); no table
 items. (codex compresses a rollout to `.jsonl.zst` only once it is seven days old, long after this provider has
 read it.) A codex that stopped writing the rollout would fail with the message above, not silently.
 
+What the rollout holds has changed shape more often than where it lives. The image record by codex version:
+
+| codex | Record the image rides on |
+|---|---|
+| 0.140 | `response_item` `image_generation_call` (`result`) |
+| 0.144 | `event_msg` `image_generation_end` (`result`, `status`) |
+| 0.149 – 0.165.0 | `event_msg` `item_completed`, item `type: Extension`, `kind: image_gen.generation` (`result`, `status`, `transparentBackground`) |
+| 0.164.0 + | the same item may carry `fileId` (an attachment-store reference) instead of `result` |
+
+From 0.164.0 the store decides between inline `result` and `fileId`. Through 0.165.0 `codex exec` runs on the
+inline store (`passthrough_image_store()`), so the image stays inline. A `fileId` item fails with a message
+that names the file id and says to pin a codex that writes images inline. It does not fail with "no result".
+
 The `extra` block of a codex report records what the session ran on:
 
 | Key | What it is |
