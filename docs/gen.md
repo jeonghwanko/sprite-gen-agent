@@ -16,7 +16,7 @@ added, however it is invoked
 
 | Provider | Backend | Auth | Billing | Output truth | Transparency strategy |
 |---|---|---|---|---|---|
-| `codex` | codex `image_gen` | ChatGPT OAuth | your ChatGPT subscription | inline base64 in the session rollout jsonl, decoded deterministically | **`native`** — image_gen returns a real alpha channel when asked |
+| `codex` | codex `image_gen` | ChatGPT OAuth | your ChatGPT subscription | inline base64 in the session rollout jsonl (found through codex's state DB, [below](#codex-sessions--the-rollout-and-the-state-db)), decoded deterministically | **`native`** — image_gen returns a real alpha channel when asked |
 | `grok` | direct Imagine `/images/generations` or `/images/edits` | Grok login (preferred) or `XAI_API_KEY` | your SuperGrok Imagine quota; console credit only on the key route | inline bytes decoded and re-encoded as a verified PNG | `chroma` — Imagine returns JPEG only; generate on a key and matte it out |
 | `openai` | direct Images `/v1/images/generations` or `/v1/images/edits` | `OPENAI_API_KEY` | **billed per call** — for servers and SaaS | inline base64 decoded and published as a verified PNG | **`native`** — `background: transparent` returns a real alpha channel |
 
@@ -186,7 +186,59 @@ Backward-compatible wrapper: `$SPRITE_GEN_ROOT/.venv/bin/python $SPRITE_GEN_ROOT
   `raw_bytes`, `elapsed_seconds`, `session_id` (codex), an `alpha` block
   (`strategy` + the measured stats), the `chroma` stats when chroma keying ran, plus the provider `extra` block
   (`auth_source`, `transport`, `endpoint`, and the knobs the request actually
-  carried).
+  carried). On codex, `model` is the model codex recorded the session running with, not a copy of `--model`
+  ([below](#codex-sessions--the-rollout-and-the-state-db)).
+
+### codex sessions — the rollout and the state DB
+
+codex writes no image file of its own that this provider trusts: the PNG is the inline base64 of the
+`image_gen` record in the session's **rollout** (`rollout-<timestamp>-<session id>.jsonl`). The provider finds
+that rollout in one of two ways:
+
+- **codex's state DB**, when there is one: `state_5.sqlite` in `CODEX_SQLITE_HOME` when that is set, else in the
+  Codex state root. Its `threads` table lists each session with its `rollout_path`, `model`, `model_provider`
+  and `cli_version`. The row is read read-only, and the rollout is taken from wherever `rollout_path` points. A
+  `sqlite_home` set in codex's `config.toml` (rather than the environment) is not read, so that DB is not
+  consulted.
+- **a scan of `<state root>/sessions`** for `rollout-*-<session id>.jsonl` — the only way for a codex with no
+  state DB, and a check on one with it: a scan hit that is a different file from the DB's makes two rollouts
+  for one session, which fails.
+
+A DB that cannot be read does not stop the run: the scan still finds the rollout, and the report says why the
+DB was skipped. A DB that lists the session at a path where no rollout exists fails loudly, naming that path.
+
+The state DB is an index, not a second place the image is kept. The codex source read on 2026-10-29
+(`codex-rs` at `rust-v0.156.1`, `rust-v0.157.1` and `rust-v0.165.0`) still writes every session's rollout and
+keeps the `image_gen` records in it (`codex-rs/rollout/src/policy.rs`); no table of the state DB holds a turn's
+items. (codex compresses a rollout to `.jsonl.zst` only once it is seven days old, long after this provider has
+read it.) A codex that stopped writing the rollout would fail with the message above, not silently.
+
+What the rollout holds has changed shape more often than where it lives. The image record by codex version:
+
+| codex | Record the image rides on |
+|---|---|
+| 0.140 | `response_item` `image_generation_call` (`result`) |
+| 0.144 | `event_msg` `image_generation_end` (`result`, `status`) |
+| 0.149 – 0.165.0 | `event_msg` `item_completed`, item `type: Extension`, `kind: image_gen.generation` (`result`, `status`, `transparentBackground`) |
+| 0.164.0 + | the same item may carry `fileId` (an attachment-store reference) instead of `result` |
+
+From 0.164.0 the store decides between inline `result` and `fileId`. Through 0.165.0 `codex exec` runs on the
+inline store (`passthrough_image_store()`), so the image stays inline. A `fileId` item fails with a message
+that names the file id and says to pin a codex that writes images inline. It does not fail with "no result".
+
+The `extra` block of a codex report records what the session ran on:
+
+| Key | What it is |
+|---|---|
+| `requested_model` | `--model` as passed; `null` when codex's configured default was used |
+| `model` (top level) | the model the session ran with: the rollout's last `turn_context.model`, else the state DB's `threads.model`, else `null` — never the request copied |
+| `model_source` | `rollout`, `state-db` or `null` |
+| `model_effort` | the reasoning effort the rollout's `turn_context` records |
+| `model_provider`, `codex_cli_version` | from the rollout's `session_meta` (or the state DB row) |
+| `state_db` | `{"status": "indexed" \| "absent" \| "unreadable", "reason"?}` |
+
+`model` is the agent model that called `image_gen`. codex records no name for the image model behind the
+tool, so no report field claims one.
 
 - **`--direction`** adds the view sentence a sprite still is drawn with (`still_view_text`; a side or
   diagonal view also takes `--facing`, a front or back view refuses it) and records `extra.view`.

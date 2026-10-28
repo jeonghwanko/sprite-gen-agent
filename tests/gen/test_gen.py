@@ -242,7 +242,7 @@ def test_codex_empty_rollout_fails_loud_on_tool_non_exposure(tmp_path: Path, mon
     monkeypatch.setattr(
         codex_provider,
         "_resolve_rollout",
-        lambda sid, sessions_root, *, preexisting: rollout,
+        lambda sid, sessions_root, *, preexisting, indexed=None: rollout,
     )
     monkeypatch.setattr(codex_provider, "_collect_inline_results", lambda path: [])
 
@@ -288,7 +288,7 @@ def test_codex_prompt_reaches_the_child_process(tmp_path: Path, monkeypatch) -> 
     monkeypatch.setattr(
         codex_provider,
         "_resolve_rollout",
-        lambda sid, sessions_root, *, preexisting: tmp_path / "x.jsonl",
+        lambda sid, sessions_root, *, preexisting, indexed=None: tmp_path / "x.jsonl",
     )
     b64 = base64.b64encode(_png_bytes()).decode()
     monkeypatch.setattr(
@@ -881,7 +881,7 @@ def test_codex_generate_reports_transparent_background_claim(tmp_path: Path, mon
     monkeypatch.setattr(codex_provider.subprocess, "run", _fake_run)
     monkeypatch.setattr(codex_provider, "codex_login", lambda: codex_provider.CodexLogin(codex_provider.AUTH_SOURCE_LOGIN))
     monkeypatch.setattr(
-        codex_provider, "_resolve_rollout", lambda sid, root, *, preexisting: tmp_path / "x.jsonl"
+        codex_provider, "_resolve_rollout", lambda sid, root, *, preexisting, indexed=None: tmp_path / "x.jsonl"
     )
     b64 = base64.b64encode(_png_bytes()).decode()
     monkeypatch.setattr(

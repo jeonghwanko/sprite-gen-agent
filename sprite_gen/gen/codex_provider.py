@@ -1,13 +1,15 @@
 # SPDX-License-Identifier: Apache-2.0
-# Modified for sprite-gen-agent (pose-plan GPT motion; see NOTICE).
+# Modified for sprite-gen-agent (pose-plan GPT motion; codex state-DB rollout index; see NOTICE).
 """Codex `image_gen` provider (ChatGPT OAuth, no API key).
 
 Ported from the standalone `image-gen` skill (MIT, aldegad/image-gen). codex
 does not persist a discrete file; `image_gen` returns the PNG **inline as base64**
 inside the session rollout jsonl. We spawn a fresh `codex exec` in an empty
 sandbox (fresh session breaks OpenAI's prompt cache so repeat prompts don't drag
-in a previous image), parse the session id from stdout, then decode the inline
-base64 deterministically. The model-reported path is never trusted.
+in a previous image), parse the session id from stdout, find that session's rollout
+(through codex's state DB where it has one, `_indexed_thread`, else by scanning the
+sessions root), then decode the inline base64 deterministically. The model-reported
+path is never trusted.
 
 Decisive flags (each verified in the image-gen skill):
 - `--sandbox workspace-write`  image_gen needs write access, else the tool never registers.
@@ -31,8 +33,10 @@ import hashlib
 import json
 import os
 import re
+import sqlite3
 import subprocess
 import time
+from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -131,6 +135,20 @@ def announce_codex_billing(login: CodexLogin, what: str = "") -> None:
 # `image_gen.generation`.
 _RESULT_TYPES = ("image_generation_call", "image_generation_end")
 _IMAGE_GEN_EXTENSION_KIND = "image_gen.generation"
+# v0.164.0 made the item's image either inline data (`result`) or an attachment-store reference (`fileId`;
+# codex-rs/ext/items/src/image_generation.rs `GeneratedImageRef`). Which one is written is the store's choice: through
+# rust-v0.165.0 `codex exec` runs on `passthrough_image_store()` (`InlineAttachmentStore`, app-server
+# message_processor.rs), so the result stays inline. A `fileId` item names a file this adapter has no way to read.
+
+
+def _attachment_store_message(file_id: object, rollout: Path) -> str:
+    return (
+        f"codex-gen: codex kept this image in its attachment store (fileId={file_id!r}) instead of inline in {rollout}\n"
+        "  this provider reads only the inline `result`; `codex exec` wrote it inline through codex 0.165.0, so the "
+        "codex that ran stores images another way — pin a codex that writes them inline (`codex --version`)."
+    )
+
+
 # The session id that names the rollout jsonl. v0.144.1 `codex exec --json` emits
 # it as `{"type":"thread.started","thread_id":"<uuid>"}` on stdout; older codex
 # printed a `session id: <uuid>` text line. Both are canonical per version.
@@ -253,16 +271,87 @@ def _rollout_files(sessions_root: Path) -> tuple[Path, ...]:
         raise SystemExit(f"codex-gen: cannot scan Codex sessions root {sessions_root}: {exc}") from exc
 
 
+# codex's state DB (2026-10-29, codex-rs source at rust-v0.156.1, rust-v0.157.1 and rust-v0.165.0): one SQLite
+# file, `state_5.sqlite` in every one of them (codex-rs/state/src/sqlite.rs `STATE_DB_FILENAME`), in
+# `CODEX_SQLITE_HOME` when that is set and in the state root otherwise (codex-rs/state/src/lib.rs `SQLITE_HOME_ENV`;
+# a `sqlite_home` set in config.toml is not read here). Its `threads` table indexes each session: the path of its
+# rollout (`rollout_path`), the model it ran with (`model`, `model_provider`) and the codex that wrote it
+# (`cli_version`). It is an index of the rollouts, not a second store: no table holds a turn's items, and
+# codex-rs/rollout still writes every session as `rollout-<timestamp>-<thread id>.jsonl` and keeps the
+# image_gen records in it (rollout/src/policy.rs), so the image is read from the rollout in every version. A codex
+# with no state DB, or a DB that has no row for the session, is found by scanning the sessions root as before.
+STATE_DB_FILENAME = "state_5.sqlite"
+SQLITE_HOME_ENV = "CODEX_SQLITE_HOME"
+_THREAD_COLUMNS = ("rollout_path", "model", "model_provider", "cli_version")
+
+
+@dataclass(frozen=True)
+class IndexedThread:
+    """One session as codex's state DB lists it. `status` is "indexed" (the row was read), "absent" (no DB, no
+    `threads` table or no row for the session) or "unreadable" (`reason` says why); only an indexed thread
+    carries the other fields."""
+
+    status: str
+    rollout_path: Path | None = None
+    model: str | None = None
+    model_provider: str | None = None
+    cli_version: str | None = None
+    reason: str = ""
+
+    def report(self) -> dict:
+        return {"status": self.status, **({"reason": self.reason} if self.reason else {})}
+
+
+def _state_db_path(codex_home: Path) -> Path:
+    configured = os.environ.get(SQLITE_HOME_ENV)
+    home = Path(configured).expanduser().resolve() if configured and configured.strip() else codex_home
+    return home / STATE_DB_FILENAME
+
+
+def _indexed_thread(session_id: str, codex_home: Path) -> IndexedThread:
+    """Read one session's row from codex's state DB, read-only. A DB that cannot be read is reported, not fatal:
+    the scan of the sessions root still finds the rollout of a codex whose index failed."""
+    db = _state_db_path(codex_home)
+    if not db.is_file():
+        return IndexedThread("absent")
+    try:
+        with closing(sqlite3.connect(f"{db.resolve().as_uri()}?mode=ro", uri=True, timeout=5)) as conn:
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(threads)")}
+            if not {"id", "rollout_path"} <= columns:
+                return IndexedThread("absent")
+            wanted = [column for column in _THREAD_COLUMNS if column in columns]
+            row = conn.execute(f"SELECT {', '.join(wanted)} FROM threads WHERE id = ?", (session_id,)).fetchone()
+    except sqlite3.Error as exc:
+        return IndexedThread("unreadable", reason=f"{type(exc).__name__}: {exc}")
+    if row is None:
+        return IndexedThread("absent")
+    fields = {column: (str(value) if value else None) for column, value in zip(wanted, row)}
+    rollout = fields.pop("rollout_path")
+    return IndexedThread("indexed", rollout_path=Path(rollout) if rollout else None, **fields)
+
+
 def _resolve_rollout(
     session_id: str,
     sessions_root: Path,
     *,
     preexisting: set[Path] | frozenset[Path] | None = None,
+    indexed: Path | None = None,
 ) -> Path:
-    """Resolve exactly one newly-created rollout for one Codex session."""
+    """Resolve exactly one newly-created rollout for one Codex session.
+
+    `indexed` is the rollout path codex's state DB lists for the session, when it lists one. It is found
+    wherever it lies; a scan hit that is a different file makes two rollouts for one session, which fails."""
     suffix = f"-{session_id}.jsonl"
     hits = [path for path in _rollout_files(sessions_root) if path.name.endswith(suffix)]
+    if indexed is not None and indexed.is_file() and indexed.resolve() not in hits:
+        hits.append(indexed.resolve())
     if not hits:
+        if indexed is not None:
+            raise SystemExit(
+                f"codex-gen: codex's state DB lists session {session_id!r} at {indexed}, but no rollout jsonl "
+                f"exists there or under {sessions_root}. The rollout is the one place codex keeps the image_gen "
+                "result; a codex that records a session without it cannot be read by this provider."
+            )
         raise SystemExit(
             f"codex-gen: no rollout jsonl for session {session_id!r} under {sessions_root}"
         )
@@ -303,6 +392,8 @@ def _collect_inline_results(rollout: Path) -> list[InlineResult]:
                         f"codex-gen: image_gen call ended with status={status!r} in {rollout}"
                     )
                 result = item.get("result")
+                if not result and item.get("fileId"):
+                    raise SystemExit(_attachment_store_message(item["fileId"], rollout))
                 if not result:
                     raise SystemExit(
                         f"codex-gen: completed image_gen call has no result in {rollout}"
@@ -322,6 +413,46 @@ def _collect_inline_results(rollout: Path) -> list[InlineResult]:
                 raise SystemExit(f"codex-gen: image_gen call ended with status={status!r} in {rollout}")
             results.append(InlineResult(result=payload["result"]))
     return results
+
+
+@dataclass(frozen=True)
+class SessionFacts:
+    """What the rollout says the session ran on: `model` and `effort` from its last `turn_context` record,
+    `cli_version` and `model_provider` from its `session_meta` record (the same keys in rollouts written by codex
+    0.153.4 and 0.165.0). `model` is the agent model that called image_gen; codex records no name for the image
+    model behind the tool."""
+
+    model: str | None = None
+    effort: str | None = None
+    cli_version: str | None = None
+    model_provider: str | None = None
+
+
+def _session_facts(rollout: Path) -> SessionFacts:
+    """Report-only, as `_image_tool_trace` is: a rollout that cannot be read again says nothing."""
+    facts: dict[str, str | None] = {}
+    try:
+        handle = rollout.open(encoding="utf-8")
+    except OSError:
+        return SessionFacts()
+    with handle:
+        for line in handle:
+            if '"turn_context"' not in line and '"session_meta"' not in line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            payload = record.get("payload") if isinstance(record, dict) else None
+            if not isinstance(payload, dict):
+                continue
+            keys = {"turn_context": ("model", "effort"),
+                    "session_meta": ("cli_version", "model_provider")}.get(record.get("type"), ())
+            for key in keys:
+                value = payload.get(key)
+                if isinstance(value, str) and value:
+                    facts[key] = value
+    return SessionFacts(**facts)
 
 
 def _decode_png(b64: str, dest: Path) -> None:
@@ -509,10 +640,12 @@ class CodexProvider:
                 "codex-gen: no thread/session id in codex stdout — image_gen was not reached.\n"
                 "  check `codex login status` and `--sandbox workspace-write`."
             )
+        thread = _indexed_thread(session_id, codex_home)
         rollout = _resolve_rollout(
             session_id,
             sessions_root,
             preexisting=preexisting_rollouts,
+            indexed=thread.rollout_path,
         )
         results = _collect_inline_results(rollout)
         if not results:
@@ -520,6 +653,11 @@ class CodexProvider:
         final = results[-1]
         _decode_png(final.result, request.raw)
         trace = _image_tool_trace(rollout)
+        facts = _session_facts(rollout)
+        # The model the session ran with as codex recorded it, never a copy of `--model`: the rollout's turn
+        # context first, the state DB's row second, None when codex recorded neither.
+        model, model_source = ((facts.model, "rollout") if facts.model
+                               else (thread.model, "state-db") if thread.model else (None, None))
 
         if not self.keep_session:
             try:
@@ -530,10 +668,17 @@ class CodexProvider:
         return ProviderRun(
             provider=self.name,
             elapsed_seconds=elapsed,
-            model=request.model,
+            model=model,
             session_id=session_id,
             extra={
                 "auth_source": login.source,
+                # `--model` as asked (None: codex's configured default); `model` above is what ran.
+                "requested_model": request.model,
+                "model_source": model_source,
+                "model_effort": facts.effort,
+                "model_provider": facts.model_provider or thread.model_provider,
+                "codex_cli_version": facts.cli_version or thread.cli_version,
+                "state_db": thread.report(),
                 "inline_results": len(results),
                 "rollout_cleaned": not self.keep_session,
                 "image_tool_trace": trace,
