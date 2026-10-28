@@ -50,6 +50,7 @@ and are kept unchanged. sprite-gen-agent is not an official sprite-gen release
 and is not endorsed by its author.
 
 sprite-gen-agent adds pose-plan GPT motion, the gait-guide utility, the
-gait-motion bridge and per-stance contact coverage, first written for the
-AI Fighter creator kit. Source files it changed carry a "Modified for
+gait-motion bridge, per-stance contact coverage and the scale check (head-
+measured figure size, applied by game-pack), first written for the AI Fighter
+creator kit. Source files it changed carry a "Modified for
 sprite-gen-agent" line; the files it added carry their own SPDX header.

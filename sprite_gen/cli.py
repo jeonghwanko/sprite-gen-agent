@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Modified for sprite-gen-agent (pose-plan GPT motion; see NOTICE).
+# Modified for sprite-gen-agent (pose-plan GPT motion, scale-check; see NOTICE).
 """Single sprite-gen CLI entrypoint."""
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ from sprite_gen.compose import compose_atlas, compose_cycle, compose_gif, export
 from sprite_gen.compose import game_pack
 from sprite_gen.qa import correction_loop, inspect, preview, score, motion
 from sprite_gen.qa import handed as handed_check
+from sprite_gen.qa import scale_check
 from sprite_gen.frames import cutout, extract, slice_sheet, ui_kit, unpack_atlas
 from sprite_gen.gen import gen_motion, gait_motion, gen_set, logo, pixel_draw, prepare, video
 from sprite_gen.video import batch as video_batch
@@ -227,6 +228,7 @@ COMMANDS: dict[str, tuple[str, Callable[[argparse.ArgumentParser], None], Callab
     "background-tile": ("Quilt a repeating RGBA background and measure its join.", tile.add_arguments, tile.run),
     "shadow": ("Project silhouette shadows from any supported asset.", shadow.add_arguments, shadow.run),
     "inspect-motion": ("Measure asset timing and contact evidence without changing animation.", motion.add_arguments, motion.run),
+    "scale-check": ("Measure every frame's figure size against a reference frame by its head; the corrections game-pack applies.", scale_check.add_arguments, scale_check.run),
     "scene-render": ("Render referenced assets using scene placement, camera and lighting.", render.add_arguments, render.run),
     "scene-inspect": ("Measure scene loops, viewport clipping and repeated joins.", inspect_scene.add_arguments, inspect_scene.run),
     "workflow": ("Resolve image/sprite choices, check access and guide the next conversation step.", guide.add_arguments, guide.run),

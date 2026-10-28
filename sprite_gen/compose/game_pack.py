@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (scale-check corrections; see NOTICE).
 """Resize finished assets and publish an immutable game atlas pack.
 
 Request version 2 adds painted scene art (docs/game-pack.md "Version 2"): single images with
@@ -24,6 +25,7 @@ from sprite_gen.audio.playback import player as audio_player
 from sprite_gen.frames.ui_kit import (REPORT_KIND as UI_KIT_KIND, STRETCHES, content_rect, element_path,
                                      measure_insets)
 from sprite_gen._deps import np
+from sprite_gen.qa.scale_check import factors as scale_factors, label as scale_label, load_report as load_scale_report
 from sprite_gen.spec.assets import finite, load_asset, load_asset_states
 from sprite_gen.spec.runio import inside_folder, same_folder
 from sprite_gen.util.resample import resize_cell
@@ -109,6 +111,37 @@ def _cell(image, size, sampling):
     return image.resize(size, Image.Resampling.NEAREST) if sampling == "nearest" else resize_cell(image, size)
 
 
+def _scaled_cell(image, size, anchor, factor, sampling, key):
+    """`_cell` with the figure scaled `factor` about its anchor (the feet) on the same cell: one resample."""
+    if factor == 1:
+        return _cell(image, size, sampling)
+    grown = (max(1, round(size[0] * factor)), max(1, round(size[1] * factor)))
+    scaled = _cell(image, grown, sampling)
+    x, y = round(anchor[0] - anchor[0] * grown[0] / size[0]), round(anchor[1] - anchor[1] * grown[1] / size[1])
+    box = scaled.getchannel("A").getbbox()
+    if box and (box[0] + x < 0 or box[1] + y < 0 or box[2] + x > size[0] or box[3] + y > size[1]):
+        raise ValueError(f"{key}: scaled {factor} about its anchor, the figure leaves its {size[0]}x{size[1]} cell; "
+                         "give the source frames more margin")
+    cell = Image.new("RGBA", size)
+    cell.paste(scaled, (x, y))
+    return cell
+
+
+def _scale_check(entry, base):
+    """An asset's `scale_check` (docs/game-pack.md "Scale check"): the report, per frame or per state, the fixes."""
+    spec = entry.get("scale_check")
+    if spec is None:
+        return None
+    if (not isinstance(spec, dict) or not set(spec) <= {"report", "per", "fix"} or not isinstance(spec.get("report"), str)
+            or not spec["report"]):
+        raise ValueError('scale_check needs {"report": path, "per": "frame" or "state", "fix": {...}}')
+    per, fix = spec.get("per", "frame"), spec.get("fix", {})
+    if per not in ("frame", "state") or not isinstance(fix, dict):
+        raise ValueError('scale_check.per must be "frame" or "state" and scale_check.fix an object')
+    path = (base / spec["report"]).resolve()
+    return load_scale_report(path), per, fix, path
+
+
 def _prepare(request, base, page_size):
     entries = request.get("assets", [])
     if not isinstance(entries, list):
@@ -126,6 +159,8 @@ def _prepare(request, base, page_size):
         sequences = load_asset_states(base / entry["source"], state=entry.get("state"), fps=entry.get("fps"), anchor=entry.get("anchor"))
         if len(sequences) > 1 and "direction" in entry:
             raise ValueError("direction override requires one animation; select a source state")
+        scale_check = _scale_check(entry, base)
+        fixable = set()
         for state, sequence in sequences.items():
             key = asset_id if state is None else f"{asset_id}/{_name(state)}"
             size, anchor, sampling = _display(sequence, entry)
@@ -134,12 +169,25 @@ def _prepare(request, base, page_size):
                 raise ValueError(f"{key}: frame {size} plus padding exceeds page size {page_size}")
             animation = _policy(sequence, entry)
             animation.update(anchor=anchor, size={"w": size[0], "h": size[1]}, frames=[])
+            factors = [1.0] * len(sequence.frames)
+            if scale_check:
+                report, per, fix, path = scale_check
+                try:
+                    factors = scale_factors(report, sequence, state, per=per, fix=fix)
+                except ValueError as exc:
+                    raise ValueError(f"{key}: {exc}") from exc
+                fixable |= {scale_label(state)} if per == "state" else {scale_label(state, i) for i in range(len(factors))}
+                animation["frame_scale"] = factors
+                sources.add(path)
             for index, image in enumerate(sequence.frames):
                 name = f"{key}/{index:06d}"
                 animation["frames"].append(name)
-                frames.append((name, _cell(image, size, sampling), anchor))
+                frames.append((name, _scaled_cell(image, size, anchor, factors[index], sampling, name), anchor))
             animations[key] = animation
             sources.update(sequence.source_files)
+        if scale_check and set(scale_check[2]) - fixable:
+            raise ValueError(f"{asset_id}: scale_check.fix names no {scale_check[1]} of this asset: "
+                             f"{', '.join(sorted(set(scale_check[2]) - fixable))}")
     return dict(sorted(animations.items())), sorted(frames, key=lambda f: f[0]), sources
 
 
