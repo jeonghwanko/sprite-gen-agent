@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (machine-readable outcomes; see NOTICE).
 """Video generation through Grok Imagine (xAI `/v1/videos/*`).
 
 One call = one verified mp4 on disk. This is the engine module behind the
@@ -60,7 +61,7 @@ from typing import Any, Callable
 
 from sprite_gen.spec.runio import atomic_write_text, refuse_overlap
 from sprite_gen.util.cli_kwargs import namespace_from_kwargs
-from . import prompt_parts, refusal, retry
+from . import outcome, prompt_parts, refusal, retry
 from .base import announce_api_billing, print_json
 from .facing import FACINGS, validate as validate_facing
 from sprite_gen.video import facing as facing_mod
@@ -575,6 +576,7 @@ def _poll_publish(
     woke at it or past it, is not asked (`retry.too_late`). A run that ends before the request does — the
     deadline came, xAI rejected the credential, the done poll named no URL, or the clip it made could not
     be downloaded (DOWNLOAD_ATTEMPTS) — raises GenerationUnfinished naming the request."""
+    outcome.note(request_id=request_id)  # the one way back to the clip, kept for a report written on SIGTERM
     timeout = POLL_TIMEOUT_SECONDS if poll_timeout is None else poll_timeout
     deadline = started + timeout
     polls = polls_refused = polls_unanswered = failed_in_a_row = downloads = 0
@@ -1052,20 +1054,47 @@ def _read_prompt(args: argparse.Namespace) -> str:
 
 
 def _publish_report(args: argparse.Namespace, make: Callable[[], VideoResult], *, reads: dict[str, Path] | None = None,
-                    verb: str | None = None) -> int:
+                    verb: str = "video") -> int:
+    """Run `make` and leave its report at `--report` however it ends (docs/gen.md "Outcome"): the result, the
+    unfinished request, a failure, or SIGTERM — each with `ok`, `errors` and `provider_submitted`."""
     report_path = Path(args.report).expanduser().resolve() if args.report else None
-    if reads and report_path is not None:
-        # The report is written once the result is made: what the run reads is never that file.
-        refuse_overlap(reads, {"--report": report_path}, verb=verb)
-    try:
-        result = make()
-    except GenerationUnfinished as unfinished:
-        # The request is xAI's now and may still finish: the report names it, so whoever ran this
-        # asks for that id again instead of buying a second clip. Nothing goes to stdout.
-        if report_path is not None:
-            atomic_write_text(report_path, json.dumps(unfinished.to_dict(), ensure_ascii=False, indent=2) + "\n")
-        raise
-    payload = result.to_dict()
+    writable = False  # the report's folder is there and the report is not an input: a failure is written down
+    with outcome.recording(verb) as record:
+        try:
+            if reads and report_path is not None:
+                # The report is written once the result is made: what the run reads is never that file.
+                refuse_overlap(reads, {"--report": report_path}, verb=verb)
+            # Both folders exist before the request is sent: a clip paid for is never lost to a missing one.
+            if report_path is not None:
+                outcome.make_parent(report_path, "--report", verb=verb)
+                writable = True
+            outcome.make_parent(Path(args.out).expanduser().resolve(), "--out", verb=verb)
+            result = make()
+        except BaseException as exc:
+            if isinstance(exc, SystemExit) and exc.code in (0, None):
+                raise
+            code = outcome.classify(exc, submitted=record.provider_submitted)
+            request_id = record.detail.get("request_id")
+            if code == outcome.INTERRUPTED and request_id:
+                # Stopped after xAI took the request: it may still finish and be billed, and video-resume asks for it.
+                extra = {"request_id": request_id,
+                         "resume": f"sprite-gen video-resume --request-id {request_id} --out {args.out}"}
+            else:
+                extra = {}
+            fields = outcome.report_fields(record, errors=[outcome.error(code, str(exc), **extra)],
+                                           exit_status=outcome.exit_code(code, exc))
+            if writable:
+                # The request is xAI's once accepted and may still finish: an unfinished report names it, so
+                # whoever ran this asks for that id again instead of buying a second clip. Nothing goes to stdout.
+                body = (exc.to_dict() if isinstance(exc, GenerationUnfinished)
+                        else {"kind": "sprite-gen-video-report", "verb": verb, "out": str(Path(args.out).expanduser().resolve()),
+                              **({"request_id": request_id} if request_id else {})})
+                atomic_write_text(report_path, json.dumps({**body, **fields}, ensure_ascii=False, indent=2) + "\n")
+            ending = outcome.ended(exc, code)
+            if ending is exc:
+                raise
+            raise ending from exc
+    payload = {**result.to_dict(), **outcome.report_fields(record, errors=[])}
     if report_path is not None:
         atomic_write_text(report_path, json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
         payload["report"] = str(report_path)
@@ -1087,7 +1116,7 @@ def _run(args: argparse.Namespace) -> int:
         reference_images=list(args.reference_images or []),
         direction=args.direction, facing=args.facing, facing_fix=args.facing_fix,
     )
-    return _publish_report(args, lambda: generate_video(request))
+    return _publish_report(args, lambda: generate_video(request), verb="video")
 
 
 def _run_extend(args: argparse.Namespace) -> int:
@@ -1102,7 +1131,7 @@ def _run_edit(args: argparse.Namespace) -> int:
 
 def _run_resume(args: argparse.Namespace) -> int:
     request = ResumeRequest(request_id=args.request_id, out=args.out)
-    return _publish_report(args, lambda: resume_video(request))
+    return _publish_report(args, lambda: resume_video(request), verb="video-resume")
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -1147,7 +1176,7 @@ def run_resume(**kwargs: object) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     utf8_streams()
-    return _run(_build_parser().parse_args(argv))
+    return outcome.entry(lambda: _run(_build_parser().parse_args(argv)))
 
 
 if __name__ == "__main__":

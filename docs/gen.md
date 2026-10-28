@@ -1,6 +1,6 @@
 # `sprite-gen gen` — provider-backed image generation (engine SSoT)
 
-> Owns: `sprite-gen gen` / `gen-set`: providers, default resolution and what a default codex that cannot run turns into, transparency strategy per provider, the billed knobs (`--quality`, `--resolution`), when a refused provider request is sent again (every direct provider call), row usage · Index: [docs/README.md](README.md)
+> Owns: `sprite-gen gen` / `gen-set`: providers, default resolution and what a default codex that cannot run turns into, transparency strategy per provider, the billed knobs (`--quality`, `--resolution`), when a refused provider request is sent again (every direct provider call), the outcome every generation report and exit code carries (`ok`, `errors`, `provider_submitted`, `version`, `doctor`), row usage · Index: [docs/README.md](README.md)
 
 Generation is a first-class engine module (`sprite_gen/gen/`). One call = a prompt (+ optional reference images) → one **verified** PNG on
 disk, with an optional transparent output whose strategy is decided per provider
@@ -152,6 +152,74 @@ Anthropic transport of `pixel-draw` (docs/pixel-draw.md) — in `sprite_gen/gen/
 - **A POST is sent again only when its provider documents the answer as a request it
   did not take.** That request made nothing, so asking again buys nothing twice.
 
+## Outcome — what failed, whether to retry, whether a provider was charged
+
+A program that runs `gen`, `gen-set`, `video`, `video-extend`, `video-edit`, `video-resume` or
+`video-set` unattended reads the result from the report and the exit code. It does not need to
+read stderr. Every report carries the same keys on success, on failure, on the codex question and on SIGTERM:
+
+| Key | Meaning |
+|---|---|
+| `ok` | `true` when the run made what it was asked for. **`gen-set` and `video-set`**: `ok` is the count of finished rows or items, as it always was; `all_ok` is the set's yes or no. |
+| `errors` | `[]` on success, else `{state, code, retryable, message}` per failure. `state` is the row or item state (`null` for a single image or clip); `video-set` adds `item`. |
+| `provider_submitted` | `true` once a request left for a provider: a `codex exec` or `claude -p` process was started, or a non-GET request was sent to xAI, OpenAI or Anthropic. `false` means the run ended before any request left, so it cannot have been billed. A set is `true` when any row or item sent one. |
+| `provider_requests` | The providers that requests left for, in order (single runs). |
+| `exit_code` | On a failure report: the exit status the process ended with. |
+
+The `code` values are stable. `retryable` means that running the same command again may succeed
+without changing anything:
+
+| `code` | `retryable` | When |
+|---|---|---|
+| `preflight` | false | Refused before any provider request: a flag, an input, a login or a key is wrong or missing. |
+| `output-path` | false | The folder of `--out`, `--white-check` or `--report` could not be made. This is checked before any request. |
+| `provider-asks` | false | A default codex cannot run, and the choice is to ask (exit 75, [above](#when-codex-cannot-run--ask-or-what-you-chose)). |
+| `provider-auth` | false | The provider refused the credential (HTTP 401/403). |
+| `provider-refused` | false | The provider's content policy refused the request (`CONTENT_POLICY`). Change the request. |
+| `provider-usage-limit` | false | codex says its usage is used up. |
+| `provider-rate-limited` | true | HTTP 429 was still returned after sprite-gen's own waits ([below](#a-refused-request-sent-again)). |
+| `provider-timeout` | true | No answer in time (`SPRITE_GEN_GEN_TIMEOUT_SECONDS`). |
+| `provider-unavailable` | true | HTTP 5xx, or no answer that could be read. |
+| `provider-failed` | true | The provider ran and failed in another way: an exit code, or an answer with no image. |
+| `postprocess-failed` | true | The provider answered, but what it made failed sprite-gen's checks (no alpha, a painted checkerboard, a loop that would not cut). |
+| `generation-unfinished` | false | xAI accepted a video request that did not finish. Use `video-resume --request-id` to fetch it. Sending a new request would buy the clip twice. |
+| `outcome-unknown` | false | Whether the provider made the result cannot be told. Inspect it before you send anything again. |
+| `interrupted` | true | SIGTERM, SIGHUP or Ctrl-C stopped the run. |
+| `internal-error` | false | sprite-gen itself failed. This is a bug. |
+
+Exit codes:
+
+| Exit | Meaning |
+|---|---|
+| 0 | Done. |
+| 1 | Failed. Read `provider_submitted` in the report. |
+| 2 | An argument was refused by the parser. No request was sent. |
+| **3** | **Failed before any provider request.** Nothing was generated or billed. The report says `provider_submitted: false`. For a set, this exit means the set failed and no row or item sent a request. |
+| 75 | The codex question. No request was sent for that default codex. |
+| 143 / 129 / 130 | Stopped by SIGTERM, SIGHUP or Ctrl-C. The report was written first. |
+
+**Stopping a run.** SIGTERM or SIGHUP stops the run, writes its report with `interrupted` and
+`provider_submitted`, and then exits with 128 plus the signal number. A `video` stopped after xAI
+took its request also writes that `request_id` and the `video-resume` command, because the clip
+may still finish and be billed. A stopped `gen-set` or `video-set` sends SIGTERM to the rows or
+items that are running, so each one writes its own report. Rows not yet begun never begin. The
+set report then says which rows or items were stopped and which never began. Windows has no
+catchable SIGTERM: `taskkill /F` and `TerminateProcess` end the process without a report.
+
+**Paths are checked first.** The folders of `--out`, `--white-check` and `--report` are made before
+any provider request. If one cannot be made, the run is refused with exit 3. A `--trim-alpha`
+without `--transparent` is also refused before the request. Before this change, both were found
+after the image was paid for. `inspect` makes its `--report` folder before reading the run, and
+its report has `failed_states` (the states with an error). Use it instead of parsing the
+`"<state>: …"` lines in `errors`.
+
+**What an install can run.** `sprite-gen version --json` prints the version, the checkout's commit
+and this contract: the exit codes and every code with its `retryable`. `sprite-gen doctor --json`
+adds the runtime (NumPy, Pillow), each provider login as `workflow` reads it, and the tools
+(`codex`, `grok`, `ffmpeg`, `ffprobe`, `img2webp`, RIFE). It never calls a provider. A ready
+login does not prove that a subscription is paid or that quota is left. `doctor` exits 1 only
+when the runtime cannot be imported.
+
 ## CLI
 
 ```bash
@@ -187,7 +255,10 @@ Backward-compatible wrapper: `$SPRITE_GEN_ROOT/.venv/bin/python $SPRITE_GEN_ROOT
   (`strategy` + the measured stats), the `chroma` stats when chroma keying ran, plus the provider `extra` block
   (`auth_source`, `transport`, `endpoint`, and the knobs the request actually
   carried). On codex, `model` is the model codex recorded the session running with, not a copy of `--model`
-  ([below](#codex-sessions--the-rollout-and-the-state-db)).
+  ([below](#codex-sessions--the-rollout-and-the-state-db)). It also carries the outcome keys (`ok`, `errors`,
+  `provider_submitted`; [Outcome](#outcome--what-failed-whether-to-retry-whether-a-provider-was-charged)). A
+  run that fails writes its report too: `ok: false`, `provider: null` and `exit_code`. It is never a success
+  report.
 
 ### codex sessions — the rollout and the state DB
 
@@ -335,7 +406,11 @@ that choice) plus its layout guide, into `raw/<state>.png`. Each row gets
 `reports/gen-set/<state>.json`, the batch writes `reports/gen-set/table.md` and
 `set.report.json`, existing rows are reused unless `--force`, a direction run generates
 its anchors before its rows and stops when an anchor failed, and the exit code is
-non-zero when any row failed. `--provider` (`codex`, `grok` or `openai`) is honoured verbatim;
+non-zero when any row failed: 3 when no row sent a provider request, 1 otherwise. `set.report.json` gains
+`all_ok`, `errors` (each row's own, named by state) and `provider_submitted`, and each item gains its own
+`errors` and `provider_submitted`. A failed row's report is removed so the next run regenerates it, but what
+that report said is kept in the set report
+([Outcome](#outcome--what-failed-whether-to-retry-whether-a-provider-was-charged)). `--provider` (`codex`, `grok` or `openai`) is honoured verbatim;
 unspecified, it resolves exactly as `gen` does (above): a switch to the provider chosen for a
 codex that cannot run is recorded per row with the row's `auth_source`, and rows that asked stop
 the set with the question ([above](#when-codex-cannot-run--ask-or-what-you-chose)). Each row's

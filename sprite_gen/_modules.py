@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Modified for sprite-gen-agent (pose-plan GPT motion, scale-check; see NOTICE).
+# Modified for sprite-gen-agent (pose-plan GPT motion, scale-check, version/doctor; see NOTICE).
 """Domain of each pipeline module — the single source for the package taxonomy.
 
 Used at runtime to run a pipeline step as `-m sprite_gen.<domain>.<step>` and by
@@ -12,6 +12,7 @@ MODULE_DOMAIN = {
     'sound': 'audio',
     'guide': 'workflow',
     'preferences': 'workflow',
+    'doctor': 'workflow',
     'runio': 'spec',
     'assets': 'spec',
     'tile': 'background',

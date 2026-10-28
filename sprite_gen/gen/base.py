@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (machine-readable outcomes; see NOTICE).
 """Shared contract for sprite-gen image generation providers.
 
 One generation call = prompt (+ optional reference images) -> one verified raw
@@ -193,6 +194,10 @@ def announce_api_billing(provider: str, env_name: str, detail: str = "") -> None
     print(f"[gen] {provider}: running on {env_name} — {API_CHARGE_WORDS}{detail}", file=sys.stderr, flush=True)
 
 
+# The children `run_logged` has running, so a batch verb that is stopped stops them too (`stop_children`).
+_CHILDREN: set[subprocess.Popen] = set()
+
+
 def run_logged(cmd: list[str], log: Path) -> int:
     """Run a child command with all its output in `log`. The lines that announce a per-call charge
     or a default provider switched for being unavailable also go to this process's stderr as they
@@ -201,12 +206,26 @@ def run_logged(cmd: list[str], log: Path) -> int:
     with log.open("w", encoding="utf-8") as fh:
         child = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                                  encoding="utf-8", errors="replace")
-        assert child.stdout is not None
-        for line in child.stdout:
-            fh.write(line)
-            if API_CHARGE_WORDS in line or PROVIDER_SWITCH_WORDS in line:
-                print(line.rstrip("\n"), file=sys.stderr, flush=True)
-        return child.wait()
+        _CHILDREN.add(child)
+        try:
+            assert child.stdout is not None
+            for line in child.stdout:
+                fh.write(line)
+                if API_CHARGE_WORDS in line or PROVIDER_SWITCH_WORDS in line:
+                    print(line.rstrip("\n"), file=sys.stderr, flush=True)
+            return child.wait()
+        finally:
+            _CHILDREN.discard(child)
+
+
+def stop_children() -> None:
+    """Send every running `run_logged` child SIGTERM (Windows: terminate), so each writes its own report and
+    ends: a batch verb stopped by SIGTERM does this before it writes its set report."""
+    for child in list(_CHILDREN):
+        try:
+            child.terminate()
+        except OSError:
+            pass
 
 
 def flags_over_spec(spec: Mapping[str, Any], flags: Mapping[str, Any], *, verb: str, source: str,

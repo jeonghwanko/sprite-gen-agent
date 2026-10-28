@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (machine-readable outcomes; see NOTICE).
 """When a provider request that got an answer is sent again, and how long it waits first — one rule
 for every direct provider call: the Anthropic transport of `pixel-draw`, the OpenAI and Grok image
 calls of `gen`, the facing check, and the clip requests and polls of `video`.
@@ -56,6 +57,8 @@ from __future__ import annotations
 import sys
 import time
 from typing import Any, Callable
+
+from . import outcome
 
 START_SECONDS = 4.0
 MAX_SECONDS = 60.0
@@ -182,6 +185,8 @@ def ask(send: Send, *, provider: str, who: str, label: str, method: str = "POST"
     sends nothing — either way the refusal is returned as it came, after one line saying why."""
     asks = 0
     while True:
+        if method != "GET":
+            outcome.submitted(provider)  # a request that is not a GET may be billed: the run's report says so
         status, body, headers = send()
         asks += 1
         wait = None if 200 <= status < 300 else again_after(provider, method, status, body, headers, asks)

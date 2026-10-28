@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (machine-readable outcomes; see NOTICE).
 """`sprite-gen video-set` — directions x states, end to end, one report per item.
 
 For every (direction, state) pair: canvas -> `sprite-gen video` -> frames -> loop.
@@ -26,8 +27,9 @@ from typing import Any, Callable
 from PIL import Image
 
 from sprite_gen.spec.runio import atomic_write_text
+from sprite_gen.gen import outcome
 from sprite_gen.gen.base import (CodexUnavailableAsk, ask_codex_unavailable, child_asked, codex_unavailable_question,
-                                 run_logged)
+                                 run_logged, stop_children)
 from sprite_gen.gen.chroma import KEY_BACKGROUND_TEXT
 from sprite_gen.gen.facing import FACINGS, validate as validate_facing
 from sprite_gen.gen import handedness as handed_mod
@@ -679,7 +681,8 @@ def walk_start_still(base: Path, direction: str, item_dir: Path, *, key: str, fo
             prior = json.loads(report.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             prior = {}
-        if prior.get("prompt") == prompt and [str(Path(r).resolve()) for r in prior.get("refs") or []] == [str(base.resolve())]:
+        if (prior.get("ok") is not False and prior.get("prompt") == prompt
+                and [str(Path(r).resolve()) for r in prior.get("refs") or []] == [str(base.resolve())]):
             return out, {"redrawn": True, "reused": True, "still": str(out), "key": kind}
     rc = runner(base, prompt, out, report, log=item_dir / "walk-start.log", provider=provider)
     if (question := child_asked(rc, item_dir / "walk-start.log")) is not None:
@@ -742,6 +745,25 @@ def run_item(
     item_dir = root / item
     item_dir.mkdir(parents=True, exist_ok=True)
     result: dict[str, Any] = {"item": item, "direction": direction, "state": state, "play": mode, "dir": str(item_dir)}
+    sent: list[bool] = []
+    failed_reports: list[Path] = []
+    clip_made = False
+
+    def tracked(runner: Callable[..., int]) -> Callable[..., int]:
+        """`runner` (a child `video` or `gen`, its report the 4th argument), with what it sent kept for the item
+        and the set (`outcome.child_submitted`)."""
+        def call(*args: Any, **kwargs: Any) -> int:
+            rc = runner(*args, **kwargs)
+            report = Path(args[3]) if len(args) > 3 else None
+            if rc != 0 and report is not None:
+                failed_reports.append(report)
+            sent.append(outcome.child_submitted(rc, report))
+            if sent[-1]:
+                outcome.submitted("child")
+            return rc
+        return call
+
+    video_runner, redraw_runner = tracked(video_runner), tracked(redraw_runner)
     if motion is not None:
         result["motion"] = motion
     lifetime = mode == play_mod.LIFETIME
@@ -815,6 +837,7 @@ def run_item(
 
         if reuse_clip:
             result["clip"] = {"reused": True}
+            clip_made = True
         else:
             # One run of `sprite-gen video`: a 429 is sent again inside it (`gen.retry`), so a second run here
             # would be a second retry loop on top of the first, each of its POSTs a request.
@@ -831,6 +854,7 @@ def run_item(
             result["clip"] = {"attempts": attempts, "duration": duration, "last_frame": str(end_frame) if end_frame is not None else pins}
             if attempts[-1] != 0 or not clip.exists():
                 raise SystemExit(f"clip generation failed after {len(attempts)} attempt(s); see {item_dir / 'clip.log'}")
+            clip_made = True
             try:  # what the clip ran on, as its report says: the Grok login or XAI_API_KEY
                 result["clip"]["auth_source"] = json.loads(clip_report.read_text()).get("auth_source")
             except (OSError, ValueError):
@@ -875,13 +899,23 @@ def run_item(
             result["loop"]["jump_repair"] = {k: lp["jump_repair"][k] for k in ("applied", "why", "off_max_before", "seam", "install")
                                              if k in lp["jump_repair"]}
         result["ok"] = True
+        result["errors"] = []
     except CodexUnavailableAsk as exc:
         result["ok"] = False
         result["asked"] = exc.question
         result["error"] = f"the mid-step start still was not drawn: codex cannot run here ({exc.question['reason']})"
+        result["errors"] = [outcome.error(outcome.PROVIDER_ASKS, result["error"], state=state, item=item)]
     except SystemExit as exc:
         result["ok"] = False
         result["error"] = str(exc)
+        said = [e for report in failed_reports for e in outcome.child_errors(report)]
+        if said:  # the child `video` or `gen` said why it failed
+            result["errors"] = [{**e, "state": state, "item": item} for e in said]
+        else:
+            code = (outcome.POSTPROCESS_FAILED if clip_made else outcome.PROVIDER_FAILED if any(sent)
+                    else outcome.PREFLIGHT)
+            result["errors"] = [outcome.error(code, str(exc), state=state, item=item)]
+    result["provider_submitted"] = any(sent)  # a reused clip and still sent nothing
     return result
 
 
@@ -1145,16 +1179,47 @@ def run_set(
                 return prepared[(base, turned)]
         return prepare_side
 
+    stopped: outcome.Interrupted | None = None
     with ThreadPoolExecutor(max_workers=max(1, concurrency)) as ex:
         futures = {ex.submit(run_item, item=i, direction=d, state=s, base=b, root=root, character=character, duration=duration, resolution=resolution, key=key, force=force, gap=gap, video_runner=video_runner, shape=shape, anchor=anchor, spill=spill, facing=f, facing_fix=facing_fix, prepare_side=side_preparer(f), body_height=body_height, fit=fit, decontam=decontam, walk_start=walk_start, redraw_runner=redraw_runner, still_provider=still_provider, handed=handed, body_plan=body_plan, **({"end_frame": end_frames[i]} if end_frames and i in end_frames else {}), **({"play": plays[i]} if i in plays else {}), **({"motion": motions[i]} if i in motions else {})): i for i, d, s, f, b in items}
-        for fut in as_completed(futures):
-            r = fut.result()
-            results.append(r)
-            print(json.dumps({k: r[k] for k in ("item", "ok") if k in r} | ({"error": r["error"]} if not r.get("ok") else {"seam": r["loop"]["seam_ratio"]}), ensure_ascii=False), flush=True)
+        pending = set(futures)
+        try:
+            for fut in as_completed(futures):
+                pending.discard(fut)
+                r = fut.result()
+                results.append(r)
+                print(json.dumps({k: r[k] for k in ("item", "ok") if k in r} | ({"error": r["error"]} if not r.get("ok") else {"seam": r["loop"]["seam_ratio"]}), ensure_ascii=False), flush=True)
+        except outcome.Interrupted as exc:
+            # Stopped: the clips under way are stopped too (each `video` writes its report, naming a request xAI
+            # took, as it ends); items not begun never begin. The set report below says which is which.
+            stopped = exc
+            for fut in pending:
+                fut.cancel()
+            stop_children()
+            for fut in pending:
+                if fut.cancelled():
+                    continue
+                r = fut.result()
+                if not r.get("ok"):
+                    r["errors"] = [e if e.get("code") in (outcome.GENERATION_UNFINISHED, outcome.INTERRUPTED)
+                                   else {**e, "code": outcome.INTERRUPTED, "retryable": outcome.CODES[outcome.INTERRUPTED]}
+                                   for e in r.get("errors") or []]
+                results.append(r)
+    not_started = [(i, s) for i, _d, s, *_ in items if i not in {r["item"] for r in results}]
     results.sort(key=lambda r: [i for i, *_ in items].index(r["item"]))
-    aligned = align_gaits(results, root, align_cycles, interpolate=interpolate, between=align_between, feet=align_feet)
+    # A stopped set aligns nothing: the loops stay as cut, and its report is written now.
+    aligned = {} if stopped is not None else align_gaits(results, root, align_cycles, interpolate=interpolate, between=align_between, feet=align_feet)
     table = write_table(results, root / "table.md", both=both)
-    failed = [r["item"] for r in results if not r.get("ok")] + [f"cycle-align:{st}" for st, a in aligned.items() if not a.get("ok")]
+    failed = ([r["item"] for r in results if not r.get("ok")] + [f"cycle-align:{st}" for st, a in aligned.items() if not a.get("ok")]
+              + [i for i, _s in not_started])
+    errors = ([e for r in results for e in r.get("errors") or []]
+              + [outcome.error(outcome.POSTPROCESS_FAILED, f"cycle-align: {a.get('error')}", state=st)
+                 for st, a in aligned.items() if not a.get("ok")]
+              + [outcome.error(outcome.INTERRUPTED, f"{stopped} before the item began", state=s, item=i)
+                 for i, s in not_started])
+    if stopped is not None and not any(e["code"] == outcome.INTERRUPTED for e in errors):  # stopped as the last item ended
+        errors.append(outcome.error(outcome.INTERRUPTED, f"{stopped} after its items ended"))
+    record = outcome.current()
     # What the set left undone for want of RIFE — never a failure, never silent.
     warnings = ([f"{r['item']}: jump frame not repaired — {r['loop']['jump_repair']['why']}" for r in results if r.get("ok") and "jump_repair" in r["loop"]]
                 + [f"cycle-align:{st}: not aligned — {a['why']}" for st, a in aligned.items() if a.get("reason") == "rife-not-installed"])
@@ -1173,9 +1238,12 @@ def run_set(
     # with that question, the way to answer it named as this verb's own flag, once every other item has ended.
     asked = next((codex_unavailable_question(r["asked"]["cause"], r["asked"]["reason"], flag="--still-provider")
                   for r in results if r.get("asked")), None)
-    payload = {"kind": "sprite-gen-video-set-report", "root": str(root), "states": states, "facing": facing, "facing_fix": facing_fix, "directions": list(bases), **({"handed": [vars(h) for h in handed]} if handed else {}), **({"body_plan": [vars(b) for b in body_plan]} if body_plan else {}), **({"play": play} if play else {}), **({"motion": motion} if motion else {}), "body_height": body_height, "ok": sum(1 for r in results if r.get("ok")), "failed": failed, "warnings": warnings, **({"asked": asked} if asked else {}), "items": results, "cycle_align": aligned}
+    payload = {"kind": "sprite-gen-video-set-report", "root": str(root), "states": states, "facing": facing, "facing_fix": facing_fix, "directions": list(bases), **({"handed": [vars(h) for h in handed]} if handed else {}), **({"body_plan": [vars(b) for b in body_plan]} if body_plan else {}), **({"play": play} if play else {}), **({"motion": motion} if motion else {}), "body_height": body_height, "ok": sum(1 for r in results if r.get("ok")), "failed": failed, "warnings": warnings, **({"asked": asked} if asked else {}), "all_ok": not errors, "errors": errors, "provider_submitted": any(r.get("provider_submitted") for r in results) or bool(record and record.requests), **({"interrupted": str(stopped)} if stopped is not None else {}), "items": results, "cycle_align": aligned}
     atomic_write_text(root / "set.report.json", json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
     print(table)
+    if stopped is not None:
+        raise outcome.Stop(f"video-set: {stopped}; see {root / 'set.report.json'}",
+                           outcome.exit_code(outcome.INTERRUPTED, stopped), outcome=outcome.INTERRUPTED)
     if asked:
         raise ask_codex_unavailable(asked)
     return payload
@@ -1277,7 +1345,26 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def run(**kwargs: object) -> int:
-    payload = run_set(
+    """0 when every item and alignment is there; `outcome.NOT_STARTED_EXIT` when the set failed and nothing sent
+    a provider request; 1 for any other failure."""
+    with outcome.recording("video-set") as record:
+        try:
+            payload = _run_set(kwargs)
+        except outcome.Interrupted as exc:  # stopped outside the items' loop: no set report to write
+            stop_children()
+            raise outcome.Stop(f"video-set: {exc}", outcome.exit_code(outcome.INTERRUPTED, exc)) from exc
+        except SystemExit as exc:
+            if isinstance(exc, (outcome.Stop, CodexUnavailableAsk)) or exc.code in (0, None) or record.requests:
+                raise
+            # The bases, states or flags were refused before anything was sent.
+            raise outcome.Stop(str(exc), outcome.NOT_STARTED_EXIT, outcome=outcome.PREFLIGHT) from exc
+    if not payload["failed"]:
+        return 0
+    return 1 if payload["provider_submitted"] else outcome.NOT_STARTED_EXIT
+
+
+def _run_set(kwargs: dict[str, object]) -> dict[str, Any]:
+    return run_set(
         end_frames=_parse_end_frames(list(kwargs.get("end_frame") or [])),
         bases=_parse_bases(list(kwargs.get("base") or [])),  # type: ignore[arg-type]
         states=[s.strip() for s in str(kwargs.get("states") or "").split(",") if s.strip()],
@@ -1296,14 +1383,13 @@ def run(**kwargs: object) -> int:
         play=_parse_keyed(list(kwargs.get("play") or []), "--play") or None,  # type: ignore[arg-type]
         motion=_parse_keyed(list(kwargs.get("motion") or []), "--motion") or None,  # type: ignore[arg-type]
     )
-    return 0 if not payload["failed"] else 1
 
 
 def main(argv: list[str] | None = None) -> int:
     utf8_streams()
     parser = argparse.ArgumentParser(prog="sprite-gen video-set", description=__doc__)
     add_arguments(parser)
-    return run(**vars(parser.parse_args(argv)))
+    return outcome.entry(lambda: run(**vars(parser.parse_args(argv))))
 
 
 if __name__ == "__main__":

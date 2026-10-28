@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Modified for sprite-gen-agent (pose-plan GPT motion; see NOTICE).
+# Modified for sprite-gen-agent (pose-plan GPT motion; machine-readable outcomes; see NOTICE).
 """Unified image generation layer for sprite-gen.
 
 Single source of truth for provider-backed image generation: codex (`image_gen`,
@@ -56,6 +56,7 @@ from . import chroma as chroma_mod
 from . import codex_provider
 from . import facing as facing_mod
 from . import handedness as handed_mod
+from . import outcome
 from . import prompt_parts
 from .base import (
     CODEX_UNAVAILABLE_EXIT,
@@ -470,11 +471,18 @@ def generate_image(
     if facing is not None:
         facing_mod.validate(facing, facing_fix)
     _check_view(view, facing, facing_fix, handed, body_plan)
+    if trim_alpha and not transparent:
+        raise SystemExit("gen: --trim-alpha needs --transparent (there is no alpha to trim on an opaque image)")
     out = out.expanduser().resolve()
     refs = [Path(r).expanduser().resolve() for r in (refs or [])]
     for ref in refs:
         if not ref.is_file():
             raise SystemExit(f"gen: reference image not found: {ref}")
+    # Every folder the run writes into is made before the provider is called: a path that cannot be
+    # written must not be found out after the image was paid for.
+    outcome.make_parent(out, "--out", verb="gen")
+    if white_check is not None:
+        outcome.make_parent(Path(white_check).expanduser().resolve(), "--white-check", verb="gen")
 
     backend = _make_provider(provider, keep_session=keep_session)
     # Decided before the model runs: the strategy shapes the transport prompt
@@ -555,6 +563,7 @@ def generate_image(
                 backend, request, run, workdir, facing=facing, fix=facing_fix, mirror_ok=not handed)
             raw = request.raw
         raw_bytes = verify_png(raw)
+        outcome.answered()  # every provider call is behind: a failure from here is sprite-gen's own checks
 
         # Only the key `auto` planned because of the refs is checked against the raw; an
         # explicit --alpha-mode chroma is the caller's own key and runs as asked.
@@ -618,8 +627,6 @@ def generate_image(
                 facing_mod.mirror(white_check)
         trim_stats: dict[str, Any] | None = None
         if trim_alpha:
-            if not transparent:
-                raise SystemExit("gen: --trim-alpha needs --transparent (there is no alpha to trim on an opaque image)")
             trim_stats = trim_to_alpha(out)
 
         # Preserve the pre-chroma raw next to the destination for auditability.
@@ -713,6 +720,42 @@ def still_prompt(prompt: str, *, view: str | None = None, facing: str | None = N
 
 
 def _run(args: argparse.Namespace) -> int:
+    """One image, and its report at `--report` however the run ends (docs/gen.md "Outcome"): `ok`, `errors`
+    and `provider_submitted` on success, on a failure, on the codex question and on SIGTERM alike."""
+    report_path = Path(args.report).expanduser().resolve() if args.report else None
+    writable = False  # the report's folder is there: a failure from here on is written down
+    with outcome.recording("gen") as record:
+        try:
+            if report_path is not None:
+                outcome.make_parent(report_path, "--report", verb="gen")
+                writable = True
+            payload = _generate(args)
+        except BaseException as exc:
+            if isinstance(exc, SystemExit) and exc.code in (0, None):
+                raise
+            code = outcome.classify(exc, submitted=record.provider_submitted, answered=record.answered)
+            if writable:
+                failed = {
+                    "kind": "sprite-gen-image-report",
+                    "provider": None,
+                    "out": str(Path(args.out).expanduser().resolve()),
+                    **outcome.report_fields(record, errors=[outcome.error(code, str(exc))],
+                                            exit_status=outcome.exit_code(code, exc)),
+                }
+                atomic_write_text(report_path, json.dumps(failed, ensure_ascii=False, indent=2) + "\n")
+            ending = outcome.ended(exc, code)
+            if ending is exc:
+                raise
+            raise ending from exc
+        payload.update(outcome.report_fields(record, errors=[]))
+    if report_path is not None:
+        atomic_write_text(report_path, json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+        payload["report"] = str(report_path)
+    print_json(payload)
+    return 0
+
+
+def _generate(args: argparse.Namespace) -> dict[str, Any]:
     prompt = args.prompt
     if args.prompt_file:
         prompt = Path(args.prompt_file).expanduser().read_text(encoding="utf-8")
@@ -750,12 +793,7 @@ def _run(args: argparse.Namespace) -> int:
     payload["provider_resolved_from"] = resolved_from
     if fallback:
         payload["provider_fallback"] = fallback
-    if args.report:
-        report_path = Path(args.report).expanduser().resolve()
-        atomic_write_text(report_path, json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
-        payload["report"] = str(report_path)
-    print_json(payload)
-    return 0
+    return payload
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -871,7 +909,7 @@ def run(**kwargs: object) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     utf8_streams()
-    return _run(_build_parser().parse_args(argv))
+    return outcome.entry(lambda: _run(_build_parser().parse_args(argv)))
 
 
 if __name__ == "__main__":
