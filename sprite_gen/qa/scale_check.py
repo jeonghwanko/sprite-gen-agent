@@ -335,18 +335,20 @@ def board(matches, template: np.ndarray, out: Path) -> Path:
     """The reference head beside every frame's matched head at its own size; the yellow line is the reference
     head's height, so a frame drawn too big or too small shows as a head past or short of it."""
     th, tw = template.shape
-    tile_w, tile_h = int(tw * 1.5) + 8, int(th * 1.5) + 28
+    top = 32  # two label lines: the frame, then its size and verdict
+    tile_w, tile_h = max(int(tw * 1.5) + 8, 120), int(th * 1.5) + top + 4
     tiles = []
     for name, record, crop in [("reference", {"how": "reference", "size": 1.0}, None), *matches]:
         tile = Image.new("RGB", (tile_w, tile_h), (60, 64, 76))
-        head = template if name == "reference" else (_head_crop(crop[0], crop[1], crop[2], crop[3], template.shape)
-                                                    if crop else None)
+        head = template if record["how"] == "reference" else (_head_crop(crop[0], crop[1], crop[2], crop[3], template.shape)
+                                                             if crop else None)
         if head is not None:
-            tile.paste(Image.fromarray(np.clip(head, 0, 255).astype(np.uint8), "L").convert("RGB"), (4, 24))
+            tile.paste(Image.fromarray(np.clip(head, 0, 255).astype(np.uint8), "L").convert("RGB"), (4, top))
         draw = ImageDraw.Draw(tile)
         colour = {"check": (255, 96, 96), "head": (255, 255, 255)}.get(record["how"], (170, 200, 255))
-        draw.text((4, 4), f"{name} {record.get('size') or '?'} {record['how']}", fill=colour)
-        draw.line([(0, 24 + th), (tile_w, 24 + th)], fill=(255, 200, 0), width=1)
+        draw.text((4, 3), name, fill=colour)
+        draw.text((4, 16), f"{record.get('size') or '?'} {record['how']}", fill=colour)
+        draw.line([(0, top + th), (tile_w, top + th)], fill=(255, 200, 0), width=1)
         tiles.append(tile)
     columns = 8
     sheet = Image.new("RGB", (tile_w * columns, tile_h * math.ceil(len(tiles) / columns)), (40, 40, 48))
