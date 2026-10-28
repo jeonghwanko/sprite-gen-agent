@@ -129,6 +129,7 @@ grouping is derived from `sprite_gen/_modules.py`, the one taxonomy table.
 | Doc | Owns |
 |---|---|
 | [qa-motion.md](qa-motion.md) | Motion Continuity of an image row (Pipeline A) — the blocking judgement of a row as motion |
+| [scale-check.md](scale-check.md) | `scale-check`: each frame's figure size against a reference frame, measured by the head; the report and the eye check |
 
 ## Runtime & process
 
@@ -139,4 +140,4 @@ grouping is derived from `sprite_gen/_modules.py`, the one taxonomy table.
 | [release.md](release.md) | How a vX.Y.Z tag becomes a release page, what the lane builds and the publisher attaches, and what stays manual |
 | [troubleshooting.md](troubleshooting.md) | Symptoms of a pipeline that is "quietly wrong", with causes and fixes |
 
-<!-- Modified for sprite-gen-agent: indexes pose-motion.md and gait-guide.md (see NOTICE). -->
+<!-- Modified for sprite-gen-agent: indexes pose-motion.md, gait-guide.md and scale-check.md (see NOTICE). -->

@@ -150,6 +150,29 @@ Manifest fields:
 * `textures[].frames`: TexturePacker JSON Hash format containing `frame`, `sourceSize`, `spriteSourceSize`, and normalized `pivot`.
 * `animations[].anchor`: Output anchor coordinates `[x, y]` in resized canvas pixels.
 * `animations[].durations_ms`: Frame durations in milliseconds for every frame position, including repeated positions.
+* `animations[].frame_scale`: Only for an asset with [`scale_check`](#scale-check): the size correction applied to each frame.
+
+## Scale check
+
+An asset may carry `scale_check`: the report of [`sprite-gen scale-check`](scale-check.md) over its source, so every frame is drawn at the reference figure's size.
+
+```json
+{
+  "id": "hero",
+  "source": "run/manifest.json",
+  "source_body_height": 400,
+  "display": { "body_height": 400 },
+  "scale_check": { "report": "scale-check.json", "per": "frame", "fix": { "fall/3": 1.04 } }
+}
+```
+
+* `report`: the report path, relative to the request. It must have measured this state on the same frame pixels; a report measured on other pixels is refused ("measure these frames again"), and so is a frame awaiting an eye check that `fix` does not settle. The report's reference frame must be in an asset of the same request: a correction says how big a frame is against the reference, and only the reference's own `display` says how big that is in the pack.
+* `per`: `frame` (default) applies each frame's correction; `state` applies the state's median to all of its frames, which keeps a gait cycle's frames at one scale.
+* `fix`: corrections decided by eye, keyed `state/index` (or `state` with `per: "state"`; `-` for a source without states). A fix wins over the measurement. A key that names no frame of the asset is refused, and a correction must lie between 0.5 and 2.
+
+The applied factor is the correction times the reference's display scale over this asset's (displayed pixels per source pixel): an asset sized by its own `body_h`, say, is already part of the way there and is not corrected twice. Each frame is scaled about the animation's anchor (the feet) in the same resample that sizes it for `display`, on the same cell — a frame in the air is scaled about the ground too, so its height above it changes in proportion; a frame that a correction would push out of its cell is refused ("give the source frames more margin"). A factor of 1 packs the frame exactly as without `scale_check`. The animation gains `frame_scale`, the factor applied to each frame in playback order. A nearest-resampled (pixel art) asset is refused: a factor that is not a whole number breaks its pixel grid.
+
+A gait review bound to the packed pixels (the AI Fighter kit's `fighter:gait`) must run on the pack made with the corrections.
 
 ## Phaser 4.2.1 integration
 
@@ -365,3 +388,5 @@ button.addEventListener('click', async () => {
   sourceNode.start();
 });
 ```
+
+<!-- Modified for sprite-gen-agent: the Scale check section (see NOTICE). -->
