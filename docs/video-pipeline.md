@@ -497,7 +497,12 @@ same standing-height target and keeps the character one size across the set. At 
 scaling down rather than up, and lets the subject reach the frame edge. Items
 are idempotent (an existing clip is reused unless `--force`); one failure stops only
 its item and is listed in `table.md` with its stage and error. Exit code is non-zero
-when any item failed.
+when any item failed: 3 when nothing in the set sent a provider request, 1 otherwise.
+`set.report.json` gains `all_ok`, `errors` (`{state, item, code, retryable, message}`, each
+child's own when it wrote them) and `provider_submitted`. A SIGTERM stops the clips that are
+running, so each writes its report naming a request xAI took. Items not yet begun never begin.
+The set report is then written and the set exits 143
+([gen.md "Outcome"](gen.md#outcome--what-failed-whether-to-retry-whether-a-provider-was-charged)).
 
 A front or back walk films from its base redrawn mid-step (`--walk-start redraw`, default; one
 image generation each, `--still-provider` picks the provider; see §2). See [loop repair](loop-repair.md) section 4.

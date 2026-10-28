@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Modified for sprite-gen-agent (pose-plan GPT motion; codex state-DB rollout index; see NOTICE).
+# Modified for sprite-gen-agent (pose-plan GPT motion; codex state-DB rollout index; machine-readable outcomes; see NOTICE).
 """Codex `image_gen` provider (ChatGPT OAuth, no API key).
 
 Ported from the standalone `image-gen` skill (MIT, aldegad/image-gen). codex
@@ -40,6 +40,7 @@ from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import outcome
 from .base import (
     GEN_TIMEOUT_SECONDS,
     TRANSPARENCY_NATIVE,
@@ -615,6 +616,7 @@ class CodexProvider:
             child_env["CODEX_HOME"] = str(codex_home)
         # A headless provider must not inherit parent orchestration identity or
         # lifecycle controls (see base.provider_subprocess_env).
+        outcome.submitted("codex")
         try:
             completed = subprocess.run(
                 cmd, input=prompt, capture_output=True, text=True, encoding="utf-8", env=child_env,

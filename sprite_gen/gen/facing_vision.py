@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (machine-readable outcomes; see NOTICE).
 """Single-call vision transports for the existing generation providers.
 
 REST input/output contract: OpenAI and xAI Responses image understanding docs.
@@ -15,6 +16,7 @@ import tempfile
 import time
 from pathlib import Path
 
+from . import outcome
 from .base import GEN_TIMEOUT_SECONDS, provider_binary, provider_subprocess_env
 from .facing import INSPECTION_PROMPT
 
@@ -73,6 +75,7 @@ def codex_inspect(path: Path, workdir: Path, *, prompt: str = INSPECTION_PROMPT,
         if effort:
             command += ["-c", f'model_reasoning_effort="{effort}"']
         command += ["-i", str(path.resolve()), "-o", str(output), "-"]
+        outcome.submitted("codex")
         completed = subprocess.run(command, input=prompt, capture_output=True,
                                    text=True, encoding="utf-8", env=provider_subprocess_env(),
                                    timeout=GEN_TIMEOUT_SECONDS)

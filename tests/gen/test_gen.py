@@ -483,7 +483,10 @@ def test_native_strategy_refuses_drawn_or_opaque_backgrounds(
         gen.run(**_gen_kwargs(out, report))
 
     assert not out.exists()
-    assert not report.exists()
+    # The report says the run failed, and why, in the provider's answer: no success report.
+    failed = json.loads(report.read_text(encoding="utf-8"))
+    assert failed["ok"] is False and failed["provider"] is None and failed["exit_code"] == 1
+    assert [(e["code"], e["retryable"]) for e in failed["errors"]] == [("postprocess-failed", True)]
 
 
 def test_alpha_mode_native_is_refused_on_a_chroma_provider(tmp_path: Path, monkeypatch) -> None:
@@ -951,7 +954,7 @@ def test_generate_image_zero_percent_alpha_fails_without_success_report(
         )
 
     assert not out.exists()
-    assert not report.exists()
+    assert json.loads(report.read_text(encoding="utf-8"))["ok"] is False
 
 
 def test_generate_image_orchestrates_report_and_raw_keep(tmp_path: Path, monkeypatch) -> None:

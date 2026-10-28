@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Modified for sprite-gen-agent (pose-plan GPT motion; see NOTICE).
+# Modified for sprite-gen-agent (pose-plan GPT motion; machine-readable outcomes; see NOTICE).
 """`sprite-gen gen-set` — generate every state row of a prepared run, N at a time.
 
 The atlas pipeline's one AI step, as a command instead of prose. `prepare` already
@@ -36,7 +36,9 @@ from typing import Any, Callable
 
 from sprite_gen import gen as gen_mod
 from sprite_gen.curate import anchor as anchor_mod
-from sprite_gen.gen.base import ask_codex_unavailable, child_asked, codex_unavailable_question, run_logged
+from sprite_gen.gen import outcome
+from sprite_gen.gen.base import (CodexUnavailableAsk, ask_codex_unavailable, child_asked, codex_unavailable_question,
+                                 run_logged)
 from sprite_gen.spec import layout
 from sprite_gen.spec.runio import atomic_write_text
 from sprite_gen.util.console import utf8_streams
@@ -104,6 +106,8 @@ def read_report(report: Path) -> tuple[dict[str, Any] | None, str | None]:
         return None, f"report unreadable ({exc.__class__.__name__})"
     if not isinstance(data, dict) or not data.get("provider"):
         return None, "report has no provider — not a finished gen report"
+    if data.get("ok") is False:  # a report written before `ok` existed has none: its provider names it finished
+        return None, "report says the run failed"
     return data, None
 
 
@@ -144,6 +148,7 @@ def run_item(
     log = report_dir / f"{state.replace('/', '_')}.log"
     result: dict[str, Any] = {"state": state, "out": str(out), "report": str(report), "motion_quality": "unverified"}
     started = time.monotonic()
+    child_errors: list[dict[str, Any]] = []
     try:
         if not prompt_file.is_file():
             raise SystemExit(f"prompt missing: {prompt_file} — run `sprite-gen prepare` first")
@@ -181,6 +186,11 @@ def run_item(
         if motion:
             atomic_write_text(attempt, json.dumps({"status": "running", "motion_input_sha256": fingerprint}) + "\n")
         rc = gen_runner(prompt_file, out, refs, report, provider=provider, model=model, log=log)
+        # What the row's `gen` says it sent and why it failed, read before a failed row's report is removed.
+        result["provider_submitted"] = outcome.child_submitted(rc, report)
+        if result["provider_submitted"]:
+            outcome.submitted("child")  # the set's record: a failure from here is never "before any request"
+        child_errors = outcome.child_errors(report) if rc != 0 else []
         gen_report, why = read_report(report) if rc == 0 else (None, None)
         bad_image = _row_image_ok(out) if rc == 0 else None
         if rc != 0 or gen_report is None or bad_image is not None:
@@ -210,11 +220,38 @@ def run_item(
             atomic_write_text(report, json.dumps(gen_report, ensure_ascii=False, indent=2) + "\n")
             atomic_write_text(attempt, json.dumps({"status": "complete", "motion_input_sha256": fingerprint}) + "\n")
         result["ok"] = True
+        result["errors"] = []
+    except outcome.NotStarted as exc:  # the set was being stopped: this row's `gen` never started
+        result["ok"] = False
+        result["error"] = str(exc)
+        result["errors"] = [outcome.error(outcome.INTERRUPTED, str(exc), state=state)]
+        result["elapsed_seconds"] = round(time.monotonic() - started, 1)
     except SystemExit as exc:
         result["ok"] = False
         result["error"] = str(exc)
+        result["errors"] = _row_errors(state, str(exc), asked="asked" in result,
+                                       submitted=bool(result.get("provider_submitted")),
+                                       child=child_errors)
         result["elapsed_seconds"] = round(time.monotonic() - started, 1)
+    result.setdefault("provider_submitted", False)  # a reused or refused row sent nothing
     return result
+
+
+def _row_errors(state: str, message: str, *, asked: bool, submitted: bool,
+                child: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """A failed row's `errors`: its `gen`'s own when it wrote them (named for the row), else read off what
+    gen-set refused or saw."""
+    if child:
+        return [{**e, "state": state} for e in child]
+    if asked:
+        code = outcome.PROVIDER_ASKS
+    elif message.startswith("GENERATION_OUTCOME_UNKNOWN"):
+        code = outcome.OUTCOME_UNKNOWN
+    elif not submitted:
+        code = outcome.PREFLIGHT  # a missing prompt or guide, a motion row kept as it is: nothing was sent
+    else:
+        code = outcome.PROVIDER_FAILED  # gen ended without saying why, or said it finished and its row is not there
+    return [outcome.error(code, message, state=state)]
 
 
 def write_table(results: list[dict[str, Any]], path: Path) -> str:
@@ -251,18 +288,57 @@ def run_set(
     request = anchor_mod.load_request(run_dir)
     ordered = _row_states(request, states)
     results: list[dict[str, Any]] = []
-    for stage in _stages(request, ordered):
-        with ThreadPoolExecutor(max_workers=max(1, concurrency)) as ex:
-            futures = {ex.submit(run_item, run_dir=run_dir, request=request, state=s, provider=provider, model=model, force=force, gen_runner=gen_runner): s for s in stage}
-            for fut in as_completed(futures):
-                r = fut.result()
-                results.append(r)
-                print(json.dumps({k: r[k] for k in ("state", "ok") if k in r} | ({"error": r["error"]} if not r.get("ok") else {}), ensure_ascii=False), flush=True)
-        if any(r.get("asked") for r in results):
-            break  # every row would ask the same: the set asks it once, below
-        if any(not r.get("ok") for r in results if r["state"] in stage) and len(_stages(request, ordered)) > 1:
-            # a failed anchor stage cannot feed stage 2 — stop here and say so, do not attach the base instead
-            break
+    stopped: outcome.Interrupted | None = None
+    futures: dict[Any, str] = {}
+    done: set[Any] = set()
+    try:
+        for stage in _stages(request, ordered):
+            with ThreadPoolExecutor(max_workers=max(1, concurrency)) as ex:
+                futures = {ex.submit(run_item, run_dir=run_dir, request=request, state=s, provider=provider, model=model, force=force, gen_runner=gen_runner): s for s in stage}
+                try:
+                    for fut in as_completed(futures):
+                        r = fut.result()
+                        results.append(r)
+                        done.add(fut)
+                        print(json.dumps({k: r[k] for k in ("state", "ok") if k in r} | ({"error": r["error"]} if not r.get("ok") else {}), ensure_ascii=False), flush=True)
+                except outcome.Interrupted as exc:
+                    stopped = exc
+                    _gather_stopped(futures, done, results, exc)
+            if stopped is not None:
+                break
+            if any(r.get("asked") for r in results):
+                break  # every row would ask the same: the set asks it once, below
+            if any(not r.get("ok") for r in results if r["state"] in stage) and len(_stages(request, ordered)) > 1:
+                # a failed anchor stage cannot feed stage 2 — stop here and say so, do not attach the base instead
+                break
+    except outcome.Interrupted as exc:  # stopped between two stages, or while a stage's pool was closing
+        stopped = exc
+        _gather_stopped(futures, done, results, exc)
+    with outcome.deferred():  # the set report is written whole; a stop meanwhile ends the run after it
+        return _set_report(run_dir, ordered, results, stopped)
+
+
+def _gather_stopped(futures: dict[Any, str], done: set[Any], results: list[dict[str, Any]],
+                    stop: outcome.Interrupted) -> None:
+    """The rows of a stopped stage: those not begun never begin, those under way end (the signal already sent
+    their `gen` SIGTERM, `base.stop_children`), and each is kept with the stop as its error."""
+    for fut in futures:
+        if fut not in done:
+            fut.cancel()
+    for fut in futures:
+        if fut in done or fut.cancelled():
+            continue
+        r = fut.result()
+        done.add(fut)
+        if not r.get("ok"):
+            r["errors"] = [e if e.get("code") == outcome.INTERRUPTED else
+                           outcome.error(outcome.INTERRUPTED, f"{stop} while the row was generating", state=r["state"])
+                           for e in r.get("errors") or [{}]]
+        results.append(r)
+
+
+def _set_report(run_dir: Path, ordered: list[str], results: list[dict[str, Any]],
+                stopped: outcome.Interrupted | None) -> dict[str, Any]:
     results.sort(key=lambda r: ordered.index(r["state"]))
     report_dir = run_dir / REPORT_DIR / "gen-set"
     report_dir.mkdir(parents=True, exist_ok=True)
@@ -271,18 +347,31 @@ def run_set(
     # the set's own question, its flag to answer it: the same as its rows', which ran `gen` with gen-set's --provider
     asked = next((codex_unavailable_question(r["asked"]["cause"], r["asked"]["reason"]) for r in results
                   if r.get("asked")), None)
+    errors = [e for r in results for e in r.get("errors") or []]
+    if stopped is not None:
+        errors += [outcome.error(outcome.INTERRUPTED, f"{stopped} before the row began", state=s) for s in skipped]
+        if not any(e["code"] == outcome.INTERRUPTED for e in errors):  # stopped as the last row ended
+            errors.append(outcome.error(outcome.INTERRUPTED, f"{stopped} after its rows ended"))
     payload = {
         "kind": "sprite-gen-gen-set-report",
         "run_dir": str(run_dir),
         "states": ordered,
+        # `ok` has counted the finished rows since gen-set began; `all_ok` is the set's own yes or no.
         "ok": sum(1 for r in results if r.get("ok")),
+        "all_ok": not errors and not skipped,
         "failed": [r["state"] for r in results if not r.get("ok")],
         "not_started": skipped,
         **({"asked": asked} if asked else {}),
+        "errors": errors,
+        "provider_submitted": any(r.get("provider_submitted") for r in results),
+        **({"interrupted": str(stopped)} if stopped is not None else {}),
         "items": results,
     }
     atomic_write_text(report_dir / "set.report.json", json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
     print(table)
+    if stopped is not None:
+        raise outcome.Stop(f"gen-set: {stopped}; see {report_dir / 'set.report.json'}",
+                           outcome.exit_code(outcome.INTERRUPTED, stopped), outcome=outcome.INTERRUPTED)
     if asked:
         raise ask_codex_unavailable(asked)
     return payload
@@ -299,20 +388,33 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def run(**kwargs: object) -> int:
+    """0 when every row is there; `outcome.NOT_STARTED_EXIT` when the set failed and no row sent a provider
+    request (refused before it began, or every failed row refused before its call); 1 for any other failure."""
     states = [s.strip() for s in str(kwargs.get("states") or "").split(",") if s.strip()] or None
-    payload = run_set(
-        run_dir=Path(str(kwargs["run_dir"])), states=states,
-        provider=kwargs.get("provider"), model=kwargs.get("model"),  # type: ignore[arg-type]
-        concurrency=int(kwargs.get("concurrency") or DEFAULT_CONCURRENCY), force=bool(kwargs.get("force")),
-    )
-    return 0 if not payload["failed"] and not payload["not_started"] else 1
+    with outcome.recording("gen-set") as record:
+        try:
+            payload = run_set(
+                run_dir=Path(str(kwargs["run_dir"])), states=states,
+                provider=kwargs.get("provider"), model=kwargs.get("model"),  # type: ignore[arg-type]
+                concurrency=int(kwargs.get("concurrency") or DEFAULT_CONCURRENCY), force=bool(kwargs.get("force")),
+            )
+        except outcome.Interrupted as exc:  # stopped before the first row began: no set report to write
+            raise outcome.Stop(f"gen-set: {exc}", outcome.exit_code(outcome.INTERRUPTED, exc)) from exc
+        except SystemExit as exc:
+            if isinstance(exc, (outcome.Stop, CodexUnavailableAsk)) or exc.code in (0, None) or record.requests:
+                raise
+            # The run directory, the request or the states were refused before any row sent anything.
+            raise outcome.Stop(str(exc), outcome.NOT_STARTED_EXIT, outcome=outcome.PREFLIGHT) from exc
+    if not payload["failed"] and not payload["not_started"]:
+        return 0
+    return 1 if payload["provider_submitted"] else outcome.NOT_STARTED_EXIT
 
 
 def main(argv: list[str] | None = None) -> int:
     utf8_streams()
     parser = argparse.ArgumentParser(prog="sprite-gen gen-set", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     add_arguments(parser)
-    return run(**vars(parser.parse_args(argv)))
+    return outcome.entry(lambda: run(**vars(parser.parse_args(argv))))
 
 
 if __name__ == "__main__":

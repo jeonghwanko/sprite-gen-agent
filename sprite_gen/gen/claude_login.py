@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (machine-readable outcomes; see NOTICE).
 """Claude calls on the person's own subscription first: is a login here, which credential a call runs
 on, and one message answered through the unmodified `claude` binary (Claude Code) in print mode.
 
@@ -47,6 +48,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping
 
 from . import anthropic_api as api
+from . import outcome
 from .base import env_api_key, provider_binary, provider_subprocess_env
 
 BINARY = "claude"
@@ -164,6 +166,7 @@ def send_message(body: dict[str, Any], *, label: str, env: Mapping[str, str] | N
     started = time.monotonic()
     child = {**child_env(env), "CLAUDE_CODE_MAX_OUTPUT_TOKENS": str(body["max_tokens"])}
     with tempfile.TemporaryDirectory(prefix="sprite-gen-claude-") as cwd:
+        outcome.submitted("claude")
         try:
             done = run(_args(body), input=_message(body), env=child, cwd=cwd, capture_output=True, text=True,
                        timeout=CALL_TIMEOUT_SECONDS)

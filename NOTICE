@@ -52,5 +52,7 @@ and is not endorsed by its author.
 sprite-gen-agent adds pose-plan GPT motion, the gait-guide utility, the
 gait-motion bridge, per-stance contact coverage and the scale check (head-
 measured figure size, applied by game-pack), first written for the AI Fighter
-creator kit, and finds a codex session's rollout through codex's state DB. Source files it changed carry a "Modified for
+creator kit, finds a codex session's rollout through codex's state DB, and makes generation outcomes
+machine-readable (report error codes, a not-started exit, the provider-submitted record kept on SIGTERM,
+`version` and `doctor`). Source files it changed carry a "Modified for
 sprite-gen-agent" line; the files it added carry their own SPDX header.
