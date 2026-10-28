@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (machine-readable outcomes; see NOTICE).
 """AI 프레임 보간 — 한 상태의 두 프레임 사이 중간(in-between) 프레임을 만들어 테이크로 기록한다.
 
 파이프라인 도크트린과의 관계: "AI 개입은 raw 생성 한 곳뿐" — 보간도 raw 단계의
@@ -49,6 +50,7 @@ from sprite_gen.frames.extract import (extract_component_images, register_row_fr
 from sprite_gen.spec.layout import raw_rel, take_raw_rel
 from sprite_gen.spec.runio import load_request, write_request
 from sprite_gen.util.console import utf8_streams
+from sprite_gen.gen import outcome
 
 PROVIDERS = ("codex", "grok")
 
@@ -253,6 +255,11 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     utf8_streams()
+    # A refusal with its own exit code (an --out folder that cannot be made, exit 3) prints its line too.
+    return outcome.entry(lambda: _main(argv))
+
+
+def _main(argv: list[str] | None) -> int:
     args = _build_parser().parse_args(argv)
     interpolate_between(args.run_dir, args.state, args.between[0], args.between[1],
                         t=args.t, label=args.label, provider=args.provider)

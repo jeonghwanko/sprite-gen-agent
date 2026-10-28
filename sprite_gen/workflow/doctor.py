@@ -19,6 +19,7 @@ from typing import Any
 
 from sprite_gen.gen import outcome
 from sprite_gen.gen.base import CODEX_UNAVAILABLE_EXIT, print_json
+from sprite_gen.util.console import utf8_streams
 
 # Bumped when the outcome keys, codes or exit codes change in a way a caller must know about.
 OUTCOME_CONTRACT = 1
@@ -180,6 +181,7 @@ def run_doctor(**kwargs: object) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    utf8_streams()
     parser = argparse.ArgumentParser(prog="sprite-gen doctor", description=__doc__)
     add_doctor_arguments(parser)
     return run_doctor(**vars(parser.parse_args(argv)))

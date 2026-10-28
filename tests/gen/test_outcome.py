@@ -15,6 +15,7 @@ import signal
 import subprocess
 import sys
 import textwrap
+import threading
 import time
 from pathlib import Path
 
@@ -118,7 +119,13 @@ def test_an_out_folder_that_cannot_be_made_is_refused_before_the_request(tmp_pat
     ("openai-gen: refused by the provider's content policy (HTTP 400) code=moderation_blocked: {}", "provider-refused", False),
     ("grok-gen: credential XAI_API_KEY rejected (HTTP 401): {}", "provider-auth", False),
     ("grok-gen: image request failed (HTTP 503): {}", "provider-unavailable", True),
+    ("grok-gen: image request failed (HTTP 400) code=invalid_argument: {}", "provider-refused", False),
     ("codex-gen: codex exec exited 1\nboom", "provider-failed", True),
+    # no answer that could be read: the server may have taken (and billed) it, so it is not sent again unseen
+    ("openai-gen: request failed or timed out; no automatic retry (the server may have accepted it)",
+     "outcome-unknown", False),
+    ("xai: response was not valid JSON", "outcome-unknown", False),
+    ("something no rule names", "outcome-unknown", False),
 ])
 def test_a_failed_request_is_named_by_a_stable_code(tmp_path, monkeypatch, said, code, retryable):
     def refuse(_request):
@@ -312,6 +319,7 @@ def test_sigterm_after_xai_took_the_request_names_it_for_video_resume(tmp_path, 
     assert written["provider_submitted"] is True and written["request_id"] == "req-123"
     (error,) = written["errors"]
     assert error["code"] == "interrupted" and error["request_id"] == "req-123"
+    assert error["retryable"] is False  # run again, it buys a second clip: resume it instead
     assert error["resume"].startswith("sprite-gen video-resume --request-id req-123")
 
 
@@ -378,11 +386,137 @@ def test_a_child_that_left_no_report_counts_as_sent_unless_its_exit_says_otherwi
     missing = tmp_path / "none.json"
     assert outcome.child_submitted(1, missing) is True
     assert outcome.child_submitted(-15, missing) is True
-    for nothing_sent in (2, outcome.NOT_STARTED_EXIT, gen_base.CODEX_UNAVAILABLE_EXIT):
+    # 75 without a report: codex may have run before it said its usage was used up
+    assert outcome.child_submitted(gen_base.CODEX_UNAVAILABLE_EXIT, missing) is True
+    for nothing_sent in (2, outcome.NOT_STARTED_EXIT):
         assert outcome.child_submitted(nothing_sent, missing) is False
     said = tmp_path / "said.json"
     said.write_text(json.dumps({"provider_submitted": False}), encoding="utf-8")
     assert outcome.child_submitted(1, said) is False
+
+
+def test_a_transport_failure_after_the_request_left_is_not_retried(tmp_path, monkeypatch):
+    from sprite_gen.gen import xai
+
+    def cut(_request):
+        raise xai.TransportError("timed out")
+
+    _use(monkeypatch, _Provider(cut))
+    report = tmp_path / "r.json"
+    with pytest.raises(SystemExit):
+        gen.run(provider="codex", prompt="a cup", out=tmp_path / "o.png", report=report)
+    assert [(e["code"], e["retryable"]) for e in _report(report)["errors"]] == [("outcome-unknown", False)]
+
+
+def test_sigterm_while_the_failure_report_is_written_still_leaves_it_and_exits_143(tmp_path, monkeypatch):
+    def fail(_request):
+        raise SystemExit("grok-gen: image request failed (HTTP 500): {}")
+
+    _use(monkeypatch, _Provider(fail))
+    written = gen.atomic_write_text
+
+    def stopped_mid_write(path, text):
+        signal.raise_signal(signal.SIGTERM)  # arrives exactly while the report is written
+        return written(path, text)
+
+    monkeypatch.setattr(gen, "atomic_write_text", stopped_mid_write)
+    report = tmp_path / "r.json"
+    rc = cli.main(["gen", "--provider", "codex", "--prompt", "x", "--out", str(tmp_path / "o.png"),
+                   "--report", str(report)])
+    assert rc == 143
+    assert _report(report)["errors"][0]["code"] == "provider-unavailable"  # the failure, written whole
+
+
+def test_sigterm_while_the_success_report_is_written_leaves_it_whole(tmp_path, monkeypatch):
+    _use(monkeypatch, _Provider())
+    written = gen.atomic_write_text
+
+    def stopped_mid_write(path, text):
+        signal.raise_signal(signal.SIGTERM)
+        return written(path, text)
+
+    monkeypatch.setattr(gen, "atomic_write_text", stopped_mid_write)
+    report = tmp_path / "r.json"
+    rc = cli.main(["gen", "--provider", "codex", "--prompt", "x", "--out", str(tmp_path / "o.png"),
+                   "--report", str(report)])
+    assert rc == 143 and _report(report)["ok"] is True
+
+
+def test_a_stopped_set_starts_no_child_after_the_stop(tmp_path, monkeypatch):
+    """A row still preparing when the stop lands never starts its paid child (`base.run_logged` refuses)."""
+    run_dir = _prepared(tmp_path)
+    ran = tmp_path / "child-ran"
+
+    def runner(prompt_file, out, refs, report, *, provider, model, log) -> int:
+        if out.stem == "idle":
+            signal.raise_signal(signal.SIGTERM)  # the stop arrives while walk is still preparing
+            return 1
+        time.sleep(0.5)
+        return gen_base.run_logged([sys.executable, "-c", f"open({str(ran)!r}, 'w').close()"], log)
+
+    monkeypatch.setattr(gen_set, "run_gen_cli", runner)
+    with pytest.raises(SystemExit) as stopped:
+        gen_set.run(run_dir=run_dir, provider="codex", concurrency=2, states="idle,walk")
+    assert stopped.value.code == 143
+    assert not ran.exists()
+    payload = _report(run_dir / "reports" / "gen-set" / "set.report.json")
+    walk = next(item for item in payload["items"] if item["state"] == "walk")
+    assert walk["provider_submitted"] is False and walk["errors"][0]["code"] == "interrupted"
+    assert "was not begun" in walk["error"]
+
+
+def test_a_child_is_never_started_once_the_run_is_stopped(tmp_path):
+    with outcome.recording("t"):
+        outcome.stop()
+        with pytest.raises(outcome.NotStarted):
+            gen_base.run_logged([sys.executable, "-c", "pass"], tmp_path / "log.txt")
+    with outcome.recording("t"):  # a new run starts clear
+        assert gen_base.run_logged([sys.executable, "-c", "pass"], tmp_path / "log.txt") == 0
+
+
+def test_a_staggered_clip_stops_waiting_when_the_set_is_stopped():
+    from sprite_gen.video import batch
+
+    with outcome.recording("t"):
+        batch._last_start[0] = time.monotonic()
+        threading.Timer(0.1, outcome.stop).start()
+        started = time.monotonic()
+        with pytest.raises(outcome.NotStarted):
+            batch._staggered_start(30.0)
+        assert time.monotonic() - started < 5
+
+
+def test_a_walk_start_never_reads_an_earlier_runs_report(tmp_path):
+    from sprite_gen.video import batch
+
+    base = tmp_path / "base.png"
+    Image.new("RGB", (64, 64), (255, 0, 255)).save(base)
+    item_dir = tmp_path / "item"
+    item_dir.mkdir()
+    stale = item_dir / "walk-start.report.json"
+    stale.write_text(json.dumps({"ok": False, "provider_submitted": False}), encoding="utf-8")
+
+    def killed(base, prompt, out, report, *, log, provider=None):  # sent its request, then killed: no report
+        return -15
+
+    with pytest.raises(SystemExit):
+        batch.walk_start_still(base, "front", item_dir, key="auto", force=True, runner=killed)
+    assert not stale.exists()
+    assert outcome.child_submitted(-15, stale) is True
+
+
+def test_a_resume_that_fails_after_its_polls_is_not_a_not_started_exit(tmp_path, monkeypatch):
+    from sprite_gen.gen import xai
+
+    monkeypatch.setattr(video, "resolve_credential", lambda: xai.Credential(token="t", source=xai.AUTH_SOURCE_GROK_LOGIN))
+    monkeypatch.setattr(video, "http_json", lambda *a, **k: (200, {"status": "done", "video": {"respect_moderation": False, "url": ""}}))
+    report = tmp_path / "r.json"
+    with pytest.raises(SystemExit, match="content policy") as failed:
+        cli.main(["video-resume", "--request-id", "req-1", "--out", str(tmp_path / "c.mp4"), "--report", str(report)])
+    assert not isinstance(failed.value.code, int)  # a message, exit 1: not NOT_STARTED_EXIT
+    written = _report(report)
+    assert written["provider_submitted"] is False and written["exit_code"] == 1  # a poll bills nothing
+    assert [(e["code"], e["retryable"]) for e in written["errors"]] == [("provider-refused", False)]
 
 
 def test_retry_marks_a_post_but_not_a_get():

@@ -11,12 +11,17 @@ Three things a caller needs and could only guess from stderr before:
   report is written with `interrupted` before the process exits `INTERRUPTED_EXIT`.
 
 `NOT_STARTED_EXIT` is the exit code of a run that failed before any provider request left: nothing was
-generated and nothing could be billed. Exit 2 (an argument the parser refused) means the same; 75 is the
-codex question (`base.CODEX_UNAVAILABLE_EXIT`), also asked before anything was sent. Any other non-zero
-exit leaves the answer to the report's `provider_submitted`.
+generated and nothing could be billed. Exit 2 (an argument the parser refused) means the same. 75 is the
+codex question (`base.CODEX_UNAVAILABLE_EXIT`): asked before anything was sent when codex is not signed in,
+but after a `codex exec` ran when codex said its usage is used up, so its report says which. Any other
+non-zero exit leaves the answer to the report's `provider_submitted`.
 
 The record is process-wide (`Record`): a provider marks it where its request leaves (`submitted`), the verb
 reads it when it writes its report. A library call with no record open marks nothing.
+
+A stop is one event for the whole process (`STOP`): the signal sets it and runs the stop hooks (`on_stop`:
+the batch verbs' children are sent SIGTERM), and nothing starts a provider request once it is set
+(`NotStarted`). A report is written inside `deferred()`, where a signal waits until the write is done.
 """
 
 from __future__ import annotations
@@ -88,6 +93,13 @@ class Stop(SystemExit):
         self.outcome = outcome
 
 
+class NotStarted(SystemExit):
+    """A child or item that would have sent a provider request was not begun: the run is being stopped."""
+
+    def __init__(self, what: str) -> None:
+        super().__init__(f"{what} was not begun: the run is being stopped; nothing was sent")
+
+
 class Interrupted(BaseException):
     """SIGTERM or SIGHUP arrived. A BaseException that is not a SystemExit, so no `except SystemExit` of an
     item swallows it on the way to the verb that writes the report."""
@@ -117,6 +129,42 @@ class Record:
 
 _LOCK = threading.Lock()
 _CURRENT: Record | None = None
+# Set by the first SIGTERM / SIGHUP of a run (or a batch verb's own stop): no provider request starts after it.
+STOP = threading.Event()
+_STOP_HOOKS: list[Callable[[], None]] = []
+_DEFER = 0  # >0 while a report is being written: a signal waits in `_PENDING` until the write is done
+_PENDING: int | None = None
+
+
+def on_stop(hook: Callable[[], None]) -> None:
+    """Run `hook` when the run is stopped, from the signal handler itself (`base.stop_children`)."""
+    if hook not in _STOP_HOOKS:
+        _STOP_HOOKS.append(hook)
+
+
+def stop() -> None:
+    """Stop the run: no provider request starts from here on, and the stop hooks run."""
+    STOP.set()
+    for hook in list(_STOP_HOOKS):
+        try:
+            hook()
+        except Exception:  # noqa: BLE001 — a hook that fails must not keep the others from running
+            pass
+
+
+@contextmanager
+def deferred() -> Iterator[None]:
+    """Write a report with the signals held: one that arrives meanwhile stops the run (`stop`) at once, and
+    raises `Interrupted` only when the write is done, so a stopped run never leaves half a record or none."""
+    global _DEFER, _PENDING
+    _DEFER += 1
+    try:
+        yield
+    finally:
+        _DEFER -= 1
+        if _DEFER == 0 and _PENDING is not None:
+            signum, _PENDING = _PENDING, None
+            raise Interrupted(signum)
 
 
 def current() -> Record | None:
@@ -162,12 +210,17 @@ def report_fields(record: Record | None, *, errors: list[dict[str, Any]], exit_s
 
 
 def _interrupt(signum: int, _frame: Any) -> None:
+    global _PENDING
     # One stop is enough: a second signal while the report is being written must not cut it short.
     for name in _SIGNALS:
         try:
             signal.signal(getattr(signal, name), signal.SIG_IGN)
         except (AttributeError, ValueError, OSError):
             pass
+    stop()  # before anything else: a worker about to start a child sees it now
+    if _DEFER:
+        _PENDING = signum
+        return
     raise Interrupted(signum)
 
 
@@ -192,11 +245,15 @@ def recording(verb: str) -> Iterator[Record]:
                 pass
     with _LOCK:
         outer, _CURRENT = _CURRENT, record
+    if outer is None:
+        STOP.clear()
     try:
         yield record
     finally:
         with _LOCK:
             _CURRENT = outer
+        if outer is None:
+            STOP.clear()
         for name, handler in previous.items():
             try:
                 signal.signal(getattr(signal, name), handler)
@@ -235,14 +292,26 @@ def classify(exc: BaseException, *, submitted: bool, answered: bool = False) -> 
         return OUTCOME_UNKNOWN
     if refusal.CONTENT_POLICY in text:
         return PROVIDER_REFUSED
-    if type_name == "TransportError":
-        return PROVIDER_UNAVAILABLE
+    if type_name == "TransportError" or MAY_HAVE_TAKEN in text or "response was not valid JSON" in text:
+        # No answer came back that could be read: the server may have taken (and billed) the request.
+        return OUTCOME_UNKNOWN
     for status, code in (("401", PROVIDER_AUTH), ("403", PROVIDER_AUTH), ("429", PROVIDER_RATE_LIMITED)):
         if f"(HTTP {status})" in text or f"HTTP {status}" in text:
             return code
     if "(HTTP 5" in text or "HTTP 5" in text:
         return PROVIDER_UNAVAILABLE
-    return PROVIDER_FAILED
+    if "(HTTP 4" in text:
+        return PROVIDER_REFUSED  # the request itself was refused (a parameter, a size): sent again, it is again
+    if text.startswith(_ANSWERED_WITHOUT_IMAGE):
+        return PROVIDER_FAILED
+    return OUTCOME_UNKNOWN  # nothing says the request was not taken: not sent again unseen
+
+
+# The words every transport failure says after a request left (`xai.TRANSPORT_FAILED`, the openai one).
+MAY_HAVE_TAKEN = "the server may have accepted it"
+# Failures that are a provider's whole answer, with no image in it: the request ran and is over.
+_ANSWERED_WITHOUT_IMAGE = ("codex-gen:", "grok-gen: expected", "openai-gen: expected", "gen: expected a generated PNG",
+                           "gen: file at")
 
 
 def exit_code(code: str, exc: BaseException) -> int:
@@ -286,10 +355,9 @@ def make_parent(path: Path, flag: str, *, verb: str) -> None:
 
 def child_submitted(rc: int, report: Path | None) -> bool:
     """Whether a child sprite-gen run (`run_logged`) may have sent a provider request: what its report says,
-    else false for an exit that means nothing was sent (2, `NOT_STARTED_EXIT`, the codex question), else true —
-    a child that ended any other way without a report cannot be shown to have sent nothing."""
-    from .base import CODEX_UNAVAILABLE_EXIT
-
+    else false for an exit that means nothing was sent (2, `NOT_STARTED_EXIT`), else true — a child that ended
+    any other way without a report cannot be shown to have sent nothing (a codex question asked after a
+    `codex exec` ran, exit 75, among them). The caller removes the child's old report before it starts."""
     if report is not None:
         try:
             said = json.loads(report.read_text(encoding="utf-8")).get("provider_submitted")
@@ -297,7 +365,7 @@ def child_submitted(rc: int, report: Path | None) -> bool:
             said = None
         if isinstance(said, bool):
             return said
-    return rc not in (2, NOT_STARTED_EXIT, CODEX_UNAVAILABLE_EXIT)
+    return rc not in (2, NOT_STARTED_EXIT)
 
 
 def child_errors(report: Path | None) -> list[dict[str, Any]]:
@@ -326,3 +394,6 @@ def entry(run: Callable[[], int]) -> int:
     except Stop as exc:
         say(exc)
         return int(exc.code)
+    except Interrupted as exc:  # stopped once its report was written (`deferred`)
+        say(exc)
+        return 128 + int(exc.signum)

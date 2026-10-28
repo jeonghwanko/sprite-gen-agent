@@ -1121,7 +1121,7 @@ def test_polls_cut_short_until_the_poll_timeout_leave_an_unfinished_report_namin
                        f"again with `sprite-gen video-resume --request-id req-1 --out {out.resolve()}` "
                        "instead of submitting a new request; nothing was written")
     assert HTTP_STATUS.search(message) is None
-    assert json.loads(report.read_text(encoding="utf-8")) == {
+    assert _outcome_said(report, submitted=True) == {
         "kind": "sprite-gen-video-unfinished",
         "provider": "grok-imagine",
         "verb": "video",
@@ -1215,7 +1215,7 @@ def test_a_clip_whose_downloads_get_no_answer_leaves_an_unfinished_report_naming
                        f"`sprite-gen video-resume --request-id req-1 --out {out.resolve()}` instead of submitting a "
                        "new request; nothing was written")
     assert HTTP_STATUS.search(message) is None
-    assert json.loads(report.read_text(encoding="utf-8")) == {
+    assert _outcome_said(report, submitted=True) == {
         "kind": "sprite-gen-video-unfinished",
         "provider": "grok-imagine",
         "verb": "video",
@@ -1366,7 +1366,7 @@ def test_a_download_slower_than_the_time_left_leaves_an_unfinished_report_by_the
                        f"request_id=req-1 again with `sprite-gen video-resume --request-id req-1 --out {out.resolve()}` "
                        "instead of submitting a new request; nothing was written")
     assert HTTP_STATUS.search(message) is None
-    assert json.loads(report.read_text(encoding="utf-8")) == {
+    assert _outcome_said(report, submitted=True) == {
         "kind": "sprite-gen-video-unfinished",
         "provider": "grok-imagine",
         "verb": "video",
@@ -1542,7 +1542,7 @@ def test_a_done_poll_that_names_no_url_leaves_an_unfinished_report_naming_the_re
                        "and may be billed — ask for request_id=req-1 again with `sprite-gen video-resume --request-id "
                        f"req-1 --out {out.resolve()}` instead of submitting a new request; nothing was written")
     assert HTTP_STATUS.search(message) is None
-    assert json.loads(report.read_text(encoding="utf-8")) == {
+    assert _outcome_said(report, submitted=True) == {
         "kind": "sprite-gen-video-unfinished",
         "provider": "grok-imagine",
         "verb": "video",

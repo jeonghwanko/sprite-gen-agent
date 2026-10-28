@@ -29,7 +29,7 @@ from PIL import Image
 from sprite_gen.spec.runio import atomic_write_text
 from sprite_gen.gen import outcome
 from sprite_gen.gen.base import (CodexUnavailableAsk, ask_codex_unavailable, child_asked, codex_unavailable_question,
-                                 run_logged, stop_children)
+                                 run_logged)
 from sprite_gen.gen.chroma import KEY_BACKGROUND_TEXT
 from sprite_gen.gen.facing import FACINGS, validate as validate_facing
 from sprite_gen.gen import handedness as handed_mod
@@ -431,10 +431,11 @@ _last_start = [0.0]
 
 
 def _staggered_start(gap: float) -> None:
+    """Wait for this clip's turn to send; a stop during the wait (`outcome.STOP`) ends it with nothing sent."""
     with _start_lock:
         wait = _last_start[0] + gap - time.monotonic()
-        if wait > 0:
-            time.sleep(wait)
+        if (wait > 0 and outcome.STOP.wait(wait)) or outcome.STOP.is_set():
+            raise outcome.NotStarted("this clip")
         _last_start[0] = time.monotonic()
 
 
@@ -684,6 +685,7 @@ def walk_start_still(base: Path, direction: str, item_dir: Path, *, key: str, fo
         if (prior.get("ok") is not False and prior.get("prompt") == prompt
                 and [str(Path(r).resolve()) for r in prior.get("refs") or []] == [str(base.resolve())]):
             return out, {"redrawn": True, "reused": True, "still": str(out), "key": kind}
+    report.unlink(missing_ok=True)  # what this child sent is read from its own report, never an earlier run's
     rc = runner(base, prompt, out, report, log=item_dir / "walk-start.log", provider=provider)
     if (question := child_asked(rc, item_dir / "walk-start.log")) is not None:
         raise CodexUnavailableAsk(question)  # the set asks it once, when its items have ended (`run_set`)
@@ -849,6 +851,7 @@ def run_item(
                     if final.size != initial.size or canvas_mod.corner_key(final) != canvas_mod.corner_key(initial):
                         raise SystemExit("video-set: end frame must match the start canvas size and background key")
                 pin = {"last_frame": end_frame}
+            clip_report.unlink(missing_ok=True)  # what this clip sent is read from its own report, never an earlier run's
             attempts = [video_runner(canvas_png, prompt, clip, clip_report, duration=duration, resolution=resolution,
                                      log=item_dir / "clip.log", **pin)]
             result["clip"] = {"attempts": attempts, "duration": duration, "last_frame": str(end_frame) if end_frame is not None else pins}
@@ -900,6 +903,10 @@ def run_item(
                                              if k in lp["jump_repair"]}
         result["ok"] = True
         result["errors"] = []
+    except outcome.NotStarted as exc:  # the set was being stopped: this item's request never left
+        result["ok"] = False
+        result["error"] = str(exc)
+        result["errors"] = [outcome.error(outcome.INTERRUPTED, str(exc), state=state, item=item)]
     except CodexUnavailableAsk as exc:
         result["ok"] = False
         result["asked"] = exc.question
@@ -1085,6 +1092,26 @@ def write_table(results: list[dict[str, Any]], path: Path, *, both: bool = False
     return text
 
 
+def _gather_stopped(futures: dict[Any, str], done: set[Any], results: list[dict[str, Any]],
+                    stop: outcome.Interrupted) -> None:
+    """The items of a stopped set: those not begun never begin, those under way end (the signal already sent
+    their `video` SIGTERM, `base.stop_children`, so each writes its report naming a request xAI took), and each
+    failed one is kept with the stop as its error; a request xAI took stays `generation-unfinished`."""
+    for fut in futures:
+        if fut not in done:
+            fut.cancel()
+    for fut in futures:
+        if fut in done or fut.cancelled():
+            continue
+        r = fut.result()
+        done.add(fut)
+        if not r.get("ok"):
+            r["errors"] = [e if e.get("code") in (outcome.GENERATION_UNFINISHED, outcome.INTERRUPTED)
+                           else {**e, "code": outcome.INTERRUPTED, "retryable": outcome.CODES[outcome.INTERRUPTED]}
+                           for e in r.get("errors") or []]
+        results.append(r)
+
+
 def run_set(
     *,
     bases: dict[str, Path],
@@ -1180,73 +1207,70 @@ def run_set(
         return prepare_side
 
     stopped: outcome.Interrupted | None = None
-    with ThreadPoolExecutor(max_workers=max(1, concurrency)) as ex:
-        futures = {ex.submit(run_item, item=i, direction=d, state=s, base=b, root=root, character=character, duration=duration, resolution=resolution, key=key, force=force, gap=gap, video_runner=video_runner, shape=shape, anchor=anchor, spill=spill, facing=f, facing_fix=facing_fix, prepare_side=side_preparer(f), body_height=body_height, fit=fit, decontam=decontam, walk_start=walk_start, redraw_runner=redraw_runner, still_provider=still_provider, handed=handed, body_plan=body_plan, **({"end_frame": end_frames[i]} if end_frames and i in end_frames else {}), **({"play": plays[i]} if i in plays else {}), **({"motion": motions[i]} if i in motions else {})): i for i, d, s, f, b in items}
-        pending = set(futures)
-        try:
-            for fut in as_completed(futures):
-                pending.discard(fut)
-                r = fut.result()
-                results.append(r)
-                print(json.dumps({k: r[k] for k in ("item", "ok") if k in r} | ({"error": r["error"]} if not r.get("ok") else {"seam": r["loop"]["seam_ratio"]}), ensure_ascii=False), flush=True)
-        except outcome.Interrupted as exc:
-            # Stopped: the clips under way are stopped too (each `video` writes its report, naming a request xAI
-            # took, as it ends); items not begun never begin. The set report below says which is which.
-            stopped = exc
-            for fut in pending:
-                fut.cancel()
-            stop_children()
-            for fut in pending:
-                if fut.cancelled():
-                    continue
-                r = fut.result()
-                if not r.get("ok"):
-                    r["errors"] = [e if e.get("code") in (outcome.GENERATION_UNFINISHED, outcome.INTERRUPTED)
-                                   else {**e, "code": outcome.INTERRUPTED, "retryable": outcome.CODES[outcome.INTERRUPTED]}
-                                   for e in r.get("errors") or []]
-                results.append(r)
-    not_started = [(i, s) for i, _d, s, *_ in items if i not in {r["item"] for r in results}]
+    futures: dict[Any, str] = {}
+    done: set[Any] = set()
+    aligned: dict[str, Any] = {}
+    try:
+        with ThreadPoolExecutor(max_workers=max(1, concurrency)) as ex:
+            futures = {ex.submit(run_item, item=i, direction=d, state=s, base=b, root=root, character=character, duration=duration, resolution=resolution, key=key, force=force, gap=gap, video_runner=video_runner, shape=shape, anchor=anchor, spill=spill, facing=f, facing_fix=facing_fix, prepare_side=side_preparer(f), body_height=body_height, fit=fit, decontam=decontam, walk_start=walk_start, redraw_runner=redraw_runner, still_provider=still_provider, handed=handed, body_plan=body_plan, **({"end_frame": end_frames[i]} if end_frames and i in end_frames else {}), **({"play": plays[i]} if i in plays else {}), **({"motion": motions[i]} if i in motions else {})): i for i, d, s, f, b in items}
+            try:
+                for fut in as_completed(futures):
+                    r = fut.result()
+                    results.append(r)
+                    done.add(fut)
+                    print(json.dumps({k: r[k] for k in ("item", "ok") if k in r} | ({"error": r["error"]} if not r.get("ok") else {"seam": r["loop"]["seam_ratio"]}), ensure_ascii=False), flush=True)
+            except outcome.Interrupted as exc:
+                stopped = exc
+                _gather_stopped(futures, done, results, exc)
+        results.sort(key=lambda r: [i for i, *_ in items].index(r["item"]))
+        # A stopped set aligns nothing: the loops stay as cut. The alignment (RIFE) runs after every clip was
+        # bought, so a stop during it still writes the set report below.
+        if stopped is None:
+            aligned = align_gaits(results, root, align_cycles, interpolate=interpolate, between=align_between, feet=align_feet)
+    except outcome.Interrupted as exc:
+        stopped, aligned = exc, {}
+        _gather_stopped(futures, done, results, exc)
     results.sort(key=lambda r: [i for i, *_ in items].index(r["item"]))
-    # A stopped set aligns nothing: the loops stay as cut, and its report is written now.
-    aligned = {} if stopped is not None else align_gaits(results, root, align_cycles, interpolate=interpolate, between=align_between, feet=align_feet)
-    table = write_table(results, root / "table.md", both=both)
-    failed = ([r["item"] for r in results if not r.get("ok")] + [f"cycle-align:{st}" for st, a in aligned.items() if not a.get("ok")]
-              + [i for i, _s in not_started])
-    errors = ([e for r in results for e in r.get("errors") or []]
-              + [outcome.error(outcome.POSTPROCESS_FAILED, f"cycle-align: {a.get('error')}", state=st)
-                 for st, a in aligned.items() if not a.get("ok")]
-              + [outcome.error(outcome.INTERRUPTED, f"{stopped} before the item began", state=s, item=i)
-                 for i, s in not_started])
-    if stopped is not None and not any(e["code"] == outcome.INTERRUPTED for e in errors):  # stopped as the last item ended
-        errors.append(outcome.error(outcome.INTERRUPTED, f"{stopped} after its items ended"))
-    record = outcome.current()
-    # What the set left undone for want of RIFE — never a failure, never silent.
-    warnings = ([f"{r['item']}: jump frame not repaired — {r['loop']['jump_repair']['why']}" for r in results if r.get("ok") and "jump_repair" in r["loop"]]
-                + [f"cycle-align:{st}: not aligned — {a['why']}" for st, a in aligned.items() if a.get("reason") == "rife-not-installed"])
-    if warnings:
-        warnings.append(f"install RIFE with `{rife_mod.install_command()}` (docs/loop-repair.md)")
-    # What the set left for someone to count — never a failure, never silent.
-    warnings += [f"cycle-align:{st}: not aligned — {a['why']}; count them, then `sprite-gen video-cycle-align --cycles <loop>=<k>` "
-                 f"(the loops under `suspects` in {a['report']}, docs/loop-repair.md section 4)"
-                 for st, a in aligned.items() if a.get("reason") == "cycle-suspects"]
-    warnings += [f"cycle-align:{st}: {line}" for st, a in aligned.items() for line in a.get("warnings", [])]
-    warnings += [f"{r['item']}: {r['frames']['decontam_warning']}" for r in results
-                 if r.get("ok") and "decontam_warning" in r.get("frames", {})]
-    warnings += [f"cycle-align:{st}: --align-foot {item}={foot} not applied ({a.get('why') or a.get('error') or 'the item failed'})"
-                 for st, a in aligned.items() for item, foot in a.get("feet_unused", {}).items()]
-    # A start still `gen` asked about instead of drawing (codex cannot run, and the choice is to ask): the set ends
-    # with that question, the way to answer it named as this verb's own flag, once every other item has ended.
-    asked = next((codex_unavailable_question(r["asked"]["cause"], r["asked"]["reason"], flag="--still-provider")
-                  for r in results if r.get("asked")), None)
-    payload = {"kind": "sprite-gen-video-set-report", "root": str(root), "states": states, "facing": facing, "facing_fix": facing_fix, "directions": list(bases), **({"handed": [vars(h) for h in handed]} if handed else {}), **({"body_plan": [vars(b) for b in body_plan]} if body_plan else {}), **({"play": play} if play else {}), **({"motion": motion} if motion else {}), "body_height": body_height, "ok": sum(1 for r in results if r.get("ok")), "failed": failed, "warnings": warnings, **({"asked": asked} if asked else {}), "all_ok": not errors, "errors": errors, "provider_submitted": any(r.get("provider_submitted") for r in results) or bool(record and record.requests), **({"interrupted": str(stopped)} if stopped is not None else {}), "items": results, "cycle_align": aligned}
-    atomic_write_text(root / "set.report.json", json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
-    print(table)
-    if stopped is not None:
-        raise outcome.Stop(f"video-set: {stopped}; see {root / 'set.report.json'}",
-                           outcome.exit_code(outcome.INTERRUPTED, stopped), outcome=outcome.INTERRUPTED)
-    if asked:
-        raise ask_codex_unavailable(asked)
-    return payload
+    not_started = [(i, s) for i, _d, s, *_ in items if i not in {r["item"] for r in results}]
+    with outcome.deferred():  # the set report is written whole; a stop meanwhile ends the run after it
+        table = write_table(results, root / "table.md", both=both)
+        failed = ([r["item"] for r in results if not r.get("ok")] + [f"cycle-align:{st}" for st, a in aligned.items() if not a.get("ok")]
+                  + [i for i, _s in not_started])
+        errors = ([e for r in results for e in r.get("errors") or []]
+                  + [outcome.error(outcome.POSTPROCESS_FAILED, f"cycle-align: {a.get('error')}", state=st)
+                     for st, a in aligned.items() if not a.get("ok")]
+                  + [outcome.error(outcome.INTERRUPTED, f"{stopped} before the item began", state=s, item=i)
+                     for i, s in not_started])
+        if stopped is not None and not any(e["code"] == outcome.INTERRUPTED for e in errors):  # stopped as the last item ended
+            errors.append(outcome.error(outcome.INTERRUPTED, f"{stopped} after its items ended"))
+        record = outcome.current()
+        # What the set left undone for want of RIFE — never a failure, never silent.
+        warnings = ([f"{r['item']}: jump frame not repaired — {r['loop']['jump_repair']['why']}" for r in results if r.get("ok") and "jump_repair" in r["loop"]]
+                    + [f"cycle-align:{st}: not aligned — {a['why']}" for st, a in aligned.items() if a.get("reason") == "rife-not-installed"])
+        if warnings:
+            warnings.append(f"install RIFE with `{rife_mod.install_command()}` (docs/loop-repair.md)")
+        # What the set left for someone to count — never a failure, never silent.
+        warnings += [f"cycle-align:{st}: not aligned — {a['why']}; count them, then `sprite-gen video-cycle-align --cycles <loop>=<k>` "
+                     f"(the loops under `suspects` in {a['report']}, docs/loop-repair.md section 4)"
+                     for st, a in aligned.items() if a.get("reason") == "cycle-suspects"]
+        warnings += [f"cycle-align:{st}: {line}" for st, a in aligned.items() for line in a.get("warnings", [])]
+        warnings += [f"{r['item']}: {r['frames']['decontam_warning']}" for r in results
+                     if r.get("ok") and "decontam_warning" in r.get("frames", {})]
+        warnings += [f"cycle-align:{st}: --align-foot {item}={foot} not applied ({a.get('why') or a.get('error') or 'the item failed'})"
+                     for st, a in aligned.items() for item, foot in a.get("feet_unused", {}).items()]
+        # A start still `gen` asked about instead of drawing (codex cannot run, and the choice is to ask): the set ends
+        # with that question, the way to answer it named as this verb's own flag, once every other item has ended.
+        asked = next((codex_unavailable_question(r["asked"]["cause"], r["asked"]["reason"], flag="--still-provider")
+                      for r in results if r.get("asked")), None)
+        payload = {"kind": "sprite-gen-video-set-report", "root": str(root), "states": states, "facing": facing, "facing_fix": facing_fix, "directions": list(bases), **({"handed": [vars(h) for h in handed]} if handed else {}), **({"body_plan": [vars(b) for b in body_plan]} if body_plan else {}), **({"play": play} if play else {}), **({"motion": motion} if motion else {}), "body_height": body_height, "ok": sum(1 for r in results if r.get("ok")), "failed": failed, "warnings": warnings, **({"asked": asked} if asked else {}), "all_ok": not errors, "errors": errors, "provider_submitted": any(r.get("provider_submitted") for r in results) or bool(record and record.requests), **({"interrupted": str(stopped)} if stopped is not None else {}), "items": results, "cycle_align": aligned}
+        atomic_write_text(root / "set.report.json", json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+        print(table)
+        if stopped is not None:
+            raise outcome.Stop(f"video-set: {stopped}; see {root / 'set.report.json'}",
+                               outcome.exit_code(outcome.INTERRUPTED, stopped), outcome=outcome.INTERRUPTED)
+        if asked:
+            raise ask_codex_unavailable(asked)
+        return payload
 
 
 def _parse_bases(values: list[str]) -> dict[str, Path]:
@@ -1350,8 +1374,7 @@ def run(**kwargs: object) -> int:
     with outcome.recording("video-set") as record:
         try:
             payload = _run_set(kwargs)
-        except outcome.Interrupted as exc:  # stopped outside the items' loop: no set report to write
-            stop_children()
+        except outcome.Interrupted as exc:  # stopped before the first item began: no set report to write
             raise outcome.Stop(f"video-set: {exc}", outcome.exit_code(outcome.INTERRUPTED, exc)) from exc
         except SystemExit as exc:
             if isinstance(exc, (outcome.Stop, CodexUnavailableAsk)) or exc.code in (0, None) or record.requests:

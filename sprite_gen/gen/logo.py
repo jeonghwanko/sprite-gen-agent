@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (machine-readable outcomes; see NOTICE).
 """`sprite-gen logo` — typography drawn by the model in a scene, then lifted out of it (docs/logo.md).
 
 Lettering asked for on its own comes out as a font with an effect on it. Asked for inside the
@@ -44,7 +45,7 @@ from sprite_gen.spec.runio import atomic_save_image, atomic_write_text, new_stag
 from sprite_gen.util.cli_kwargs import namespace_from_kwargs
 
 from . import chroma as chroma_mod
-from . import codex_provider, openai_provider, xai
+from . import codex_provider, openai_provider, outcome, xai
 from .base import QUALITIES, RESOLUTIONS, print_json
 from sprite_gen.util.console import utf8_streams
 
@@ -601,7 +602,8 @@ def run(**kwargs: object) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     utf8_streams()
-    return _run(_build_parser().parse_args(argv))
+    # A refusal with its own exit code (an --out folder that cannot be made, exit 3) prints its line too.
+    return outcome.entry(lambda: _run(_build_parser().parse_args(argv)))
 
 
 if __name__ == "__main__":

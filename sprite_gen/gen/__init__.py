@@ -742,16 +742,19 @@ def _run(args: argparse.Namespace) -> int:
                     **outcome.report_fields(record, errors=[outcome.error(code, str(exc))],
                                             exit_status=outcome.exit_code(code, exc)),
                 }
-                atomic_write_text(report_path, json.dumps(failed, ensure_ascii=False, indent=2) + "\n")
+                with outcome.deferred():  # a signal now waits for the report, then ends the run
+                    atomic_write_text(report_path, json.dumps(failed, ensure_ascii=False, indent=2) + "\n")
             ending = outcome.ended(exc, code)
             if ending is exc:
                 raise
             raise ending from exc
         payload.update(outcome.report_fields(record, errors=[]))
-    if report_path is not None:
-        atomic_write_text(report_path, json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
-        payload["report"] = str(report_path)
-    print_json(payload)
+        # Still inside the record: a SIGTERM while the report is written waits for it (`deferred`).
+        with outcome.deferred():
+            if report_path is not None:
+                atomic_write_text(report_path, json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+                payload["report"] = str(report_path)
+            print_json(payload)
     return 0
 
 

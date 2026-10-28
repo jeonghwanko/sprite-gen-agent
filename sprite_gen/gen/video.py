@@ -1073,11 +1073,14 @@ def _publish_report(args: argparse.Namespace, make: Callable[[], VideoResult], *
         except BaseException as exc:
             if isinstance(exc, SystemExit) and exc.code in (0, None):
                 raise
-            code = outcome.classify(exc, submitted=record.provider_submitted)
             request_id = record.detail.get("request_id")
+            # A request xAI took (a resume's polls among them) has reached the provider, though a poll bills nothing:
+            # what failed after that is never "before any provider request".
+            code = outcome.classify(exc, submitted=record.provider_submitted or request_id is not None)
             if code == outcome.INTERRUPTED and request_id:
-                # Stopped after xAI took the request: it may still finish and be billed, and video-resume asks for it.
-                extra = {"request_id": request_id,
+                # Stopped after xAI took the request: it may still finish and be billed. video-resume asks for it;
+                # running the command again would buy a second clip, so it is not retryable.
+                extra = {"request_id": request_id, "retryable": False,
                          "resume": f"sprite-gen video-resume --request-id {request_id} --out {args.out}"}
             else:
                 extra = {}
@@ -1089,16 +1092,19 @@ def _publish_report(args: argparse.Namespace, make: Callable[[], VideoResult], *
                 body = (exc.to_dict() if isinstance(exc, GenerationUnfinished)
                         else {"kind": "sprite-gen-video-report", "verb": verb, "out": str(Path(args.out).expanduser().resolve()),
                               **({"request_id": request_id} if request_id else {})})
-                atomic_write_text(report_path, json.dumps({**body, **fields}, ensure_ascii=False, indent=2) + "\n")
+                with outcome.deferred():  # a signal now waits for the report, then ends the run
+                    atomic_write_text(report_path, json.dumps({**body, **fields}, ensure_ascii=False, indent=2) + "\n")
             ending = outcome.ended(exc, code)
             if ending is exc:
                 raise
             raise ending from exc
-    payload = {**result.to_dict(), **outcome.report_fields(record, errors=[])}
-    if report_path is not None:
-        atomic_write_text(report_path, json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
-        payload["report"] = str(report_path)
-    print_json(payload)
+        payload = {**result.to_dict(), **outcome.report_fields(record, errors=[])}
+        # Still inside the record: a SIGTERM while the report is written waits for it (`deferred`).
+        with outcome.deferred():
+            if report_path is not None:
+                atomic_write_text(report_path, json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+                payload["report"] = str(report_path)
+            print_json(payload)
     return 0
 
 
