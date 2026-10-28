@@ -175,16 +175,16 @@ without changing anything:
 | `output-path` | false | The folder of `--out`, `--white-check` or `--report` could not be made. This is checked before any request. |
 | `provider-asks` | false | A default codex cannot run, and the choice is to ask (exit 75, [above](#when-codex-cannot-run--ask-or-what-you-chose)). |
 | `provider-auth` | false | The provider refused the credential (HTTP 401/403). |
-| `provider-refused` | false | The provider's content policy refused the request (`CONTENT_POLICY`). Change the request. |
+| `provider-refused` | false | The provider refused the request itself: its content policy (`CONTENT_POLICY`), or another HTTP 4xx such as a parameter it does not take. Sent again unchanged, it is refused again. Change the request. |
 | `provider-usage-limit` | false | codex says its usage is used up. |
 | `provider-rate-limited` | true | HTTP 429 was still returned after sprite-gen's own waits ([below](#a-refused-request-sent-again)). |
 | `provider-timeout` | true | No answer in time (`SPRITE_GEN_GEN_TIMEOUT_SECONDS`). |
-| `provider-unavailable` | true | HTTP 5xx, or no answer that could be read. |
-| `provider-failed` | true | The provider ran and failed in another way: an exit code, or an answer with no image. |
+| `provider-unavailable` | true | The provider answered HTTP 5xx. |
+| `provider-failed` | true | The provider answered and its answer held no image: `codex exec` failed, or an image response was empty or not an image. |
 | `postprocess-failed` | true | The provider answered, but what it made failed sprite-gen's checks (no alpha, a painted checkerboard, a loop that would not cut). |
 | `generation-unfinished` | false | xAI accepted a video request that did not finish. Use `video-resume --request-id` to fetch it. Sending a new request would buy the clip twice. |
-| `outcome-unknown` | false | Whether the provider made the result cannot be told. Inspect it before you send anything again. |
-| `interrupted` | true | SIGTERM, SIGHUP or Ctrl-C stopped the run. |
+| `outcome-unknown` | false | Whether the provider took the request cannot be told: no answer could be read after it left ("the server may have accepted it"), an answer that was not JSON, a failure no other code names, or a gen-set row whose motion outcome is unproven. The request may have been billed. Inspect it before you send anything again. |
+| `interrupted` | true | SIGTERM, SIGHUP or Ctrl-C stopped the run. A video stopped after xAI took its request is `false`: the error names the `request_id` and the `resume` command. |
 | `internal-error` | false | sprite-gen itself failed. This is a bug. |
 
 Exit codes:
@@ -192,19 +192,23 @@ Exit codes:
 | Exit | Meaning |
 |---|---|
 | 0 | Done. |
-| 1 | Failed. Read `provider_submitted` in the report. |
+| 1 | Failed. Read `provider_submitted` in the report. A `video-resume` that failed after it polled exits 1, never 3, although a poll bills nothing. |
 | 2 | An argument was refused by the parser. No request was sent. |
 | **3** | **Failed before any provider request.** Nothing was generated or billed. The report says `provider_submitted: false`. For a set, this exit means the set failed and no row or item sent a request. |
-| 75 | The codex question. No request was sent for that default codex. |
+| 75 | The codex question. When codex is not signed in, nothing was sent. When codex said its usage is used up, one `codex exec` ran first, and the report says `provider_submitted: true`. |
 | 143 / 129 / 130 | Stopped by SIGTERM, SIGHUP or Ctrl-C. The report was written first. |
 
 **Stopping a run.** SIGTERM or SIGHUP stops the run, writes its report with `interrupted` and
 `provider_submitted`, and then exits with 128 plus the signal number. A `video` stopped after xAI
 took its request also writes that `request_id` and the `video-resume` command, because the clip
 may still finish and be billed. A stopped `gen-set` or `video-set` sends SIGTERM to the rows or
-items that are running, so each one writes its own report. Rows not yet begun never begin. The
-set report then says which rows or items were stopped and which never began. Windows has no
-catchable SIGTERM: `taskkill /F` and `TerminateProcess` end the process without a report.
+items that are running, so each one writes its own report. From the moment the signal lands, no
+child process starts: a row or item still preparing ends as `interrupted` with
+`provider_submitted: false`, and a `video-set` clip waiting for its start gap stops waiting. The
+set report is written however the stop lands, also during `video-set`'s cycle alignment, and says
+which rows or items were stopped and which never began. A report that is being written when the
+signal arrives is finished first, and then the process exits. Windows has no catchable SIGTERM:
+`taskkill /F` and `TerminateProcess` end the process without a report.
 
 **Paths are checked first.** The folders of `--out`, `--white-check` and `--report` are made before
 any provider request. If one cannot be made, the run is refused with exit 3. A `--trim-alpha`
