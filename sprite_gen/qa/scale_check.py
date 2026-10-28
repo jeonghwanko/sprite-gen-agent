@@ -9,7 +9,8 @@ wider at the same scale. The head is the part whose size does not change with th
 The reference frame's head — the top 15 % of its opaque rows, as wide as the ink in that band — is the template.
 Each frame is searched for it over scale x rotation by normalized cross-correlation on a grey composite (coarse on a
 reduced copy, then fine at full size around the coarse hit). A match at least `--min-score` good is the frame's
-size; a weaker one leaves the frame for an eye check. Heads found with a strong match then serve as more templates
+size; a weaker one (down to 0.65) counts when at least three frames of its state, each matched on its own, agree on the
+size within 3.5 %; anything else leaves the frame for an eye check. Heads found with a strong match then serve as more templates
 for the frames still unsure — a shout or shut eyes match the stance's face badly and another frame's face well.
 
 The report gives each frame its measured size and the correction that brings it to the reference (1 inside
@@ -45,6 +46,14 @@ FINE_ANGLE = (7.5, 2.5)         # +- span and step around the coarse angle
 EXTRA_SCORE = 0.88      # a head matched this well becomes a template for the frames still unsure
 EXTRA_MAX = 8
 FLAT_VARIANCE = 1.0     # grey levels squared: a window flatter than this is background
+# A weaker head match is still a size when the state's other frames, matched on their own, found the same one: frames
+# drawn apart do not lock onto a wrong place at one shared size by chance. (The feature matcher a second opinion would
+# otherwise come from is not in this runtime.)
+AGREE_SCORE = 0.65
+AGREE = 0.035           # sizes within this of the state's median agree
+AGREE_MIN = 3           # frames of the state that must agree, the weak ones among them included
+# A head template shorter than this cannot tell sizes apart finely enough: one of its pixels is more than the deadband.
+MIN_HEAD_PX = 24
 DEFAULTS = {"min_score": 0.8, "deadband": 0.02, "range": (0.7, 1.4), "angle": 45, "wide_angle": 90}
 
 
@@ -155,7 +164,7 @@ class _Image:
             return None
         t = template.astype(np.float64) - template.mean()
         norm = math.sqrt(float((t * t).sum()))
-        if norm < 1e-6:
+        if norm < math.sqrt(h * w * FLAT_VARIANCE):  # a flat template is no head: rounding left in it is not structure
             return None
         corr = np.fft.irfft2(self.spectrum * np.conj(np.fft.rfft2(t, s=self.shape)), s=self.shape)[:H - h + 1, :W - w + 1]
 
@@ -214,10 +223,12 @@ def _measure(frame: Image.Image, template: np.ndarray, *, size_range, max_angle)
     x0, y0 = max(0, int(cols[0]) - reach), max(0, int(rows[0]) - reach)
     x1, y1 = min(frame.width, int(cols[-1]) + 1 + reach), min(frame.height, int(rows[-1]) + 1 + reach)
     picture = _grey(frame.crop((x0, y0, x1, y1)))
-    coarse = min(0.5, max(0.1, COARSE_HEAD_PX / template.shape[0]))
+    # reduced only while the head stays about COARSE_HEAD_PX tall: a small head is searched at its own size
+    coarse = min(1.0, max(0.1, COARSE_HEAD_PX / template.shape[0]))
     lo, hi = size_range
     scales = np.arange(lo, hi + 1e-9, COARSE_SCALE_STEP)
-    angles = range(-max_angle, max_angle + 1, COARSE_ANGLE_STEP)
+    steps = math.ceil(max_angle / COARSE_ANGLE_STEP)
+    angles = np.linspace(-max_angle, max_angle, 2 * steps + 1) if steps else [0.0]
     _score, scale, angle, (cx, cy) = _search(_resize(picture, coarse), _resize(template, coarse), scales, angles)
     span, step = FINE_SCALE
     fine_scales = [s for s in np.arange(scale - span, scale + span + 1e-9, step) if lo - 1e-9 <= s <= hi + 1e-9]
@@ -232,12 +243,34 @@ def _measure(frame: Image.Image, template: np.ndarray, *, size_range, max_angle)
     return score, scale, angle, (cx + px + x0, cy + py + y0)
 
 
+def _at_edge(size: float, size_range) -> bool:
+    """A best size on the edge of the searched range is the edge, not a measurement: the figure may lie beyond it."""
+    lo, hi = size_range
+    return size <= lo * (1 + FINE_SCALE[1]) or size >= hi * (1 - FINE_SCALE[1])
+
+
+def _agree(frames: list[dict], *, min_score: float) -> None:
+    """Mark `agree` the frames of one state matched below `min_score` whose size the state's other matches confirm."""
+    near = [f for f in frames if f["how"] == "measured" and f["score"] >= AGREE_SCORE and not f.get("edge")]
+    if len(near) < AGREE_MIN:
+        return
+    middle = float(np.median([f["size"] for f in near]))
+    members = [f for f in near if abs(f["size"] - middle) <= AGREE * middle]
+    # a held frame repeated in a clip is one drawing, one measurement: it cannot agree with itself
+    if len({f["sha256"] for f in members}) >= AGREE_MIN:
+        for f in members:
+            if f["score"] < min_score:
+                f["how"] = "agree"
+
+
 def _decide(record: dict, *, min_score: float, deadband: float) -> dict:
     size = record.get("size")
     if record["how"] in ("reference", "empty"):
         record["correction"] = 1.0
-    elif record["score"] is not None and record["score"] >= min_score:
-        record["how"] = "head"
+    elif record.get("edge"):
+        record.update(how="check", correction=None)
+    elif record["how"] == "agree" or record["score"] is not None and record["score"] >= min_score:
+        record["how"] = "agree" if record["how"] == "agree" else "head"
         record["correction"] = 1.0 if abs(size - 1) <= deadband else round(1 / size, 4)
     else:
         record.update(how="check", correction=None)
@@ -246,7 +279,7 @@ def _decide(record: dict, *, min_score: float, deadband: float) -> dict:
 
 def check(reference, reference_frame: int, assets, *, wide_states=(), min_score=DEFAULTS["min_score"],
           deadband=DEFAULTS["deadband"], size_range=DEFAULTS["range"], angle=DEFAULTS["angle"],
-          wide_angle=DEFAULTS["wide_angle"]) -> tuple[dict, list, np.ndarray]:
+          wide_angle=DEFAULTS["wide_angle"], head_box=None) -> tuple[dict, list, np.ndarray]:
     """The report for `assets` (a list of {state: FrameSequence}) against frame `reference_frame` of `reference`,
     the matched head crops for a board and the reference head template."""
     lo, hi = (finite(v, "scale range", positive=True) for v in size_range)
@@ -257,7 +290,17 @@ def check(reference, reference_frame: int, assets, *, wide_states=(), min_score=
     if not 0 <= reference_frame < len(reference.frames):
         raise ValueError(f"reference frame {reference_frame} is outside its {len(reference.frames)} frames")
     ref_image = reference.frames[reference_frame].convert("RGBA")
-    box = _head_box(ref_image)
+    if head_box is None:
+        box = _head_box(ref_image)
+    else:
+        x, y, w, h = (int(v) for v in head_box)
+        if w < 1 or h < 1 or x < 0 or y < 0 or x + w > ref_image.width or y + h > ref_image.height:
+            raise ValueError(f"head box {list(head_box)} is not inside the {ref_image.width}x{ref_image.height} reference frame")
+        box = (x, y, x + w, y + h)
+    if min(box[2] - box[0], box[3] - box[1]) < MIN_HEAD_PX:
+        raise ValueError(f"the reference head box is {box[2] - box[0]}x{box[3] - box[1]} px; under {MIN_HEAD_PX} px one pixel is "
+                         "more than a size step. If the top of the reference's ink is not its head (a raised weapon, a speck), "
+                         "give --head-box; otherwise measure a larger source")
     template = _grey(ref_image.crop(box))
     ref_sha = frame_sha256(ref_image)
     records, crops = [], {}
@@ -277,33 +320,41 @@ def check(reference, reference_frame: int, assets, *, wide_states=(), min_score=
                         record["how"] = "empty"
                     else:
                         score, size, turn, centre = found
-                        record.update(how="measured", score=round(score, 4), size=round(size, 4), angle=round(turn, 1))
-                        crops[record["frame"]] = (frame, size, turn, centre, wide)
+                        record.update(how="measured", score=round(score, 4), size=round(size, 4), angle=round(turn, 1),
+                                      edge=_at_edge(size, (lo, hi)))
+                        crops[len(records), record["frame"]] = (frame, size, turn, centre, wide)
                 frames.append(record)
             records.append({"identity": sequence_identity(sequence), "frames": frames})
     # second pass: strongly matched heads become templates for the frames still unsure
     extra = []
-    ranked = sorted((f for r in records for f in r["frames"] if f["how"] == "measured" and f["score"] >= EXTRA_SCORE),
-                    key=lambda f: -f["score"])
-    for f in ranked[:EXTRA_MAX]:
-        crop = _head_crop(*crops[f["frame"]][:4], template.shape)
+    # crops are keyed by (asset record, frame): two sources can share a state name, never a crop
+    # a template is only as sure as --min-score asks of a frame, and never searches the frame it was cut from
+    ranked = sorted(((i, f) for i, r in enumerate(records) for f in r["frames"]
+                     if f["how"] == "measured" and f["score"] >= max(EXTRA_SCORE, min_score) and not f["edge"]),
+                    key=lambda item: -item[1]["score"])
+    for i, f in ranked[:EXTRA_MAX]:
+        crop = _head_crop(*crops[i, f["frame"]][:4], template.shape)
         if crop is not None:
-            extra.append((f["frame"], _resize(crop, template.shape[0] / crop.shape[0])))
-    for r in records:
+            extra.append(((i, f["frame"]), _resize(crop, template.shape[0] / crop.shape[0])))
+    for i, r in enumerate(records):
         for f in r["frames"]:
             if f["how"] != "measured" or f["score"] >= min_score:
                 continue
-            frame, *_rest, wide = crops[f["frame"]]
-            for name, t in extra:
+            frame, *_rest, wide = crops[i, f["frame"]]
+            for source, t in extra:
+                if source == (i, f["frame"]):
+                    continue
                 found = _measure(frame, t, size_range=(lo, hi), max_angle=wide_angle if wide else angle)
                 if found is not None and found[0] > f["score"]:
                     score, size, turn, centre = found
-                    f.update(score=round(score, 4), size=round(size, 4), angle=round(turn, 1), template=name)
-                    crops[f["frame"]] = (frame, size, turn, centre, wide)
+                    f.update(score=round(score, 4), size=round(size, 4), angle=round(turn, 1), template=source[1],
+                             edge=_at_edge(size, (lo, hi)))
+                    crops[i, f["frame"]] = (frame, size, turn, centre, wide)
     for r in records:
+        _agree(r["frames"], min_score=min_score)
         for f in r["frames"]:
             _decide(f, min_score=min_score, deadband=deadband)
-        resolved = [f["correction"] for f in r["frames"] if f["how"] == "head"]
+        resolved = [f["correction"] for f in r["frames"] if f["how"] in ("head", "agree")]
         open_frames = [f for f in r["frames"] if f["how"] == "check"]
         r["state_correction"] = None if open_frames or not resolved else round(float(np.median(resolved)), 4)
         if not resolved and not open_frames:
@@ -311,11 +362,12 @@ def check(reference, reference_frame: int, assets, *, wide_states=(), min_score=
     unresolved = [f["frame"] for r in records for f in r["frames"] if f["how"] == "check"]
     report = {"kind": REPORT_KIND, "version": 1, "method": METHOD,
               "reference": {"identity": sequence_identity(reference), "frame": reference_frame, "sha256": ref_sha,
-                            "head_box": list(box)},
+                            "head_box": list(box), "head_box_from": "given" if head_box is not None else "measured"},
               "settings": {"min_score": min_score, "deadband": deadband, "range": [lo, hi], "angle": angle,
-                           "wide_angle": wide_angle, "wide_states": sorted(wide_states)},
+                           "wide_angle": wide_angle, "wide_states": sorted(wide_states),
+                           "agree": {"score": AGREE_SCORE, "within": AGREE, "frames": AGREE_MIN}},
               "assets": records, "unresolved": unresolved, "ok": not unresolved}
-    return report, [(f["frame"], f, crops.get(f["frame"])) for r in records for f in r["frames"]], template
+    return report, [(f["frame"], f, crops.get((i, f["frame"]))) for i, r in enumerate(records) for f in r["frames"]], template
 
 
 def _head_crop(frame, size, angle, centre, shape):
@@ -345,7 +397,7 @@ def board(matches, template: np.ndarray, out: Path) -> Path:
         if head is not None:
             tile.paste(Image.fromarray(np.clip(head, 0, 255).astype(np.uint8), "L").convert("RGB"), (4, top))
         draw = ImageDraw.Draw(tile)
-        colour = {"check": (255, 96, 96), "head": (255, 255, 255)}.get(record["how"], (170, 200, 255))
+        colour = {"check": (255, 96, 96), "head": (255, 255, 255), "agree": (255, 230, 140)}.get(record["how"], (170, 200, 255))
         draw.text((4, 3), name, fill=colour)
         draw.text((4, 16), f"{record.get('size') or '?'} {record['how']}", fill=colour)
         draw.line([(0, top + th), (tile_w, top + th)], fill=(255, 200, 0), width=1)
@@ -364,23 +416,27 @@ def load_report(path: Path) -> dict:
     report = json.loads(Path(path).read_text(encoding="utf-8"))
     if not isinstance(report, dict) or report.get("kind") != REPORT_KIND or report.get("version") != 1:
         raise ValueError(f"scale_check.report must be a version 1 {REPORT_KIND} report: {Path(path).name}")
+    records, reference = report.get("assets"), report.get("reference")
+    if (not isinstance(records, list) or not isinstance(reference, dict) or not isinstance(reference.get("sha256"), str)
+            or not all(isinstance(r, dict) and isinstance(r.get("identity"), dict) and "state_correction" in r
+                       and isinstance(r.get("frames"), list) and all(isinstance(f, dict) and {"frame", "sha256", "correction"} <= set(f)
+                                                                       for f in r["frames"]) for r in records)):
+        raise ValueError(f"scale_check.report is not a complete {REPORT_KIND} report: {Path(path).name}")
     return report
 
 
 def factors(report: dict, sequence, state, *, per: str, fix: dict) -> list[float]:
     """The correction of every frame of `sequence`: a looked-at `fix` wins, else the report's measurement. Refuses a
     report that measured other pixels and a frame nobody has resolved."""
-    # source and state find the record and the frame pixels bind it; a playback override (fps, anchor) in the
-    # request changes neither what was measured nor what it means
-    identity = sequence_identity(sequence)
-    record = next((r for r in report.get("assets", []) if isinstance(r.get("identity"), dict)
-                   and (r["identity"].get("source"), r["identity"].get("state")) == (identity["source"], identity["state"])), None)
+    # The state and the frame pixels bind a record, not the path it was read from: a request and its report moved to
+    # another folder or machine still apply, and a playback override (fps, anchor) changes nothing that was measured.
+    shas = [frame_sha256(image) for image in sequence.frames]
+    named = [r for r in report.get("assets", []) if isinstance(r.get("identity"), dict) and r["identity"].get("state") == state]
+    record = next((r for r in named if [f.get("sha256") for f in r.get("frames", [])] == shas), None)
     if record is None:
-        raise ValueError(f"the scale-check report does not cover {label(state)} of this source; run scale-check on it")
+        raise ValueError(f"the scale-check report measured other pixels than {label(state)}; measure these frames again"
+                         if named else f"the scale-check report does not cover {label(state)}; measure these frames")
     frames = record["frames"]
-    if len(frames) != len(sequence.frames) or any(f["sha256"] != frame_sha256(image)
-                                                 for f, image in zip(frames, sequence.frames)):
-        raise ValueError(f"the scale-check report measured other pixels than {label(state)}; run scale-check again")
     if per == "state":
         value = fix.get(label(state), record["state_correction"])
         if value is None:
@@ -406,6 +462,13 @@ def _factor(value, name) -> float:
 
 # ---- command line -----------------------------------------------------------------------------------------------
 
+def _box(value: str) -> tuple[int, int, int, int]:
+    parts = value.split(",")
+    if len(parts) != 4:
+        raise argparse.ArgumentTypeError("X,Y,W,H")
+    return tuple(int(part) for part in parts)
+
+
 def _range(value: str) -> tuple[float, float]:
     parts = value.split(",")
     if len(parts) != 2:
@@ -425,6 +488,7 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--range", type=_range, default=DEFAULTS["range"], help="LOW,HIGH sizes searched against the reference (default 0.7,1.4)")
     parser.add_argument("--angle", type=int, default=DEFAULTS["angle"], help="head tilt searched either way, degrees (default %(default)s)")
     parser.add_argument("--wide-angle", type=int, default=DEFAULTS["wide_angle"], help="the same for --wide-state (default %(default)s)")
+    parser.add_argument("--head-box", type=_box, help="X,Y,W,H of the head in the reference frame, when the top of its ink is not the head (a raised weapon, a speck)")
     parser.add_argument("--out", type=Path, required=True, help="the report JSON")
     parser.add_argument("--board", type=Path, help="a review PNG: the reference head beside every matched head")
 
@@ -438,6 +502,8 @@ def run(**kwargs) -> int:
             states = load_asset_states(Path(source))
             if wanted:
                 states = {s: q for s, q in states.items() if s in wanted}
+                if not states:
+                    raise ValueError(f"{source} has none of the states {', '.join(sorted(wanted))}")
             assets.append(states)
         if not any(assets):
             raise ValueError("no asset state to measure: check --asset and --state")
@@ -445,7 +511,8 @@ def run(**kwargs) -> int:
             reference, int(kwargs.get("reference_frame") or 0), assets, wide_states=set(kwargs.get("wide_state") or []),
             min_score=float(kwargs.get("min_score", DEFAULTS["min_score"])),
             deadband=float(kwargs.get("deadband", DEFAULTS["deadband"])), size_range=kwargs.get("range") or DEFAULTS["range"],
-            angle=int(kwargs.get("angle", DEFAULTS["angle"])), wide_angle=int(kwargs.get("wide_angle", DEFAULTS["wide_angle"])))
+            angle=int(kwargs.get("angle", DEFAULTS["angle"])), wide_angle=int(kwargs.get("wide_angle", DEFAULTS["wide_angle"])),
+            head_box=kwargs.get("head_box"))
         if kwargs.get("board"):
             report["board"] = str(board(matches, template, Path(kwargs["board"])))
         atomic_write_text(Path(kwargs["out"]), json.dumps(report, ensure_ascii=False, indent=2) + "\n")

@@ -25,7 +25,8 @@ from sprite_gen.audio.playback import player as audio_player
 from sprite_gen.frames.ui_kit import (REPORT_KIND as UI_KIT_KIND, STRETCHES, content_rect, element_path,
                                      measure_insets)
 from sprite_gen._deps import np
-from sprite_gen.qa.scale_check import factors as scale_factors, label as scale_label, load_report as load_scale_report
+from sprite_gen.qa.scale_check import (factors as scale_factors, frame_sha256 as scale_frame_sha256, label as scale_label,
+                                       load_report as load_scale_report)
 from sprite_gen.spec.assets import finite, load_asset, load_asset_states
 from sprite_gen.spec.runio import inside_folder, same_folder
 from sprite_gen.util.resample import resize_cell
@@ -127,6 +128,32 @@ def _scaled_cell(image, size, anchor, factor, sampling, key):
     return cell
 
 
+def _display_scale(sequence, size):
+    """Displayed pixels per source pixel."""
+    return (size[0] / sequence.size[0] + size[1] / sequence.size[1]) / 2
+
+
+def _reference_scales(loaded):
+    """The display scale of each scale-check report's reference frame, found among this request's assets by its pixels.
+    A correction says how big a frame is drawn against the reference; only the reference's own display says how big that
+    is in the pack."""
+    wanted = {check[0]["reference"]["sha256"] for *_rest, check in loaded if check}
+    found = {}
+    for entry, _asset_id, sequences, _check in loaded:
+        if len(found) == len(wanted):
+            break
+        for sequence in sequences.values():
+            for image in sequence.frames:
+                sha = scale_frame_sha256(image)
+                if sha in wanted and sha not in found:
+                    found[sha] = _display_scale(sequence, _display(sequence, entry)[0])
+    for *_rest, check in loaded:
+        if check and check[0]["reference"]["sha256"] not in found:
+            raise ValueError(f"the reference frame of {check[3].name} is in no asset of this request; pack the asset it came "
+                             "from too, so the size it is drawn at is known")
+    return found
+
+
 def _scale_check(entry, base):
     """An asset's `scale_check` (docs/game-pack.md "Scale check"): the report, per frame or per state, the fixes."""
     spec = entry.get("scale_check")
@@ -146,7 +173,7 @@ def _prepare(request, base, page_size):
     entries = request.get("assets", [])
     if not isinstance(entries, list):
         raise ValueError("assets must be a list")
-    ids, animations, frames, sources = set(), {}, [], set()
+    ids, loaded = set(), []
     for entry in entries:
         if not isinstance(entry, dict):
             raise ValueError("each asset must be an object")
@@ -159,7 +186,10 @@ def _prepare(request, base, page_size):
         sequences = load_asset_states(base / entry["source"], state=entry.get("state"), fps=entry.get("fps"), anchor=entry.get("anchor"))
         if len(sequences) > 1 and "direction" in entry:
             raise ValueError("direction override requires one animation; select a source state")
-        scale_check = _scale_check(entry, base)
+        loaded.append((entry, asset_id, sequences, _scale_check(entry, base)))
+    reference_scale = _reference_scales(loaded)
+    animations, frames, sources = {}, [], set()
+    for entry, asset_id, sequences, scale_check in loaded:
         fixable = set()
         for state, sequence in sequences.items():
             key = asset_id if state is None else f"{asset_id}/{_name(state)}"
@@ -172,11 +202,17 @@ def _prepare(request, base, page_size):
             factors = [1.0] * len(sequence.frames)
             if scale_check:
                 report, per, fix, path = scale_check
+                if sampling == "nearest":
+                    raise ValueError(f"{key}: scale_check on a nearest-resampled (pixel) asset would break its pixel grid")
                 try:
                     factors = scale_factors(report, sequence, state, per=per, fix=fix)
                 except ValueError as exc:
                     raise ValueError(f"{key}: {exc}") from exc
                 fixable |= {scale_label(state)} if per == "state" else {scale_label(state, i) for i in range(len(factors))}
+                # The corrections are sizes in source pixels against the reference frame; this asset's display may scale its
+                # source pixels unlike the reference's (a strip sized by its own body_h), and that difference is part of it.
+                ratio = reference_scale[report["reference"]["sha256"]] / _display_scale(sequence, size)
+                factors = [round(f * ratio, 4) for f in factors]
                 animation["frame_scale"] = factors
                 sources.add(path)
             for index, image in enumerate(sequence.frames):

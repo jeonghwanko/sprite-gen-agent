@@ -166,11 +166,11 @@ An asset may carry `scale_check`: the report of [`sprite-gen scale-check`](scale
 }
 ```
 
-* `report`: the report path, relative to the request. It must have measured this source and state, on the same frame pixels; a report measured on other pixels is refused ("run scale-check again"), and so is a frame awaiting an eye check that `fix` does not settle.
+* `report`: the report path, relative to the request. It must have measured this state on the same frame pixels; a report measured on other pixels is refused ("measure these frames again"), and so is a frame awaiting an eye check that `fix` does not settle. The report's reference frame must be in an asset of the same request: a correction says how big a frame is against the reference, and only the reference's own `display` says how big that is in the pack.
 * `per`: `frame` (default) applies each frame's correction; `state` applies the state's median to all of its frames, which keeps a gait cycle's frames at one scale.
 * `fix`: corrections decided by eye, keyed `state/index` (or `state` with `per: "state"`; `-` for a source without states). A fix wins over the measurement. A key that names no frame of the asset is refused, and a correction must lie between 0.5 and 2.
 
-Each frame is scaled about the animation's anchor (the feet) in the same resample that sizes it for `display`, on the same cell; a frame that a correction would push out of its cell is refused ("give the source frames more margin"). A correction of 1 packs the frame exactly as without `scale_check`. The animation gains `frame_scale`, the correction of each frame in playback order.
+The applied factor is the correction times the reference's display scale over this asset's (displayed pixels per source pixel): an asset sized by its own `body_h`, say, is already part of the way there and is not corrected twice. Each frame is scaled about the animation's anchor (the feet) in the same resample that sizes it for `display`, on the same cell — a frame in the air is scaled about the ground too, so its height above it changes in proportion; a frame that a correction would push out of its cell is refused ("give the source frames more margin"). A factor of 1 packs the frame exactly as without `scale_check`. The animation gains `frame_scale`, the factor applied to each frame in playback order. A nearest-resampled (pixel art) asset is refused: a factor that is not a whole number breaks its pixel grid.
 
 A gait review bound to the packed pixels (the AI Fighter kit's `fighter:gait`) must run on the pack made with the corrections.
 

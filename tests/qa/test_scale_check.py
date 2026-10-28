@@ -75,6 +75,7 @@ def figure_rows(cell):
 def packed(tmp_path, scale_check_entry, *, name="out"):
     request = tmp_path / "game.json"
     request.write_text(json.dumps({"version": 1, "assets": [
+        {"id": "idle", "source": "idle.strip.json", "display": {"height": CANVAS[1]}},
         {"id": "hero", "source": "walk.strip.json", "display": {"height": CANVAS[1]}, "scale_check": scale_check_entry}]}),
         encoding="utf-8")
     result = game_pack.pack(request, tmp_path / name)
@@ -140,3 +141,131 @@ def test_ncc_is_opencv_normalized_correlation():
     w = picture[y:y + 12, x:x + 15].astype(float) - picture[y:y + 12, x:x + 15].mean()
     t = template - template.mean()
     assert scores[y, x] == pytest.approx((w * t).sum() / np.sqrt((w * w).sum() * (t * t).sum()), abs=1e-6)
+
+
+def weak(frame, size, score, sha=None):
+    return {"frame": frame, "how": "measured", "size": size, "score": score, "sha256": sha or frame}
+
+
+def test_weak_matches_count_only_when_three_distinct_drawings_of_the_state_agree():
+    frames = [weak("run/0", 1.10, 0.76), weak("run/1", 1.11, 0.72), weak("run/2", 1.09, 0.70), weak("run/3", 0.93, 0.72)]
+    scale_check._agree(frames, min_score=0.8)
+    assert [f["how"] for f in frames] == ["agree", "agree", "agree", "measured"]  # the one off the shared size stays unsure
+    held = [weak("hit/0", 1.10, 0.76, "a"), weak("hit/1", 1.10, 0.76, "a"), weak("hit/2", 1.10, 0.76, "a")]
+    scale_check._agree(held, min_score=0.8)
+    assert all(f["how"] == "measured" for f in held)  # one drawing held three times is one measurement
+    noise = [weak(f"x/{i}", 1.1, 0.6) for i in range(4)]
+    scale_check._agree(noise, min_score=0.8)
+    assert all(f["how"] == "measured" for f in noise)  # below the floor nothing agrees
+
+
+def test_frames_without_a_head_do_not_agree_their_way_through(tmp_path):
+    proc, report, _walk = measure(tmp_path, hide=(0, 1, 2, 3))
+    assert proc.returncode == 1
+    assert report["unresolved"] == ["-/0", "-/1", "-/2", "-/3"]
+
+
+def test_two_sources_with_one_state_name_keep_their_own_measurements():
+    from sprite_gen.spec.assets import FrameSequence
+    noise = Image.fromarray(np.random.default_rng(3).integers(0, 255, (CANVAS[1], CANVAS[0], 4), dtype=np.uint8), "RGBA")
+    reference = FrameSequence((fighter(),), (0.1,))
+    first = FrameSequence((fighter(scale=1.1), noise), (0.1, 0.1), metadata={"state": "combo", "source": "a"})
+    second = FrameSequence((fighter(scale=1.1), fighter(scale=0.9, tilt=10)), (0.1, 0.1), metadata={"state": "combo", "source": "b"})
+    report, _matches, _template = scale_check.check(reference, 0, [{"combo": first}, {"combo": second}])
+    a, b = report["assets"]
+    assert a["frames"][1]["how"] == "check" and a["frames"][1]["correction"] is None  # not the other source's head
+    assert b["frames"][1]["how"] == "head" and b["frames"][1]["size"] == pytest.approx(0.9, abs=0.03)
+    assert report["unresolved"] == ["combo/1"]
+
+
+def test_a_request_and_its_report_still_pack_after_the_folder_moves(tmp_path):
+    import shutil
+    first = tmp_path / "first"
+    first.mkdir()
+    _proc, _report, _walk = measure(first)
+    packed(first, {"report": "scale.json"})
+    moved = tmp_path / "moved"
+    shutil.copytree(first, moved, ignore=shutil.ignore_patterns("out"))
+    result, _cells = packed(moved, {"report": "scale.json"})
+    assert len(result["animations"]["hero"]["frame_scale"]) == len(POSES)
+
+
+def body_strip(path, frames, body_h):
+    strip(path, frames)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    path.write_text(json.dumps({**data, "body_h": body_h}), encoding="utf-8")
+    return path
+
+
+def test_a_correction_counts_the_display_scale_the_asset_already_has(tmp_path):
+    # Each strip carries its own body_h, so display.body_height already sizes each one; the head-measured correction is
+    # only what is left after that, never applied on top of it a second time.
+    top, bottom = figure_rows(fighter())
+    body_strip(tmp_path / "idle.strip.json", [fighter()], bottom - top)
+    drawn = [fighter(scale=1.15), fighter(scale=1.15, reach=0.6)]
+    big_top, big_bottom = figure_rows(drawn[0])
+    body_strip(tmp_path / "run.strip.json", drawn, big_bottom - big_top)
+    out = tmp_path / "scale.json"
+    assert scale_check.main(["--reference", str(tmp_path / "idle.strip.json"), "--asset", str(tmp_path / "run.strip.json"),
+                             "--out", str(out)]) == 0
+    request = tmp_path / "game.json"
+    request.write_text(json.dumps({"version": 1, "assets": [
+        {"id": "idle", "source": "idle.strip.json", "display": {"body_height": 200}},
+        {"id": "run", "source": "run.strip.json", "display": {"body_height": 200}, "scale_check": {"report": "scale.json"}}]}),
+        encoding="utf-8")
+    result = game_pack.pack(request, tmp_path / "out")
+    page = Image.open(tmp_path / "out" / result["textures"][0]["image"])
+    def rows(key):
+        r = result["textures"][0]["frames"][key]["frame"]
+        return figure_rows(page.crop((r["x"], r["y"], r["x"] + r["w"], r["y"] + r["h"])))
+    idle_top, idle_bottom = rows(result["animations"]["idle"]["frames"][0])
+    run_top, run_bottom = rows(result["animations"]["run"]["frames"][0])
+    assert run_bottom - run_top == pytest.approx(idle_bottom - idle_top, rel=0.03)
+    assert result["animations"]["run"]["frame_scale"][0] == pytest.approx(1.0, abs=0.03)
+
+
+def test_game_pack_needs_the_reference_frame_in_the_pack(tmp_path):
+    _proc, _report, _walk = measure(tmp_path)
+    request = tmp_path / "game.json"
+    request.write_text(json.dumps({"version": 1, "assets": [{"id": "hero", "source": "walk.strip.json",
+        "display": {"height": CANVAS[1]}, "scale_check": {"report": "scale.json"}}]}), encoding="utf-8")
+    with pytest.raises(ValueError, match="reference frame of scale.json is in no asset"):
+        game_pack.pack(request, tmp_path / "out")
+
+
+def test_a_raised_weapon_is_not_the_head_when_the_head_box_is_given(tmp_path):
+    from sprite_gen.spec.assets import FrameSequence
+    reference = fighter()
+    staff = reference.copy()
+    staff.paste(Image.new("RGBA", (8, 60), (120, 80, 40, 255)), (150, 0))
+    sequence = FrameSequence((fighter(scale=1.12),), (0.1,), metadata={"state": "x", "source": "x"})
+    box = scale_check._head_box(reference)
+    given = (box[0], box[1], box[2] - box[0], box[3] - box[1])
+    report, _m, _t = scale_check.check(FrameSequence((staff,), (0.1,)), 0, [{"x": sequence}], head_box=given)
+    assert report["assets"][0]["frames"][0]["size"] == pytest.approx(1.12, abs=0.025)
+    assert report["reference"]["head_box_from"] == "given"
+
+
+def test_a_head_too_small_to_measure_is_refused():
+    from sprite_gen.spec.assets import FrameSequence
+    tiny = fighter().resize((60, 75), Image.Resampling.BOX)
+    with pytest.raises(ValueError, match="under 24 px"):
+        scale_check.check(FrameSequence((tiny,), (0.1,)), 0, [{"x": FrameSequence((tiny,), (0.1,))}])
+
+
+def test_a_size_on_the_edge_of_the_range_is_not_a_measurement():
+    from sprite_gen.spec.assets import FrameSequence
+    reference = FrameSequence((fighter(),), (0.1,))
+    sequence = FrameSequence((fighter(scale=1.15), fighter(scale=1.05)), (0.1, 0.1), metadata={"state": "x", "source": "x"})
+    report, _m, _t = scale_check.check(reference, 0, [{"x": sequence}], size_range=(0.8, 1.1))
+    first, second = report["assets"][0]["frames"]
+    assert first["how"] == "check" and first["edge"]  # 1.15 lies beyond 1.1: clamping it would be a wrong correction
+    assert second["how"] == "head" and second["size"] == pytest.approx(1.05, abs=0.025)
+
+
+def test_a_frame_never_settles_itself_with_its_own_head(tmp_path):
+    from sprite_gen.spec.assets import FrameSequence
+    reference = FrameSequence((fighter(),), (0.1,))
+    sequence = FrameSequence((fighter(scale=1.12), fighter(scale=0.9)), (0.1, 0.1), metadata={"state": "x", "source": "x"})
+    report, _m, _t = scale_check.check(reference, 0, [{"x": sequence}], min_score=0.999)
+    assert all(f["how"] == "check" for f in report["assets"][0]["frames"])
