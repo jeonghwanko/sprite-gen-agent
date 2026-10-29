@@ -2,6 +2,25 @@
 
 All notable public changes to `sprite-gen` are recorded here. Versions track the `version:` field in `SKILL.md` and `pyproject.toml`.
 
+## Unreleased - sprite-gen-agent (fork of 3.4.0, AI Fighter creator kit)
+
+These are the fork's additions on top of 3.4.0, first written for the AI Fighter creator kit ([NOTICE](NOTICE)). The version stays 3.4.0 until a release is cut.
+
+- **New: `gen-motion`, pose-plan GPT motion.** It makes one pose at a time from an authored pose plan with joint guides, reviewed anchors, a fixed canvas and a cycle review. It also measures each pose's body and foot geometry and adds `gait-guide` and the gait-motion bridge with per-stance contact coverage. See [pose-motion](docs/pose-motion.md) and [gait-guide](docs/gait-guide.md).
+  - An attempt whose `gen` sent nothing is `not-started`. `gen-motion` exits 3, and the next `--frame` runs again in the same attempt folder; this does not count as one of the two attempts.
+  - `workflow` offers it as the `pose-plan` motion method (experimental, codex).
+- **New: `scale-check`.** It measures each frame's figure size against a reference frame by its head and leaves an eye check where the match is not sure. `game-pack` applies the corrections about the anchor (`scale_check`, `frame_scale`). See [scale-check](docs/scale-check.md) and [game-pack](docs/game-pack.md).
+- **New: machine-readable generation outcomes.** Reports from `gen`, `video*`, `gen-set` and `video-set` carry the following:
+  - `ok`;
+  - `errors` with stable codes and `retryable`;
+  - `provider_submitted`, which is written on success, on failure, on the codex question and on SIGTERM.
+  - Exit 3 means nothing was sent. A stopped set starts no further child. `version --json` and `doctor --json` are new. See [gen](docs/gen.md#outcome--what-failed-whether-to-retry-whether-a-provider-was-charged).
+- **Changed: the codex provider finds a session's rollout through codex's state DB.** It falls back to scanning when there is no DB, and it reports the model codex actually ran. Verified on codex 0.156.1 to 0.165.0.
+- **New: `inspect-motion` stance reasons carry stable codes** (`reason_codes`, `STANCE_REASONS`); the texts are unchanged.
+- **New: `sprite_gen.api`.** It lists the names a program embedding sprite-gen may import, kept stable. See [api](docs/api.md).
+- **New: opt-in Decisions screening and reproducible audio pack hashes.** Shipped audio player line endings are canonical.
+- **Fixed: every text file is read and written as UTF-8**, whatever the platform's locale. On a cp949 Windows, a report holding an em dash had stopped `video-set`.
+
 ## v3.4.0 - Loop part pop retakes, cycle alignment walk beat repair and broken beats, ghost limb faults, and same foot, filmed jump, and seam jump retakes
 
 **Upgrading from 3.3.0: A walk or run loop in `video-loop` is cut to the same bytes, whether a part pops in it or not, and `video-cycle-align` changes only alignment outputs whose beat broke or where a made frame has a limb seen through under `--between auto`.** For `video-loop`, every walk and run report gains `part_pop` and `retake`; `--unfixed refuse` also refuses a loop recorded `retake` reason `part-pop`, whatever `--repair`; no flags are added, no frames are made and no other cut is taken. `video-cycle-align` now reads ghost bands in windows of the body to catch limbs seen through, keeps frames given way on the beat under `--between auto` by making them again at clean fractions or widening jolts across neighbouring frames, changing only alignment outputs whose beat broke (a jolt of 0.25 beat or more) or where a made frame has a limb seen through (ghost window over 1.4 %); loops keeping the beat, loops with no frame given way, and `video-loop` (and `video-set`) keep their bytes for strip PNG, GIF, WebP, and cycle frames, while gaining `beat`, `ghost_window`, (on back and back_diagonal views) `same_foot`, and `retake` reasons (`broken-beat`, `same-foot`) in alignment `strip.json` and reports; every aligned loop's `strip.json` and report gain `screen`, and loops whose cut jumps gain the reasons `filmed-jump` and `seam-jump`, frames unchanged; and `clip_feet` in `video-loop`'s `strip.json` and reports for every walk or run cut; all outputs from `video-loop-compare` and `video-loop-repair` are unchanged, bytes included, and `--same-foot` defaults to `warn` so nothing is refused by default.
