@@ -267,7 +267,7 @@ The one exception is a `gen` that says it sent nothing: it exited 3, or its repo
 too, and the next `--frame` runs again in the same attempt folder. It is not one of the two
 attempts, and it needs no `--retry` or `--reconcile`, which are refused for it.
 In the guided workflow this method is `--motion-method pose-plan` (experimental, codex).
-The motion runner also disables the lower-level `gen` timeout retry. It retains
+The motion runner keeps the lower-level `gen` timeout retry off, as `gen` now does by default. It retains
 the Codex session for recovery; the report captures observed image-tool call
 source in `extra.image_tool_trace`. Requested `refs` alone are not proof of the
 final tool arguments. Missing trace stays unavailable; never infer successful

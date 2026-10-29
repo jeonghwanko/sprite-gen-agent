@@ -178,12 +178,12 @@ without changing anything:
 | `provider-refused` | false | The provider refused the request itself: its content policy (`CONTENT_POLICY`), or another HTTP 4xx such as a parameter it does not take. Sent again unchanged, it is refused again. Change the request. |
 | `provider-usage-limit` | false | codex says its usage is used up. |
 | `provider-rate-limited` | true | HTTP 429 was still returned after sprite-gen's own waits ([below](#a-refused-request-sent-again)). |
-| `provider-timeout` | true | No answer in time (`SPRITE_GEN_GEN_TIMEOUT_SECONDS`). |
+| `provider-timeout` | false | codex gave no answer in time (`SPRITE_GEN_GEN_TIMEOUT_SECONDS`) and was stopped after its request left. It may have made, and been charged for, an image. Inspect its session before you send anything again. `gen` calls once more after a timeout only when `--timeout-retry` asks it to. |
 | `provider-unavailable` | true | The provider answered HTTP 5xx. |
-| `provider-failed` | true | The provider answered and its answer held no image: `codex exec` failed, or an image response was empty or not an image. |
+| `provider-failed` | true | The provider answered and its answer held no image: `codex exec` failed, an image response was empty or not an image, or a set's child said it finished and its image or clip is not there. |
 | `postprocess-failed` | true | The provider answered, but what it made failed sprite-gen's checks (no alpha, a painted checkerboard, a loop that would not cut). |
 | `generation-unfinished` | false | xAI accepted a video request that did not finish. Use `video-resume --request-id` to fetch it. Sending a new request would buy the clip twice. |
-| `outcome-unknown` | false | Whether the provider took the request cannot be told: no answer could be read after it left ("the server may have accepted it"), an answer that was not JSON, a failure no other code names, or a gen-set row whose motion outcome is unproven. The request may have been billed. Inspect it before you send anything again. |
+| `outcome-unknown` | false | Whether the provider took the request cannot be told: no answer could be read after it left ("the server may have accepted it"), an answer that was not JSON, a failure no other code names, a gen-set row whose motion outcome is unproven, or a `gen-set` row or `video-set` item whose child ended after its request may have left without writing a coded report (killed, out of memory, a crash). The request may have been billed. Inspect it before you send anything again. |
 | `interrupted` | true | SIGTERM, SIGHUP or Ctrl-C stopped the run. A video stopped after xAI took its request is `false`: the error names the `request_id` and the `resume` command. |
 | `internal-error` | false | sprite-gen itself failed. This is a bug. |
 

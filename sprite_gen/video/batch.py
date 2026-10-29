@@ -748,6 +748,7 @@ def run_item(
     item_dir.mkdir(parents=True, exist_ok=True)
     result: dict[str, Any] = {"item": item, "direction": direction, "state": state, "play": mode, "dir": str(item_dir)}
     sent: list[bool] = []
+    unseen: list[bool] = []  # per child: it failed after its request may have left
     failed_reports: list[Path] = []
     clip_made = False
 
@@ -760,6 +761,7 @@ def run_item(
             if rc != 0 and report is not None:
                 failed_reports.append(report)
             sent.append(outcome.child_submitted(rc, report))
+            unseen.append(rc != 0 and sent[-1])
             if sent[-1]:
                 outcome.submitted("child")
             return rc
@@ -919,8 +921,10 @@ def run_item(
         if said:  # the child `video` or `gen` said why it failed
             result["errors"] = [{**e, "state": state, "item": item} for e in said]
         else:
-            code = (outcome.POSTPROCESS_FAILED if clip_made else outcome.PROVIDER_FAILED if any(sent)
-                    else outcome.PREFLIGHT)
+            # A child that failed after its request may have left and wrote no coded report (killed, out of memory, a
+            # crash) is not a provider that answered without a clip: what the provider did with it is unknown.
+            code = (outcome.POSTPROCESS_FAILED if clip_made else outcome.OUTCOME_UNKNOWN if any(unseen)
+                    else outcome.PROVIDER_FAILED if any(sent) else outcome.PREFLIGHT)
             result["errors"] = [outcome.error(code, str(exc), state=state, item=item)]
     result["provider_submitted"] = any(sent)  # a reused clip and still sent nothing
     return result

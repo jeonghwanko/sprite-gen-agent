@@ -87,6 +87,23 @@ def test_changed_facing_cannot_reuse_an_opposite_prompt_clip(tmp_path, offline, 
     assert not result["ok"] and "--force" in result["error"]
 
 
+@pytest.mark.parametrize("rc,code,retryable", [
+    (-9, "outcome-unknown", False),  # killed or crashed after its request may have left, no report
+    (0, "provider-failed", True),  # it said it finished and its clip is not there: the provider did answer
+    (3, "preflight", False),  # it said nothing was sent
+])
+def test_a_clip_child_that_left_no_coded_report_is_named_by_what_its_exit_says(tmp_path, offline, rc, code, retryable):
+    def video(image, prompt, out, report, **kw):
+        return rc
+
+    result = batch.run_item(item="front-attack", direction="front", state="attack", base=FIXTURE, root=tmp_path,
+                            character=None, duration=3, resolution="720p", key="green", force=False, gap=0,
+                            video_runner=video)
+    assert not result["ok"]
+    assert [(e["code"], e["retryable"]) for e in result["errors"]] == [(code, retryable)]
+    assert result["provider_submitted"] is (rc != 3)
+
+
 def test_cli_threads_facing_into_set(monkeypatch, tmp_path):
     seen = []
     def run_set(**kw):

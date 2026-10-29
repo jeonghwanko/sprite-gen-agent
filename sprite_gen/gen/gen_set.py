@@ -149,6 +149,7 @@ def run_item(
     result: dict[str, Any] = {"state": state, "out": str(out), "report": str(report), "motion_quality": "unverified"}
     started = time.monotonic()
     child_errors: list[dict[str, Any]] = []
+    rc: int | None = None  # the row's `gen` exit, once it ran
     try:
         if not prompt_file.is_file():
             raise SystemExit(f"prompt missing: {prompt_file} — run `sprite-gen prepare` first")
@@ -231,13 +232,13 @@ def run_item(
         result["error"] = str(exc)
         result["errors"] = _row_errors(state, str(exc), asked="asked" in result,
                                        submitted=bool(result.get("provider_submitted")),
-                                       child=child_errors)
+                                       answered=rc == 0, child=child_errors)
         result["elapsed_seconds"] = round(time.monotonic() - started, 1)
     result.setdefault("provider_submitted", False)  # a reused or refused row sent nothing
     return result
 
 
-def _row_errors(state: str, message: str, *, asked: bool, submitted: bool,
+def _row_errors(state: str, message: str, *, asked: bool, submitted: bool, answered: bool,
                 child: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """A failed row's `errors`: its `gen`'s own when it wrote them (named for the row), else read off what
     gen-set refused or saw."""
@@ -249,8 +250,12 @@ def _row_errors(state: str, message: str, *, asked: bool, submitted: bool,
         code = outcome.OUTCOME_UNKNOWN
     elif not submitted:
         code = outcome.PREFLIGHT  # a missing prompt or guide, a motion row kept as it is: nothing was sent
+    elif answered:
+        code = outcome.PROVIDER_FAILED  # gen said it finished and its row is not there: the provider did answer
     else:
-        code = outcome.PROVIDER_FAILED  # gen ended without saying why, or said it finished and its row is not there
+        # gen ended after its request may have left and wrote no coded report (killed, out of memory, a crash):
+        # nothing says what the provider did with it, so it is not sent again unseen.
+        code = outcome.OUTCOME_UNKNOWN
     return [outcome.error(code, message, state=state)]
 
 

@@ -141,15 +141,37 @@ def test_a_failed_request_is_named_by_a_stable_code(tmp_path, monkeypatch, said,
     assert [(e["code"], e["retryable"]) for e in written["errors"]] == [(code, retryable)]
 
 
-def test_a_timeout_is_retryable(tmp_path, monkeypatch):
+def test_a_timeout_is_not_sent_again_and_not_retryable(tmp_path, monkeypatch):
+    """codex was killed after its request left: it may have made and been charged for an image."""
     def stall(_request):
         raise gen_base.GenTimeoutError("codex-gen: no completion within 1s")
 
-    _use(monkeypatch, _Provider(stall))
+    provider = _use(monkeypatch, _Provider(stall))
     report = tmp_path / "r.json"
     with pytest.raises(SystemExit):
-        gen.run(provider="codex", prompt="a cup", out=tmp_path / "o.png", report=report, no_timeout_retry=True)
-    assert [(e["code"], e["retryable"]) for e in _report(report)["errors"]] == [("provider-timeout", True)]
+        gen.run(provider="codex", prompt="a cup", out=tmp_path / "o.png", report=report)
+    assert provider.calls == 1
+    written = _report(report)
+    assert written["provider_submitted"] is True
+    assert [(e["code"], e["retryable"]) for e in written["errors"]] == [("provider-timeout", False)]
+
+
+def test_a_timeout_is_called_again_only_when_asked(tmp_path, monkeypatch):
+    stalls = []
+
+    def stall_once(_request):
+        if not stalls:
+            stalls.append(1)
+            raise gen_base.GenTimeoutError("codex-gen: no completion within 1s")
+
+    provider = _use(monkeypatch, _Provider(stall_once))
+    assert gen.run(provider="codex", prompt="a cup", out=tmp_path / "o.png", timeout_retry=True) == 0
+    assert provider.calls == 2
+    stalls.clear()
+    provider.calls = 0
+    with pytest.raises(SystemExit):  # the old opt-out still parses, and is the default
+        gen.run(provider="codex", prompt="a cup", out=tmp_path / "p.png", no_timeout_retry=True)
+    assert provider.calls == 1
 
 
 def test_sigterm_during_the_request_writes_the_report_and_exits_143(tmp_path, monkeypatch):
@@ -261,6 +283,37 @@ def test_a_set_with_a_row_that_failed_after_its_call_exits_1_and_names_the_row(t
     assert not (run_dir / "reports" / "gen-set" / "walk.json").exists()
 
 
+def test_a_row_whose_gen_ended_without_a_report_after_its_call_is_an_unknown_outcome(tmp_path, monkeypatch):
+    """Killed, out of memory or crashed: it may have been charged, so it is never marked to run again unseen."""
+    run_dir = _prepared(tmp_path)
+
+    def killed(prompt_file, out, refs, report, *, provider, model, log) -> int:
+        log.write_text("fake gen\n", encoding="utf-8")
+        if out.stem == "walk":
+            return -9
+        return _row_runner()(prompt_file, out, refs, report, provider=provider, model=model, log=log)
+
+    monkeypatch.setattr(gen_set, "run_gen_cli", killed)
+    assert gen_set.run(run_dir=run_dir, provider="codex", concurrency=2) == 1
+    payload = _report(run_dir / "reports" / "gen-set" / "set.report.json")
+    assert payload["provider_submitted"] is True
+    assert [(e["state"], e["code"], e["retryable"]) for e in payload["errors"]] == [("walk", "outcome-unknown", False)]
+
+
+def test_a_row_whose_gen_said_it_finished_without_its_image_is_a_provider_failure(tmp_path, monkeypatch):
+    run_dir = _prepared(tmp_path)
+
+    def no_image(prompt_file, out, refs, report, *, provider, model, log) -> int:
+        log.write_text("fake gen\n", encoding="utf-8")
+        report.write_text(json.dumps({"provider": "codex", "ok": True, "errors": [], "provider_submitted": True}))
+        return 0
+
+    monkeypatch.setattr(gen_set, "run_gen_cli", no_image)
+    assert gen_set.run(run_dir=run_dir, provider="codex", states="walk", concurrency=1) == 1
+    payload = _report(run_dir / "reports" / "gen-set" / "set.report.json")
+    assert [(e["state"], e["code"], e["retryable"]) for e in payload["errors"]] == [("walk", "provider-failed", True)]
+
+
 def test_a_finished_set_says_all_ok(tmp_path, monkeypatch):
     run_dir = _prepared(tmp_path)
     monkeypatch.setattr(gen_set, "run_gen_cli", _row_runner())
@@ -361,7 +414,7 @@ def test_version_json_names_the_outcome_contract(capsys):
     info = json.loads(capsys.readouterr().out)
     assert info["kind"] == "sprite-gen-version" and info["name"] == "sprite-gen" and info["version"]
     assert info["outcome"]["exit_codes"]["not_started"] == 3 and info["outcome"]["exit_codes"]["sigterm"] == 143
-    assert info["outcome"]["codes"]["provider-timeout"] == {"retryable": True}
+    assert info["outcome"]["codes"]["provider-timeout"] == {"retryable": False}
     assert set(info["outcome"]["codes"]) == set(outcome.CODES)
 
 

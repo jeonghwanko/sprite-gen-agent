@@ -19,6 +19,10 @@ These are the fork's additions on top of 3.4.0, first written for the AI Fighter
 - **New: `inspect-motion` stance reasons carry stable codes** (`reason_codes`, `STANCE_REASONS`); the texts are unchanged.
 - **New: `sprite_gen.api`.** It lists the names a program embedding sprite-gen may import, kept stable. See [api](docs/api.md).
 - **New: opt-in Decisions screening and reproducible audio pack hashes.** Shipped audio player line endings are canonical.
+- **Behavior change: a request that may have been charged is never sent again unasked.**
+  - `gen` no longer calls codex a second time after a timeout. The timed-out `codex exec` was stopped after its request left, so it may already have made and been charged for an image. `--timeout-retry` asks for the second call; `--no-timeout-retry` still parses and is now the default.
+  - `provider-timeout` is `retryable: false`.
+  - A `gen-set` row or `video-set` item whose child ended after its request may have left, without a coded report (killed, out of memory, a crash), is `outcome-unknown` instead of the retryable `provider-failed`. A child that said it finished and left no image or clip stays `provider-failed`.
 - **Fixed: every text file is read and written as UTF-8**, whatever the platform's locale. On a cp949 Windows, a report holding an em dash had stopped `video-set`.
 
 ## v3.4.0 - Loop part pop retakes, cycle alignment walk beat repair and broken beats, ghost limb faults, and same foot, filmed jump, and seam jump retakes
