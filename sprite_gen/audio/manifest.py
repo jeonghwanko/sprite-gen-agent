@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """Validated playback metadata and file digests for a sound bundle."""
 from __future__ import annotations
 
@@ -25,7 +26,7 @@ def _number(value, name, low, high):
 
 def load(path, max_bytes):
     path = Path(path).resolve()
-    value = json.loads(path.read_text())
+    value = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict) or value.get('kind') != 'sprite-gen-sound' or value.get('version') != playback.VERSION:
         raise ValueError('audio source must be a sprite-gen-sound version 2 manifest')
     if value.get('audio_kind') not in ('sfx', 'bgm') or type(value.get('loop')) is not bool:
