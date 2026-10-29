@@ -1110,8 +1110,10 @@ def _gather_stopped(futures: dict[Any, str], done: set[Any], results: list[dict[
         r = fut.result()
         done.add(fut)
         if not r.get("ok"):
-            r["errors"] = [e if e.get("code") in (outcome.GENERATION_UNFINISHED, outcome.INTERRUPTED)
-                           else {**e, "code": outcome.INTERRUPTED, "retryable": outcome.CODES[outcome.INTERRUPTED]}
+            # An item whose request left is not filmed again by a retry of the stop: it may be billed (`outcome.error`).
+            sent = r.get("provider_submitted") is not False
+            r["errors"] = [e if e.get("code") == outcome.GENERATION_UNFINISHED
+                           else {**e, "code": outcome.INTERRUPTED, "retryable": outcome.CODES[outcome.INTERRUPTED] and not sent}
                            for e in r.get("errors") or []]
         results.append(r)
 
@@ -1211,6 +1213,7 @@ def run_set(
         return prepare_side
 
     stopped: outcome.Interrupted | None = None
+    crashed: Exception | None = None
     futures: dict[Any, str] = {}
     done: set[Any] = set()
     aligned: dict[str, Any] = {}
@@ -1234,6 +1237,9 @@ def run_set(
     except outcome.Interrupted as exc:
         stopped, aligned = exc, {}
         _gather_stopped(futures, done, results, exc)
+    except Exception as exc:  # a bug in sprite-gen: the items that ran are still reported, then it is raised (`crashed`)
+        crashed, aligned = exc, {}
+        outcome.gather_finished(futures, done, results)
     results.sort(key=lambda r: [i for i, *_ in items].index(r["item"]))
     not_started = [(i, s) for i, _d, s, *_ in items if i not in {r["item"] for r in results}]
     with outcome.deferred():  # the set report is written whole; a stop meanwhile ends the run after it
@@ -1244,7 +1250,8 @@ def run_set(
                   + [outcome.error(outcome.POSTPROCESS_FAILED, f"cycle-align: {a.get('error')}", state=st)
                      for st, a in aligned.items() if not a.get("ok")]
                   + [outcome.error(outcome.INTERRUPTED, f"{stopped} before the item began", state=s, item=i)
-                     for i, s in not_started])
+                     for i, s in not_started if crashed is None]
+                  + ([outcome.crash_error(crashed, "video-set")] if crashed is not None else []))
         if stopped is not None and not any(e["code"] == outcome.INTERRUPTED for e in errors):  # stopped as the last item ended
             errors.append(outcome.error(outcome.INTERRUPTED, f"{stopped} after its items ended"))
         record = outcome.current()
@@ -1266,9 +1273,11 @@ def run_set(
         # with that question, the way to answer it named as this verb's own flag, once every other item has ended.
         asked = next((codex_unavailable_question(r["asked"]["cause"], r["asked"]["reason"], flag="--still-provider")
                       for r in results if r.get("asked")), None)
-        payload = {"kind": "sprite-gen-video-set-report", "root": str(root), "states": states, "facing": facing, "facing_fix": facing_fix, "directions": list(bases), **({"handed": [vars(h) for h in handed]} if handed else {}), **({"body_plan": [vars(b) for b in body_plan]} if body_plan else {}), **({"play": play} if play else {}), **({"motion": motion} if motion else {}), "body_height": body_height, "ok": sum(1 for r in results if r.get("ok")), "failed": failed, "warnings": warnings, **({"asked": asked} if asked else {}), "all_ok": not errors, "errors": errors, "provider_submitted": any(r.get("provider_submitted") for r in results) or bool(record and record.requests), **({"interrupted": str(stopped)} if stopped is not None else {}), "items": results, "cycle_align": aligned}
+        payload = {"kind": "sprite-gen-video-set-report", "root": str(root), "states": states, "facing": facing, "facing_fix": facing_fix, "directions": list(bases), **({"handed": [vars(h) for h in handed]} if handed else {}), **({"body_plan": [vars(b) for b in body_plan]} if body_plan else {}), **({"play": play} if play else {}), **({"motion": motion} if motion else {}), "body_height": body_height, "ok": sum(1 for r in results if r.get("ok")), "failed": failed, "warnings": warnings, **({"asked": asked} if asked else {}), "all_ok": not errors, "errors": errors, "provider_submitted": any(r.get("provider_submitted") for r in results) or bool(record and record.requests) or crashed is not None, **({"interrupted": str(stopped)} if stopped is not None else {}), "items": results, "cycle_align": aligned}
         atomic_write_text(root / "set.report.json", json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
         print(table)
+        if crashed is not None:
+            raise crashed
         if stopped is not None:
             raise outcome.Stop(f"video-set: {stopped}; see {root / 'set.report.json'}",
                                outcome.exit_code(outcome.INTERRUPTED, stopped), outcome=outcome.INTERRUPTED)
