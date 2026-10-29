@@ -126,6 +126,23 @@ def test_stance_reversal_is_rejected():
     report = analyze_motion(sequence((24, 22, 20, 22, 24)), contacts="0:4", foot_box=FOOT_BOX)
     assert report["stride_px_per_second"] is None
     assert "horizontal reversal" in report["contact_candidates"][0]["reasons"]
+    assert "horizontal-reversal" in report["contact_candidates"][0]["reason_codes"]
+
+
+@pytest.mark.parametrize("make", [lambda: sequence(two_feet=True), lambda: sequence((24, 22, 20, 22, 24)), lambda: sequence()],
+                         ids=["two-feet", "reversal", "verified"])
+def test_each_stance_reason_has_its_code_in_the_same_order(make):
+    """A caller decides on `reason_codes` (the AI Fighter kit lets some through): the texts stay as they were, for a person."""
+    from sprite_gen.qa.motion import STANCE_REASONS
+
+    for candidate in analyze_motion(make(), contacts="0:4", foot_box=FOOT_BOX)["contact_candidates"]:
+        assert candidate["reasons"] == [STANCE_REASONS[code] for code in candidate["reason_codes"]]
+        assert len(set(candidate["reason_codes"])) == len(candidate["reason_codes"])
+
+
+def test_the_two_feet_codes_are_the_lobe_and_shape_codes():
+    candidate = analyze_motion(sequence(two_feet=True), contacts="0:4", foot_box=FOOT_BOX)["contact_candidates"][0]
+    assert {"foot-roi-disconnected", "foot-contact-lobes"} & set(candidate["reason_codes"])
 
 
 def test_contact_spans_do_not_bridge_swing_and_conflicting_signs_stay_unknown():
