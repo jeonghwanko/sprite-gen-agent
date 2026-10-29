@@ -46,6 +46,10 @@ MATCH_BAD = 40.0  # mean |RGBA| difference (0..255) over which a block matched n
 # A broken beat: a jolt of a quarter of a beat or more. An aligned frame may move the legs into it or out of it by up to a
 # quarter of a beat more than its own time would, so two even gaps beside it stay within 5 to 3 of each other.
 BEAT_JOLT = 0.25
+# A loop made of source frames only (`source_plan`): its start phase is searched this many source frames apart, and each
+# frame takes one of this many source frames on each side of its own time.
+PLAN_PHASE_STEP = 0.02
+PLAN_REACH = 2
 SCREEN_ROWS = 0.30  # the screen's leg rows: the lowest 30 % of the box (a strip cell's lowest 125 of its 406 px)
 # A jump: a step of the cut's frames that, over the box or on its leg rows, changes SCREEN_JUMP times as much of the
 # picture as the cycle's typical step or more (its upper quartile: a drawing change, whether the cut is drawn on ones,
@@ -162,10 +166,11 @@ def screen_record(steps: dict[str, list[float]]) -> dict[str, Any]:
 
 
 class Beat:
-    """A cycle's leg path (`leg_path` steps) and the beat of a loop of `length` frames resampled from it."""
+    """A cycle's leg path (`leg_path` steps) and the beat of a loop of `length` frames resampled from it, frame k's own
+    time `phase` + k n / L (`source_plan` moves the phase; resample's is 0)."""
 
-    def __init__(self, steps: list[float], length: int):
-        self.n, self.length = len(steps), length
+    def __init__(self, steps: list[float], length: int, *, phase: float = 0.0):
+        self.n, self.length, self.phase = len(steps), length, phase
         self.M = np.concatenate([[0.0], np.cumsum(steps)])
         self.P = float(self.M[-1])
         self.beat = self.P / length
@@ -186,8 +191,8 @@ class Beat:
         return self.at(cell["source"]) if "source" in cell else self.at(cell["between"][0] + cell["t"])
 
     def own(self, k: int) -> float:
-        """Where frame k of the loop would stand at its own time, k n / L."""
-        return self.at(k * self.n / self.length)
+        """Where frame k of the loop would stand at its own time, phase + k n / L."""
+        return self.at(self.phase + k * self.n / self.length)
 
     def off(self, k: int, place: float) -> float:
         """How far `place` is from frame k's own, in beats, the shorter way round the path."""
@@ -203,12 +208,57 @@ class Beat:
         return [self.jolt(k, places[k], places[(k + 1) % L]) for k in range(L)]
 
 
-def beat_record(beat: Beat | None, places: list[float] | None, *, why: str | None = None) -> dict[str, Any]:
+def source_plan(steps: list[float], length: int, *, avoid: set[int] | frozenset[int] = frozenset()) -> dict[str, Any] | None:
+    """The loop of `length` frames made of source frames only (no frame made between two) whose largest jolt is least
+    (docs/loop-repair.md section 4): for each start phase of the cycle, PLAN_PHASE_STEP of a source frame apart, frame k
+    takes one of the PLAN_REACH source frames each side of its own time (`Beat` with that phase), chosen round the ring
+    to keep the largest jolt least; source frames in `avoid` (filmed ghosts) are passed over where another is in reach.
+    A cut whose length is near the loop's (13 or 14 frames to 12) leaves one or two steps skipped wherever it is
+    resampled; placed where the legs move least, the skip jolts least (2026-10-29: Grok runs, 0.75 at phase 0 on the
+    nearer frames, 0.28 placed). `sources`, `phase`, `jolt`, or None where the legs do not move on the band."""
+    base = Beat(steps, length)
+    if not base.reads:
+        return None
+    n, L, P = base.n, length, base.P
+    best: tuple[float, float, list[int]] | None = None
+    for phase in np.arange(0.0, n / L, PLAN_PHASE_STEP):
+        beat = Beat(steps, L, phase=float(phase))
+        expected = [(beat.own((k + 1) % L) - beat.own(k)) % P for k in range(L)]
+        options = []
+        for k in range(L):
+            first = int(np.floor(beat.phase + k * n / L))
+            reach = [(first + d) % n for d in range(1 - PLAN_REACH, PLAN_REACH + 1)]
+            options.append([i for i in reach if i not in avoid] or reach)
+
+        def jolt(k: int, a: int, b: int) -> float:
+            return abs(((float(beat.M[b] - beat.M[a]) % P) - expected[k]) / beat.beat)
+
+        for start in options[0]:
+            # the least largest jolt to each choice of frame k, and the frames chosen to it
+            costs: dict[int, tuple[float, list[int]]] = {start: (0.0, [start])}
+            for k in range(L - 1):
+                ahead: dict[int, tuple[float, list[int]]] = {}
+                for a, (cost, path) in costs.items():
+                    for b in options[k + 1]:
+                        c = max(cost, jolt(k, a, b))
+                        if b not in ahead or c < ahead[b][0]:
+                            ahead[b] = (c, path + [b])
+                costs = ahead
+            for a, (cost, path) in costs.items():
+                c = max(cost, jolt(L - 1, a, start))
+                if best is None or c < best[0] - 1e-9:
+                    best = (c, float(phase), path)
+    assert best is not None
+    return {"sources": best[2], "phase": round(best[1], 4), "jolt": round(best[0], 3)}
+
+
+def beat_record(beat: Beat | None, places: list[float] | None, *, why: str | None = None,
+                limit: float = BEAT_JOLT) -> dict[str, Any]:
     """The beat of a loop whose frames stand at `places` (frames of the cycle before it is turned): its largest jolt and
-    the gap it is in (`gap`: frames k and k + 1), every gap at BEAT_JOLT or more (`over`), the limit and the band.
-    `places` None: every frame at its own time, every jolt 0 (`path` on-time, nothing read). `beat` None or a path of
-    no length: not read (`path` unread, `why`)."""
-    record: dict[str, Any] = {"limit": BEAT_JOLT, "band": LEG_PATH_BAND}
+    the gap it is in (`gap`: frames k and k + 1), every gap at `limit` (BEAT_JOLT unless the caller names another) or more
+    (`over`), the limit and the band. `places` None: every frame at its own time, every jolt 0 (`path` on-time, nothing
+    read). `beat` None or a path of no length: not read (`path` unread, `why`)."""
+    record: dict[str, Any] = {"limit": limit, "band": LEG_PATH_BAND}
     if places is None:
         return {"jolt": 0.0, "gap": None, "over": [], **record, "path": "on-time"}
     if beat is None or not beat.reads:
@@ -218,7 +268,7 @@ def beat_record(beat: Beat | None, places: list[float] | None, *, why: str | Non
     L = len(jolts)
     worst = max(range(L), key=lambda k: abs(jolts[k]))
     return {"jolt": round(abs(jolts[worst]), 3), "gap": [worst, (worst + 1) % L],
-            "over": [[k, (k + 1) % L] for k in range(L) if abs(jolts[k]) >= BEAT_JOLT], **record, "path": "read",
+            "over": [[k, (k + 1) % L] for k in range(L) if abs(jolts[k]) >= limit], **record, "path": "read",
             "jolts": [round(j, 3) for j in jolts]}
 
 

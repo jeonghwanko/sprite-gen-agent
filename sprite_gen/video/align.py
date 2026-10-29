@@ -178,6 +178,8 @@ KEPT_NO_CLEAN, KEPT_RIFE = "no-clean-frame", "between-rife"
 # alternates, `recut-or-retake` where the cuts were not read or the beat breaks (another cut may land its times on frames
 # RIFE can make; a new take may not need them made).
 RETAKE_BEAT_REASON, RETAKE_FEET_REASON = "broken-beat", "same-foot"
+# The largest jolt a caller may take as unbroken (`--beat-limit`): a gap of 1.4 beats into a frame and 0.6 out of it.
+BEAT_LIMIT_MAX = 0.4
 # A cut whose own frames jump (`screen`, cadence.screen_record: one step changes the picture far more than its drawing
 # changes do): between two frames inside the cut, the reason `filmed-jump` — the take jumps from one pose to another
 # there, and neither another fraction nor another place on the beat removes it, but a cut of the same clip from a cycle
@@ -263,7 +265,7 @@ def retake(drawings: dict[str, Any], facts: dict[str, Any], ghost_at: list[dict[
         reasons.append(RETAKE_BEAT_REASON)
         record["broken_beat"] = {"jolt": beat["jolt"], "gap": beat["gap"], "over": beat["over"],
                                  "named": sorted(k for run in beat.get("named", []) for k in run), "remedy": "recut-or-retake"}
-        limits["beat_jolt"] = cadence_mod.BEAT_JOLT
+        limits["beat_jolt"] = beat.get("limit", cadence_mod.BEAT_JOLT)
     if feet and feet.get("read") and feet.get("twice"):
         clip = feet.get("clip") or {}
         remedy = ("retake" if clip.get("cuts") and clip.get("same_foot") and not clip.get("alternate")
@@ -327,7 +329,8 @@ def measure_made(frame: Image.Image, a: Image.Image, b: Image.Image, t: float, *
 
 
 def resample(frames: list[Image.Image], length: int, interpolate: rife_mod.Interpolate | None,
-             *, between: str = DEFAULT_BETWEEN, cells_from: list[dict[str, Any]] | None = None) -> tuple[list[Image.Image], dict[str, Any]]:
+             *, between: str = DEFAULT_BETWEEN, cells_from: list[dict[str, Any]] | None = None,
+             beat_limit: float = cadence_mod.BEAT_JOLT) -> tuple[list[Image.Image], dict[str, Any]]:
     """`frames` as one cycle, resampled to `length` frames at times k·L/length (offset 0). Where `cells_from` is a
     list, where each frame came from is appended to it: `{"source": i}` for a frame of `frames` taken as it is, `{"between":
     [i, j], "t": t}` for one made between two.
@@ -353,7 +356,10 @@ def resample(frames: list[Image.Image], length: int, interpolate: rife_mod.Inter
 
     The loop's beat is read on the legs (`beat`, `_keep_the_beat`: how far each frame standing off its own time jolts
     the legs into it and out of it); under auto, where the nearer source frames taken break it, a frame given way is
-    made again at another fraction of its pair where that keeps it (`smear` method retimed)."""
+    made again at another fraction of its pair where that keeps it (`smear` method retimed). A loop whose beat still breaks
+    is made of source frames only where that jolts less (`cadence.source_plan`, `beat` `source_plan`; every made frame's
+    `smear` method source-plan). The beat's `over` and `limit` are read at `beat_limit` (`--beat-limit`): BEAT_JOLT
+    unless the caller takes a larger jolt for its gait; what is made again and spread keeps to BEAT_JOLT either way."""
     count = len(frames)
     if length < 2:
         raise ValueError(f"cycle length {length} is too short")
@@ -428,6 +434,24 @@ def resample(frames: list[Image.Image], length: int, interpolate: rife_mod.Inter
             entry["method"], entry["moved"] = "moved", moved
         elif "measure" in m:
             smears.append({"at": k, "method": "moved", **m["measure"], "faults": [], "look": looks(m["measure"]), "moved": moved})
+    if between == "auto" and beat.get("path") == "read" and beat["over"]:
+        steps = cadence_mod.leg_path(frames)
+        plan = cadence_mod.source_plan(steps, length, avoid=set(ghosts))
+        if plan is not None and plan["jolt"] < beat["jolt"]:
+            out[:] = [frames[i] for i in plan["sources"]]
+            provenance[:] = [{"source": i} for i in plan["sources"]]
+            made_at.clear()
+            nearest_at[:] = [k for k, c in enumerate(provenance) if not _at_its_time(c, k, count, length)]
+            ghost_at[:] = [{"at": k, "source": i, "ghost": ghosts[i], "taken": i, "kept": KEPT_NO_CLEAN}
+                           for k, i in enumerate(plan["sources"]) if i in ghosts]
+            for entry in smears:
+                entry["method"] = "source-plan"
+            on = cadence_mod.Beat(steps, length, phase=plan["phase"])
+            beat = {**cadence_mod.beat_record(on, [on.at(i) for i in plan["sources"]]), "retimed": [], "named": [], "widened": [],
+                    "source_plan": {"phase": plan["phase"], "from_jolt": beat["jolt"]}}
+    if beat.get("path") == "read" and beat.get("jolts") and beat_limit != cadence_mod.BEAT_JOLT:
+        beat["over"] = [[k, (k + 1) % length] for k, j in enumerate(beat["jolts"]) if abs(j) >= beat_limit]
+        beat["limit"] = beat_limit
     smears.sort(key=lambda e: e["at"])
     made_at.sort()
     if cells_from is not None:
@@ -1111,6 +1135,10 @@ def _fault_line(name: str, m: dict[str, Any], ghost: dict[str, Any] | None = Non
         return (f"{name}: frame {m['at']}: RIFE's frame at {r['from_t']:g} " + "; ".join(what)
                 + f", so the same two source frames were made again at {r['t']:g}, the legs {r['off']:+.2f} of a beat off its "
                   f"time, where the nearer source frame broke the beat (--between auto)")
+    if m["method"] == "source-plan":
+        return (f"{name}: frame {m['at']}: RIFE's frame " + "; ".join(what)
+                + ", and the beat broke where the nearer source frame was taken, so the loop is made of source frames only, "
+                  "each where it jolts least (--between auto)")
     if m["method"] == "nearest":
         return (f"{name}: frame {m['at']}: RIFE's frame " + "; ".join(what)
                 + (", so the nearer source frame was taken there (--between auto)" if ghost is None else
@@ -1180,7 +1208,7 @@ def align_set(loop_dirs: list[Path], *, length: int | None = None, interpolate: 
               report_path: Path | None = None, between: str = DEFAULT_BETWEEN, views: list[str | None] | None = None,
               start_foot: str = START_FOOT, multi_cycle: str = "fail", cycles: dict[str, int] | None = None,
               state: str | None = None, feet: dict[str, str] | None = None, between_cache: Path | None = None,
-              same_foot: str = "warn") -> dict[str, Any]:
+              same_foot: str = "warn", beat_limit: float = cadence_mod.BEAT_JOLT) -> dict[str, Any]:
     """Resample every loop of a set to one length (default: the median), turned to a foot strike —
     where `views` (one per loop: `front`, `back`, `side@right`, `front_diagonal@left`, …) lets it,
     the strike of the same own foot (`start_foot`) in every loop.
@@ -1208,7 +1236,8 @@ def align_set(loop_dirs: list[Path], *, length: int | None = None, interpolate: 
     Every loop's beat is recorded (`beat`, `cadence.beat_record`, as frames of the turned loop), and a loop seen from the
     back or a back diagonal is read for the same foot stepping twice in a row (`same_foot`, `cadence.same_foot`, with the
     clip's every cut as `video-loop` read them, `clip`): `same_foot` warn names such a loop in the warnings, refuse stops
-    the set before anything is rewritten (the report written with `applied` false, `refused` same-foot)."""
+    the set before anything is rewritten (the report written with `applied` false, `refused` same-foot). A beat is broken,
+    a reason to cut or film again, at `beat_limit` (`--beat-limit`) or more."""
     if len(loop_dirs) < 1:
         raise SystemExit("video-cycle-align: at least one --loop-dir")
     if between_cache is not None and interpolate is not None and not callable(getattr(interpolate, "identity", None)):
@@ -1222,6 +1251,8 @@ def align_set(loop_dirs: list[Path], *, length: int | None = None, interpolate: 
         raise SystemExit(f"video-cycle-align: --multi-cycle must be one of {', '.join(MULTI_CYCLE)}, not {multi_cycle!r}")
     if same_foot not in SAME_FOOT:
         raise SystemExit(f"video-cycle-align: --same-foot must be one of {', '.join(SAME_FOOT)}, not {same_foot!r}")
+    if not cadence_mod.BEAT_JOLT <= beat_limit <= BEAT_LIMIT_MAX:
+        raise SystemExit(f"video-cycle-align: --beat-limit must be from {cadence_mod.BEAT_JOLT} to {BEAT_LIMIT_MAX}, not {beat_limit!r}")
     for v in views or []:
         if v is not None:
             name, _, facing = v.partition("@")
@@ -1287,6 +1318,7 @@ def align_set(loop_dirs: list[Path], *, length: int | None = None, interpolate: 
                  *([f"--between {between}"] if between != DEFAULT_BETWEEN else []), *([f"--start-foot {start_foot}"] if start_foot != START_FOOT else []),
                  *([f"--state {state}"] if state else []), *([f"--report {report_path}"] if report_path is not None else []),
                  *([f"--between-cache {cache.directory}"] if cache is not None else []),
+                 *([f"--beat-limit {beat_limit:g}"] if beat_limit != cadence_mod.BEAT_JOLT else []),
                  *(f"--cycles {loops[i][0]}={k}" for i, k in sorted(given.items())),
                  *(f"--foot {loops[i][0]}={f}" for i, f in sorted(told.items())),
                  *(f"--cycles {e['dir']}=<{'|'.join(s.rpartition('=')[2] for s in e['settle'])}>" for e in stopped)]
@@ -1329,7 +1361,7 @@ def align_set(loop_dirs: list[Path], *, length: int | None = None, interpolate: 
                  else list(range(len(frames))))
         provenance: list[dict[str, Any]] = []
         try:
-            out, facts = resample(frames, target, lazy, between=between, cells_from=provenance)
+            out, facts = resample(frames, target, lazy, between=between, cells_from=provenance, beat_limit=beat_limit)
             strike = foot_strike(out, view=view, foot=start_foot, given=told.get(i))
         except rife_mod.RifeNotInstalled as exc:
             raise rife_mod.RifeNotInstalled(f"{d}: {exc}") from exc
@@ -1472,6 +1504,11 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
                              "measured in the report (`smear`); under auto and nearest a filmed ghost frame gives way to a clean source "
                              "frame beside it (`ghost_at`); a made frame kept that cross-fades two drawings inside its outline is kept "
                              "and named to look at (`look`)")
+    parser.add_argument("--beat-limit", type=float, default=cadence_mod.BEAT_JOLT, metavar="JOLT",
+                        help=f"the jolt (of a beat) at which a loop's beat is broken, a reason to cut or film it again (`broken-beat`): "
+                             f"{cadence_mod.BEAT_JOLT} by default, up to {BEAT_LIMIT_MAX}. Frames made again or spread keep to "
+                             f"{cadence_mod.BEAT_JOLT} either way; a larger limit takes a loop that still jolts that much (a run "
+                             "whose cut is a frame or two longer than the loop, made of source frames only)")
     parser.add_argument("--same-foot", choices=SAME_FOOT, default="warn",
                         help="a loop seen from the back or a back diagonal that steps the same foot twice in a row (the picture's "
                              "halves of its feet lifting, read round the loop): warn (default) names it in the report (`same_foot`, "
@@ -1519,7 +1556,8 @@ def run(**kwargs: object) -> int:
                            multi_cycle=str(kwargs.get("multi_cycle") or "fail"), cycles=parse_cycles(list(kwargs.get("cycles") or [])),  # type: ignore[arg-type]
                            state=kwargs.get("state"), feet=parse_feet(list(kwargs.get("foot") or [])),  # type: ignore[arg-type]
                            between_cache=kwargs.get("between_cache"),  # type: ignore[arg-type]
-                           same_foot=str(kwargs.get("same_foot") or "warn"))
+                           same_foot=str(kwargs.get("same_foot") or "warn"),
+                           beat_limit=float(kwargs.get("beat_limit") or cadence_mod.BEAT_JOLT))  # type: ignore[arg-type]
     except rife_mod.RifeNotInstalled as exc:
         # Asked for by name, so no RIFE is a failure, never a quiet skip (video-set skips with a warning).
         raise SystemExit(f"video-cycle-align: {exc}; frames between source frames are made by RIFE — "
