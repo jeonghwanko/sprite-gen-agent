@@ -46,7 +46,7 @@ PROVIDER_AUTH = "provider-auth"  # the provider refused the credential (HTTP 401
 PROVIDER_REFUSED = "provider-refused"  # the request itself was refused: content policy, or another HTTP 4xx
 PROVIDER_USAGE_LIMIT = "provider-usage-limit"  # codex said its usage is used up
 PROVIDER_RATE_LIMITED = "provider-rate-limited"  # HTTP 429 still, after the waits sprite-gen makes itself
-PROVIDER_TIMEOUT = "provider-timeout"  # the provider gave no answer in time (gen-timeout)
+PROVIDER_TIMEOUT = "provider-timeout"  # codex gave no answer in time and was killed after its request left: may be billed
 PROVIDER_UNAVAILABLE = "provider-unavailable"  # the provider answered HTTP 5xx
 PROVIDER_FAILED = "provider-failed"  # the provider answered with no image in it (codex exec failed, an empty answer)
 GENERATION_UNFINISHED = "generation-unfinished"  # a video request was accepted and did not finish: video-resume it
@@ -63,7 +63,7 @@ CODES: dict[str, bool] = {
     PROVIDER_REFUSED: False,
     PROVIDER_USAGE_LIMIT: False,
     PROVIDER_RATE_LIMITED: True,
-    PROVIDER_TIMEOUT: True,
+    PROVIDER_TIMEOUT: False,
     PROVIDER_UNAVAILABLE: True,
     PROVIDER_FAILED: True,
     GENERATION_UNFINISHED: False,

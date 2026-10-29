@@ -450,7 +450,7 @@ def generate_image(
     white_check: Path | None = None,
     trim_alpha: bool = False,
     keep_session: bool = False,
-    timeout_retry: bool = True,
+    timeout_retry: bool = False,
     workdir: Path | None = None,
     decontam: str = "off",
     layout_guide: bool | str | None = False,
@@ -547,8 +547,9 @@ def generate_image(
             resolution=resolution,
             native_alpha=strategy == TRANSPARENCY_NATIVE,
         )
-        # 타임아웃 1회 관측 가능 재시도 — 산발 provider 스톨은 같은 호출 재시도로
-        # 대부분 통과한다 (회귀 2026-07-19). 두 번째도 스톨이면 fail loud.
+        # Opt-in (--timeout-retry): a timed-out codex exec was killed after its request left, so it may have made and
+        # been charged for an image; calling again unasked could pay twice. Sporadic stalls do mostly pass on a
+        # second call (2026-07-19), so a caller that accepts that cost can still ask for one.
         try:
             run = backend.generate(request, workdir)
         except GenTimeoutError as exc:
@@ -782,7 +783,7 @@ def _generate(args: argparse.Namespace) -> dict[str, Any]:
         white_check=args.white_check,
         trim_alpha=bool(getattr(args, "trim_alpha", False)),
         keep_session=args.keep_session,
-        timeout_retry=not getattr(args, "no_timeout_retry", False),
+        timeout_retry=bool(getattr(args, "timeout_retry", False)),
         workdir=args.workdir,
         decontam=str(getattr(args, "decontam", None) or "off"),
         layout_guide=getattr(args, "layout_guide", None),
@@ -901,7 +902,10 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument("--white-check", type=Path, help="write a white-composite check image")
     parser.add_argument("--keep-session", action="store_true", help="codex: do not delete the rollout jsonl")
-    parser.add_argument("--no-timeout-retry", action="store_true", help="preserve unknown generation outcomes; never call the provider again after a timeout")
+    parser.add_argument("--timeout-retry", action="store_true",
+                        help="codex: call once more after a timeout; the timed-out call may already have been charged")
+    parser.add_argument("--no-timeout-retry", action="store_true",
+                        help="the default since the timeout retry became opt-in; kept so existing callers still parse")
     parser.add_argument("--report", type=Path, help="write the generation report JSON here")
     parser.add_argument("--workdir", type=Path, help="reuse this working dir instead of a temp dir")
 
