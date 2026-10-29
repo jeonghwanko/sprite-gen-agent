@@ -1626,7 +1626,7 @@ sprite-gen video-cycle-align --loop-dir set/front-walk/loop --loop-dir set/side-
     measures); it counts in `made_at` when made.
   - 4. A run no choice keeps stays on the nearer source frame and is named: `beat.named` lists it
     (frames of the turned loop).
-  - 5. A loop whose beat still breaks is made of source frames only where that jolts less
+  - 5. A loop whose beat still breaks and whose cut is longer than the loop is made of source frames only where that jolts less
     (`cadence.source_plan`). The loop's start is searched `PLAN_PHASE_STEP` = 0.02 of a source frame
     apart over one loop frame's span, and frame k takes one of the `PLAN_REACH` = 2 source frames on
     each side of its own time (the start plus k n / L), chosen round the ring so the largest jolt is
