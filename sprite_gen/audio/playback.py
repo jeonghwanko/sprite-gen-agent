@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (portable player bytes across checkout line endings; see NOTICE).
 """Frame contract and the browser player shipped with every audio pack."""
 from __future__ import annotations
 
@@ -33,6 +34,8 @@ def duration(value):
 
 
 def player():
-    data = PLAYER_PATH.read_bytes()
+    # Ship canonical source bytes even when Git checks this text out as CRLF on
+    # Windows. The manifest hashes the bytes we actually ship, not the checkout.
+    data = PLAYER_PATH.read_bytes().replace(b'\r\n', b'\n')
     return {'path': PLAYER_PATH.name, 'sha256': hashlib.sha256(data).hexdigest(),
             'export': 'createAudioSource'}, data

@@ -53,5 +53,7 @@ sprite-gen-agent adds pose-plan GPT motion, the gait-guide utility, the
 gait-motion bridge, optional advisory Decisions screening and offline evaluation,
 per-stance contact coverage and the scale check (head-
 measured figure size, applied by game-pack), first written for the AI Fighter
-creator kit. Source files it changed carry a "Modified for
+creator kit. It also canonicalizes the shipped audio player line endings so
+pack hashes remain portable across Windows and Unix checkouts.
+Source files it changed carry a "Modified for
 sprite-gen-agent" line; the files it added carry their own SPDX header.
