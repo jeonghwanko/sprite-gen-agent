@@ -6,7 +6,7 @@ This document owns the conversation flow. `sprite_gen/workflow/catalog.py` owns 
 
 | Request | Choices |
 |---|---|
-| Make sprites | Base image provider (GPT or Grok), then motion method (Grok video or GPT image rows) |
+| Make sprites | Base image provider (GPT or Grok), then motion method (Grok video, GPT image rows, or GPT pose guide — experimental, `gen-motion`) |
 | Make an image | Image provider (GPT or Grok) |
 
 Inspect the request before asking anything. Pass choices already named by the user as explicit arguments. An existing sprite base image skips base-image generation and its provider question. An image request may still attach references to `gen --ref` for editing.
