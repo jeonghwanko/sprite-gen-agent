@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (cross-platform audio helper contract; see NOTICE).
 import hashlib
 import json
 
@@ -8,6 +9,25 @@ from PIL import Image
 
 from sprite_gen.audio import processing
 from sprite_gen.compose.game_pack import pack
+
+
+def test_audio_pack_bytes_do_not_depend_on_player_checkout_line_endings(tmp_path, monkeypatch):
+    from sprite_gen.audio import playback
+    source = playback.PLAYER_PATH.read_bytes().replace(b'\r\n', b'\n')
+    helper_dir = tmp_path / 'helper'
+    helper_dir.mkdir()
+    helper = helper_dir / playback.PLAYER_PATH.name
+    monkeypatch.setattr(playback, 'PLAYER_PATH', helper)
+    path, _ = with_sound(tmp_path)
+    helper.write_bytes(source)
+    pack(path, tmp_path / 'lf')
+    helper.write_bytes(source.replace(b'\n', b'\r\n'))
+    result = pack(path, tmp_path / 'crlf')
+    assert {p.name: p.read_bytes() for p in (tmp_path / 'lf').iterdir()} == {
+        p.name: p.read_bytes() for p in (tmp_path / 'crlf').iterdir()}
+    shipped = (tmp_path / 'crlf' / helper.name).read_bytes()
+    assert shipped == source
+    assert result['audio']['hit']['player']['sha256'] == hashlib.sha256(shipped).hexdigest()
 
 
 def inputs(tmp_path):

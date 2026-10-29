@@ -17,6 +17,7 @@ from sprite_gen.compose import game_pack
 from sprite_gen.qa import correction_loop, inspect, preview, score, motion
 from sprite_gen.qa import handed as handed_check
 from sprite_gen.qa import scale_check
+from sprite_gen.qa import decisions, decision_eval
 from sprite_gen.frames import cutout, extract, slice_sheet, ui_kit, unpack_atlas
 from sprite_gen.gen import gen_motion, gait_motion, gen_set, logo, pixel_draw, prepare, video
 from sprite_gen.video import batch as video_batch
@@ -468,6 +469,8 @@ COMMANDS: dict[str, tuple[str, Callable[[argparse.ArgumentParser], None], Callab
         breathe.add_arguments,
         breathe.run,
     ),
+    "review-decisions": ("Prepare or explicitly run advisory OpenAI Decisions screening; never approves or generates.", decisions.add_arguments, decisions.run),
+    "evaluate-decisions": ("Compare saved Decisions reports with independent labels and a baseline, offline.", decision_eval.add_arguments, decision_eval.run),
     "inspect": ("Inspect sprite rows for frame-count, identity, and motion defects.", _add_inspect, inspect.run),
     "score": ("Score a sprite inspect report and emit correction hints.", _add_score, score.run),
     "correction-loop": (

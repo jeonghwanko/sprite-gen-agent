@@ -128,6 +128,7 @@ grouping is derived from `sprite_gen/_modules.py`, the one taxonomy table.
 
 | Doc | Owns |
 |---|---|
+| [decisions-review.md](decisions-review.md) | Optional advisory Decisions screening of input/pose/sequence evidence and offline comparison with independent labels |
 | [qa-motion.md](qa-motion.md) | Motion Continuity of an image row (Pipeline A) — the blocking judgement of a row as motion |
 | [scale-check.md](scale-check.md) | `scale-check`: each frame's figure size against a reference frame, measured by the head; the report and the eye check |
 

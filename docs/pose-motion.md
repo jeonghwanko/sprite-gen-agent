@@ -2,6 +2,10 @@
 
 > Owns: authored biped pose coordinates, one-pose generation, reference roles and review-bound export.
 
+Optional [Decisions screening](decisions-review.md) reads this run before generation,
+after an explicitly selected pose, or at sequence review. It writes separate advisory
+reports and never fills the approval or geometry files below.
+
 `gen-motion` provides an opt-in alternative when a GPT sprite row repeats one
 support leg or changes anatomy. The usual `prepare` / `gen-set` row path remains
 available. This path sends **one complete pose per image call**, with the original
