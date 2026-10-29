@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Modified for sprite-gen-agent (machine-readable outcomes; see NOTICE).
+# Modified for sprite-gen-agent (machine-readable outcomes; reports read as UTF-8; see NOTICE).
 """`sprite-gen video-set` — directions x states, end to end, one report per item.
 
 For every (direction, state) pair: canvas -> `sprite-gen video` -> frames -> loop.
@@ -859,11 +859,11 @@ def run_item(
                 raise SystemExit(f"clip generation failed after {len(attempts)} attempt(s); see {item_dir / 'clip.log'}")
             clip_made = True
             try:  # what the clip ran on, as its report says: the Grok login or XAI_API_KEY
-                result["clip"]["auth_source"] = json.loads(clip_report.read_text()).get("auth_source")
+                result["clip"]["auth_source"] = json.loads(clip_report.read_text(encoding="utf-8")).get("auth_source")
             except (OSError, ValueError):
                 result["clip"]["auth_source"] = None
             if end_digest is not None:
-                generated = json.loads(clip_report.read_text())
+                generated = json.loads(clip_report.read_text(encoding="utf-8"))
                 generated["end_frame_sha256"] = end_digest
                 atomic_write_text(clip_report, json.dumps(generated, ensure_ascii=False, indent=2) + "\n")
 

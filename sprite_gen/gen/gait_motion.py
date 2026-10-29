@@ -92,14 +92,14 @@ def foot_masks(profile,state,settings):
     return result
 
 def verify_source(source):
-    inventory=json.loads((source/'file-hashes.json').read_text())
+    inventory=json.loads((source/'file-hashes.json').read_text(encoding="utf-8"))
     for v in inventory:
         p=(source/v['file']).resolve()
         if not p.is_relative_to(source.resolve()) or sha(p)!=v['sha256']:raise ValueError('Approved guide source changed: '+v['file'])
-    profile=gait.validate(json.loads((source/'profile.json').read_text()))
+    profile=gait.validate(json.loads((source/'profile.json').read_text(encoding="utf-8")))
     result={}
     for motion in ('walk','run'):
-        seq=json.loads((source/motion/'poses.json').read_text())['frames']
+        seq=json.loads((source/motion/'poses.json').read_text(encoding="utf-8"))['frames']
         if len(seq)!=(16 if motion=='walk' else 12):raise ValueError('AI Fighter needs16/12 continuous samples')
         for i,s in enumerate(seq):
             expected=gait.sample(profile,motion,s['time'])
@@ -120,7 +120,7 @@ def place(im,settings,canvas,nearest=True):
 def prepare_inputs(guide_dir,identity,body_reference,settings,out_dir):
     source=Path(guide_dir).resolve();out=Path(out_dir).resolve();identity=Path(identity).resolve()
     if out.exists():raise ValueError('Preserve versions: prepared output directory must not exist')
-    cfg=json.loads(Path(settings).read_text());cal=json.loads(Path(body_reference).read_text())
+    cfg=json.loads(Path(settings).read_text(encoding="utf-8"));cal=json.loads(Path(body_reference).read_text(encoding="utf-8"))
     required={'canvas','guide_scale','guide_translation','body_scale','body_translation','elevation_degrees','sample_policy','description'}
     if set(cfg)!=required or cfg['sample_policy'] not in ('preserve','clearance-safe'):raise ValueError('Explicit projection/body/sample settings required')
     for key in ('guide_scale','body_scale'):
@@ -208,7 +208,7 @@ def prepare_inputs(guide_dir,identity,body_reference,settings,out_dir):
     bundle={'status':'pass' if all(v['full_design_contract']=='pass' for v in plans.values()) else 'blocked','motions':{m:{'frames':len(sampled[m]),'status':v['full_design_contract'],'blocked_frames':v['blocked_frames']} for m,v in plans.items()},'renderer':'native final-canvas orthographic ray intersections; no320x420 mask enlargement'}
     write(out/'bundle-contract.json',bundle)
     for m in plans:
-        path=out/f'{m}-plan.json';p=json.loads(path.read_text());p['gait_reference']['sources']['bundle-contract.json']=sha(out/'bundle-contract.json');p['gait_reference']['bundle_contract']=bundle['status'];write(path,p)
+        path=out/f'{m}-plan.json';p=json.loads(path.read_text(encoding="utf-8"));p['gait_reference']['sources']['bundle-contract.json']=sha(out/'bundle-contract.json');p['gait_reference']['bundle_contract']=bundle['status'];write(path,p)
     write(out/'preparation-report.json',{'generation_calls':0,'source_guide':str(source),'source_camera':original['camera'],'derived_camera':profile['camera'],'source_resolution':[320,420],'native_render_resolution':cfg['canvas'],'bundle_contract':bundle,'assumptions':'Elevation is authored based on game camera convention, not measured from original. Preserve original right three-quarter appearance. No flat screen floor.','projection':cfg,'motions':plans,'resampling':changes})
     return {'status':'prepared_gait_inputs','generation_calls':0,'out_dir':str(out),'motions':plans}
 
