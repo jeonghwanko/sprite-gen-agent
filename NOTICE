@@ -54,5 +54,5 @@ gait-motion bridge, per-stance contact coverage and the scale check (head-
 measured figure size, applied by game-pack), first written for the AI Fighter
 creator kit, finds a codex session's rollout through codex's state DB, and makes generation outcomes
 machine-readable (report error codes, a not-started exit, the provider-submitted record kept on SIGTERM,
-`version` and `doctor`). Source files it changed carry a "Modified for
+`version` and `doctor`), and gives each motion stance reason a stable code. Source files it changed carry a "Modified for
 sprite-gen-agent" line; the files it added carry their own SPDX header.

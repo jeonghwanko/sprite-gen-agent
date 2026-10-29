@@ -108,6 +108,7 @@ Python API: `analyze_motion(sequence, *, contacts=None, foot_box=None, facing=No
 | `frames`, `bbox_stats`, `anchor_px`, `edge_contact` | Per-frame timing, measured bounds/anchor offsets and canvas edge contact |
 | `motion` | Visible and silhouette changes; no walking-direction inference |
 | `contact_candidates`, `confidence`, `warnings`, `method` | Contact measurements, reasons for rejection and the measurement assumptions |
+| `contact_candidates[].reason_codes` | Why a stance is not verified, as stable codes in the order of its `reasons` texts (`STANCE_REASONS` in `sprite_gen.qa.motion`): `foot-roi-empty`, `foot-roi-disconnected`, `foot-contact-lobes`, `foot-roi-clipped`, `foot-baseline-moves`, `foot-centroid-moves`, `foot-area-changes`, `foot-dimensions-change`, `too-few-poses`, `horizontal-reversal`, `no-net-displacement`, `velocity-inconsistent`. Decide on the codes: the texts may be reworded |
 | `stride_verified` | `true` only when the declared contact and isolated ROI pass the stance checks |
 | `stride_px_per_second` | Absolute stance speed in source pixels/second, otherwise `null` |
 | `foot_velocity_px_per_second` | Signed stance foot velocity, positive toward image right, otherwise `null` |
