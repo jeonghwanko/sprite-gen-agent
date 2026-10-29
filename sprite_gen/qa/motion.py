@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (stance reasons carry stable codes; see NOTICE).
 """Inspect motion without editing frames or inferring travel from a silhouette.
 
 Manual measurement example::
@@ -38,6 +39,23 @@ if TYPE_CHECKING:
 
 
 NEAR_SILHOUETTE_IOU = 0.98
+
+# Why a stance is not verified: a stable code (`reason_codes`) and its English text (`reasons`), in the same order. A
+# caller decides on the codes; the texts are for a person and may be reworded.
+STANCE_REASONS = {
+    "foot-roi-empty": "foot ROI is empty in a contact frame",
+    "foot-roi-disconnected": "multiple disconnected shapes in foot ROI",
+    "foot-contact-lobes": "multiple contact lobes in foot ROI",
+    "foot-roi-clipped": "foot touches horizontal ROI boundary; tracking may be clipped",
+    "foot-baseline-moves": "foot baseline moves vertically; contact may be airborne",
+    "foot-centroid-moves": "foot centroid moves vertically; stance is uncertain",
+    "foot-area-changes": "foot silhouette area changes; tracking identity is uncertain",
+    "foot-dimensions-change": "foot silhouette dimensions change; tracking identity is uncertain",
+    "too-few-poses": "need at least three distinct tracked poses for a stance measurement",
+    "horizontal-reversal": "horizontal reversal",
+    "no-net-displacement": "insufficient net horizontal displacement",
+    "velocity-inconsistent": "foot velocity is inconsistent across the declared stance",
+}
 
 
 def _number(value, name):
@@ -148,18 +166,18 @@ def _foot_sample(mask, box, index, start):
     sample = {"frame": index, "time_seconds": start, "bbox": None, "x": None, "y": None}
     reasons = []
     if bbox is None:
-        return sample, ["foot ROI is empty in a contact frame"]
+        return sample, ["foot-roi-empty"]
     left, top, right, bottom = bbox
     if _components(region) > 1:
-        reasons.append("multiple disconnected shapes in foot ROI")
+        reasons.append("foot-roi-disconnected")
     # Two legs can be connected above their soles: connectivity alone is not
     # evidence for one foot. This band is only an ambiguity veto, never a tracker.
     band = region[max(top, bottom - 2):bottom].any(axis=0)
     lobes = np.count_nonzero(band & ~np.r_[False, band[:-1]])
     if lobes > 1:
-        reasons.append("multiple contact lobes in foot ROI")
+        reasons.append("foot-contact-lobes")
     if left == 0 or right == width:
-        reasons.append("foot touches horizontal ROI boundary; tracking may be clipped")
+        reasons.append("foot-roi-clipped")
     ys, xs = np.nonzero(region)
     sample.update(
         bbox=[left + x, top + y, right + x, bottom + y],
@@ -173,31 +191,30 @@ def _stance_candidate(masks, starts, durations, span, box):
     first, last = span
     candidate = {
         "frames": span, "status": "needs-review", "confidence": 0.0,
-        "evidence": "manual contacts and foot ROI", "reasons": [], "samples": [],
+        "evidence": "manual contacts and foot ROI", "reasons": [], "reason_codes": [], "samples": [],
         "duration_seconds": sum(durations[first:last + 1]),
         "measurement_elapsed_seconds": None,
         "foot_velocity_px_per_second": None, "stride_px_per_second": None,
     }
-    reasons = candidate["reasons"]
+    reasons = []
     for index in range(first, last + 1):
         sample, defects = _foot_sample(masks[index], box, index, starts[index])
         candidate["samples"].append(sample)
         reasons.extend(defects)
     samples = candidate["samples"]
     if any(sample["bbox"] is None for sample in samples):
-        candidate["reasons"] = list(dict.fromkeys(reasons))
-        return candidate
+        return _with_reasons(candidate, reasons)
     if max(s["bbox"][3] for s in samples) - min(s["bbox"][3] for s in samples) > 1:
-        reasons.append("foot baseline moves vertically; contact may be airborne")
+        reasons.append("foot-baseline-moves")
     if max(s["y"] for s in samples) - min(s["y"] for s in samples) > 1:
-        reasons.append("foot centroid moves vertically; stance is uncertain")
+        reasons.append("foot-centroid-moves")
     areas = [s["area"] for s in samples]
     if max(areas) > min(areas) * 1.25:
-        reasons.append("foot silhouette area changes; tracking identity is uncertain")
+        reasons.append("foot-area-changes")
     for axis in (0, 1):
         extents = [s["bbox"][axis + 2] - s["bbox"][axis] for s in samples]
         if max(extents) - min(extents) > max(1, min(extents) * 0.25):
-            reasons.append("foot silhouette dimensions change; tracking identity is uncertain")
+            reasons.append("foot-dimensions-change")
             break
 
     # Identical held observations carry time, but do not become extra regression
@@ -209,7 +226,7 @@ def _stance_candidate(masks, starts, durations, span, box):
             observations.append(sample)
     candidate["pose_onset_frames"] = [s["frame"] for s in observations]
     if len(observations) < 3:
-        reasons.append("need at least three distinct tracked poses for a stance measurement")
+        reasons.append("too-few-poses")
     if len(observations) >= 2:
         times = np.array([s["time_seconds"] for s in observations])
         xs = np.array([s["x"] for s in observations])
@@ -219,20 +236,25 @@ def _stance_candidate(masks, starts, durations, span, box):
         candidate["measured_velocity_candidate_px_per_second"] = velocity
         deltas = np.diff(xs)
         if (deltas > 0.25).any() and (deltas < -0.25).any():
-            reasons.append("horizontal reversal")
+            reasons.append("horizontal-reversal")
         if abs(float(xs[-1] - xs[0])) < 1:
-            reasons.append("insufficient net horizontal displacement")
+            reasons.append("no-net-displacement")
         residuals = xs - (xs[0] + velocity * (times - times[0]))
         rmse = float(np.sqrt(np.mean(residuals ** 2)))
         candidate["fit_rmse_px"] = rmse
         if rmse > max(0.5, float(np.ptp(xs)) * 0.1):
-            reasons.append("foot velocity is inconsistent across the declared stance")
+            reasons.append("velocity-inconsistent")
         if not reasons:
             candidate.update(
                 status="verified", confidence=0.9,
                 foot_velocity_px_per_second=velocity, stride_px_per_second=abs(velocity),
             )
-    candidate["reasons"] = list(dict.fromkeys(reasons))
+    return _with_reasons(candidate, reasons)
+
+
+def _with_reasons(candidate, codes):
+    codes = list(dict.fromkeys(codes))
+    candidate.update(reason_codes=codes, reasons=[STANCE_REASONS[code] for code in codes])
     return candidate
 
 

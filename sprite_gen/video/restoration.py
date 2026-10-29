@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """Restore one damaged delivered cell from its verified source time, without RIFE.
 
 A source pixel is copied only where it does not raise the key guard over the
@@ -533,7 +534,7 @@ def _write_candidate(paths: dict[str, Path], out: Path, name: str, baseline: Loo
             shutil.copyfile(paths["meta"], stage / names["meta"])
             # The loop report stays the origin's own record; only the receipt is added.
             report = {**baseline.source_report, "restoration": receipt}
-            (stage / names["report"]).write_text(json.dumps(report, indent=2, allow_nan=False) + "\n")
+            (stage / names["report"]).write_text(json.dumps(report, indent=2, allow_nan=False) + "\n", encoding="utf-8")
             indices, delay = playback.mapping(baseline)
             selected = [frames[k] for k in indices]
             save_clean_gif(selected, stage / names["gif"], duration_ms=delay, alpha_threshold=128)

@@ -153,7 +153,11 @@ def test_no_codex_login_and_nothing_chosen_ends_with_the_question_and_draws_noth
     assert question["cause"] == "login" and question["reason"] == "codex CLI not found on PATH"
     assert question["choices"] == {"openai": "--provider openai", "grok": "--provider grok", "stop": None}
     assert "OpenAI API" in question["question"] and "Grok" in question["question"] and "stop" in question["question"]
-    assert not out.exists() and not report.exists()
+    assert not out.exists()
+    # The report says what stopped it: the question, asked before any request left.
+    asked = json.loads(report.read_text(encoding="utf-8"))
+    assert asked["ok"] is False and asked["provider_submitted"] is False and asked["exit_code"] == 75
+    assert [(e["code"], e["retryable"]) for e in asked["errors"]] == [("provider-asks", False)]
 
 
 @pytest.mark.parametrize("said", USAGE_LIMIT_SAID, ids=["0.160.1", "0.153.4", "workspace-credits", "spend-cap",
@@ -166,7 +170,11 @@ def test_codex_usage_used_up_and_nothing_chosen_asks_the_same_question(tmp_path,
     question = base.asked_codex_unavailable(capsys.readouterr().err)
     assert question == asked.value.question
     assert question["cause"] == "usage-limit" and question["reason"] == said
-    assert not (tmp_path / "out.png").exists() and not (tmp_path / "out.json").exists()
+    assert not (tmp_path / "out.png").exists()
+    # codex ran once and said its usage is used up: a request left, and the report says so.
+    asked = json.loads((tmp_path / "out.json").read_text(encoding="utf-8"))
+    assert asked["ok"] is False and asked["provider_submitted"] is True and asked["provider_requests"] == ["codex"]
+    assert asked["errors"][0]["code"] == "provider-asks"
 
 
 def test_a_codex_failure_that_is_not_its_usage_limit_is_a_failure_not_a_question(tmp_path, codex, made):

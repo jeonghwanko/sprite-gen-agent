@@ -242,7 +242,7 @@ def test_codex_empty_rollout_fails_loud_on_tool_non_exposure(tmp_path: Path, mon
     monkeypatch.setattr(
         codex_provider,
         "_resolve_rollout",
-        lambda sid, sessions_root, *, preexisting: rollout,
+        lambda sid, sessions_root, *, preexisting, indexed=None: rollout,
     )
     monkeypatch.setattr(codex_provider, "_collect_inline_results", lambda path: [])
 
@@ -288,7 +288,7 @@ def test_codex_prompt_reaches_the_child_process(tmp_path: Path, monkeypatch) -> 
     monkeypatch.setattr(
         codex_provider,
         "_resolve_rollout",
-        lambda sid, sessions_root, *, preexisting: tmp_path / "x.jsonl",
+        lambda sid, sessions_root, *, preexisting, indexed=None: tmp_path / "x.jsonl",
     )
     b64 = base64.b64encode(_png_bytes()).decode()
     monkeypatch.setattr(
@@ -483,7 +483,10 @@ def test_native_strategy_refuses_drawn_or_opaque_backgrounds(
         gen.run(**_gen_kwargs(out, report))
 
     assert not out.exists()
-    assert not report.exists()
+    # The report says the run failed, and why, in the provider's answer: no success report.
+    failed = json.loads(report.read_text(encoding="utf-8"))
+    assert failed["ok"] is False and failed["provider"] is None and failed["exit_code"] == 1
+    assert [(e["code"], e["retryable"]) for e in failed["errors"]] == [("postprocess-failed", True)]
 
 
 def test_alpha_mode_native_is_refused_on_a_chroma_provider(tmp_path: Path, monkeypatch) -> None:
@@ -881,7 +884,7 @@ def test_codex_generate_reports_transparent_background_claim(tmp_path: Path, mon
     monkeypatch.setattr(codex_provider.subprocess, "run", _fake_run)
     monkeypatch.setattr(codex_provider, "codex_login", lambda: codex_provider.CodexLogin(codex_provider.AUTH_SOURCE_LOGIN))
     monkeypatch.setattr(
-        codex_provider, "_resolve_rollout", lambda sid, root, *, preexisting: tmp_path / "x.jsonl"
+        codex_provider, "_resolve_rollout", lambda sid, root, *, preexisting, indexed=None: tmp_path / "x.jsonl"
     )
     b64 = base64.b64encode(_png_bytes()).decode()
     monkeypatch.setattr(
@@ -951,7 +954,7 @@ def test_generate_image_zero_percent_alpha_fails_without_success_report(
         )
 
     assert not out.exists()
-    assert not report.exists()
+    assert json.loads(report.read_text(encoding="utf-8"))["ok"] is False
 
 
 def test_generate_image_orchestrates_report_and_raw_keep(tmp_path: Path, monkeypatch) -> None:

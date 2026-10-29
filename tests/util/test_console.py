@@ -57,3 +57,18 @@ def test_every_entry_reopens_its_streams_first():
             if not (isinstance(call, ast.Call) and getattr(call.func, "id", None) == "utf8_streams"):
                 missing.append(str(path.relative_to(ROOT)))
     assert not missing
+
+
+def test_every_text_file_is_read_and_written_as_utf8():
+    """A bare `read_text()` or `write_text(s)` uses the locale's code page: on a cp949 Windows a report holding an em dash
+    or a Korean prompt file stopped the run (`UnicodeDecodeError`), and a write of Korean text failed the same way."""
+    bare = []
+    for path in sorted((ROOT / "sprite_gen").rglob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                    and node.func.attr in ("read_text", "write_text")):
+                continue
+            positional = 0 if node.func.attr == "read_text" else 1  # read_text(encoding) / write_text(data, encoding)
+            if "encoding" not in {k.arg for k in node.keywords} and len(node.args) <= positional:
+                bare.append(f"{path.relative_to(ROOT)}:{node.lineno}")
+    assert not bare

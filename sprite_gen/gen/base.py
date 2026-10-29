@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (machine-readable outcomes; see NOTICE).
 """Shared contract for sprite-gen image generation providers.
 
 One generation call = prompt (+ optional reference images) -> one verified raw
@@ -18,11 +19,14 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping, Protocol
 
 from PIL import Image, UnidentifiedImageError
+
+from . import outcome
 
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 
@@ -193,20 +197,53 @@ def announce_api_billing(provider: str, env_name: str, detail: str = "") -> None
     print(f"[gen] {provider}: running on {env_name} — {API_CHARGE_WORDS}{detail}", file=sys.stderr, flush=True)
 
 
+# The children `run_logged` has running, so a batch verb that is stopped stops them too (`stop_children`). A child
+# is started and listed under one lock, the lock `stop_children` lists them under: a worker that starts its child
+# while the stop is coming either lists it before the stop reads the list, or sees the stop and starts nothing.
+_CHILDREN: set[subprocess.Popen] = set()
+_CHILDREN_LOCK = threading.RLock()  # re-entered by the signal handler on the thread that holds it
+
+
 def run_logged(cmd: list[str], log: Path) -> int:
     """Run a child command with all its output in `log`. The lines that announce a per-call charge
     or a default provider switched for being unavailable also go to this process's stderr as they
     come: a batch verb (`gen-set`, `video-set`) keeps each item's output in its own log, and those
-    two lines are for the person running it, before the request leaves."""
+    two lines are for the person running it, before the request leaves. Once the run is stopped
+    (`outcome.STOP`) no child starts: `outcome.NotStarted` instead."""
     with log.open("w", encoding="utf-8") as fh:
-        child = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-                                 encoding="utf-8", errors="replace")
-        assert child.stdout is not None
-        for line in child.stdout:
-            fh.write(line)
-            if API_CHARGE_WORDS in line or PROVIDER_SWITCH_WORDS in line:
-                print(line.rstrip("\n"), file=sys.stderr, flush=True)
-        return child.wait()
+        with _CHILDREN_LOCK:
+            if outcome.STOP.is_set():
+                raise outcome.NotStarted("this child")
+            child = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                                     encoding="utf-8", errors="replace")
+            _CHILDREN.add(child)
+        try:
+            assert child.stdout is not None
+            for line in child.stdout:
+                fh.write(line)
+                if API_CHARGE_WORDS in line or PROVIDER_SWITCH_WORDS in line:
+                    print(line.rstrip("\n"), file=sys.stderr, flush=True)
+            return child.wait()
+        finally:
+            with _CHILDREN_LOCK:
+                _CHILDREN.discard(child)
+
+
+def stop_children() -> None:
+    """Stop the run's children: none starts from here on (`outcome.STOP`), and every running `run_logged` child is
+    sent SIGTERM (Windows: terminate), so each writes its own report and ends. The signal handler runs it
+    (`outcome.on_stop`); a batch verb that stops itself calls it."""
+    with _CHILDREN_LOCK:
+        outcome.STOP.set()
+        children = list(_CHILDREN)
+    for child in children:
+        try:
+            child.terminate()
+        except OSError:
+            pass
+
+
+outcome.on_stop(stop_children)
 
 
 def flags_over_spec(spec: Mapping[str, Any], flags: Mapping[str, Any], *, verb: str, source: str,

@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (machine-readable outcomes; see NOTICE).
 """Reroll a state's row as a NEW take — candidate pool, never a replacement.
 
 리롤 = 같은 행을 한 번 더 생성해 **테이크로 병기**한다 (maintainer 2026-07-19 "리롤버튼
@@ -29,6 +30,7 @@ from sprite_gen.spec.runio import load_request, write_request
 from sprite_gen.gen import PROVIDERS, generate_image
 from sprite_gen.spec.layout import guide_rel, prompt_rel, take_raw_rel
 from sprite_gen.util.console import utf8_streams
+from sprite_gen.gen import outcome
 
 
 def next_reroll_label(request: dict[str, Any], state: str) -> str:
@@ -118,6 +120,11 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     utf8_streams()
+    # A refusal with its own exit code (an --out folder that cannot be made, exit 3) prints its line too.
+    return outcome.entry(lambda: _main(argv))
+
+
+def _main(argv: list[str] | None) -> int:
     args = _build_parser().parse_args(argv)
     reroll_state(args.run_dir, args.state, provider=args.provider, label=args.label)
     if args.extract:

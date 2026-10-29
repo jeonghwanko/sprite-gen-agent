@@ -56,7 +56,7 @@ def _fake_runner(fail_states: set[str] = frozenset(), record: list | None = None
         state = out.stem
         if state in fail_states:
             log.write_text("gen: provider refused\n", encoding="utf-8")
-            return 3
+            return 1  # a failure after the call (exit 3 would say gen refused before any provider request)
         Image.new("RGB", (256, 64), (255, 0, 255)).save(out)
         report.write_text(json.dumps({"provider": provider or "codex", "provider_resolved_from": "explicit" if provider else "hard-default"}), encoding="utf-8")
         return 0
@@ -97,7 +97,7 @@ def test_gen_set_names_failures_and_exits_non_zero(tmp_path: Path, monkeypatch, 
     rc = gen_set.run(run_dir=run_dir, states=None, provider="grok", model=None, concurrency=2, force=False)
     assert rc == 1
     table = (run_dir / "reports" / "gen-set" / "table.md").read_text()
-    assert "| walk | - | - |" in table and "FAIL: gen exited 3" in table
+    assert "| walk | - | - |" in table and "FAIL: gen exited 1" in table
     assert not (run_dir / "raw" / "walk.png").exists() and (run_dir / "raw" / "idle.png").is_file()
 
 

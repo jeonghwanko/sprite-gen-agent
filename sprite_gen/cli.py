@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Modified for sprite-gen-agent (pose-plan GPT motion, scale-check; see NOTICE).
+# Modified for sprite-gen-agent (pose-plan GPT motion, scale-check, machine-readable outcomes; see NOTICE).
 """Single sprite-gen CLI entrypoint."""
 
 from __future__ import annotations
@@ -42,7 +42,8 @@ from sprite_gen.scene import render, inspect_scene
 from sprite_gen.scene import gait
 from sprite_gen.serve import serve_compose, serve_curation
 from sprite_gen.spec import migrate_breathe, migrate_request
-from sprite_gen.workflow import guide, preferences
+from sprite_gen.gen import outcome
+from sprite_gen.workflow import doctor, guide, preferences
 from sprite_gen.util.console import utf8_streams
 
 
@@ -234,6 +235,8 @@ COMMANDS: dict[str, tuple[str, Callable[[argparse.ArgumentParser], None], Callab
     "scene-inspect": ("Measure scene loops, viewport clipping and repeated joins.", inspect_scene.add_arguments, inspect_scene.run),
     "workflow": ("Resolve image/sprite choices, check access and guide the next conversation step.", guide.add_arguments, guide.run),
     "defaults": ("Show, explicitly save or clear the defaults for each user workflow.", preferences.add_arguments, preferences.run),
+    "version": ("Print the version; --json adds the commit and the outcome contract (exit codes, error codes).", doctor.add_version_arguments, doctor.run_version),
+    "doctor": ("Check the runtime, provider logins and tools without calling a provider; --json for a program.", doctor.add_doctor_arguments, doctor.run_doctor),
     "prepare": ("Prepare a sprite-gen component-row run.", prepare.add_arguments, prepare.run),
     "extract": ("Extract component-row sprite strips into clean RGBA frames.", _add_extract, extract.run),
     "compose-atlas": (
@@ -537,7 +540,8 @@ def main(argv: list[str] | None = None) -> int:
     kwargs.pop("_retired_pp", None)
     command = kwargs.pop("command")
     run_fn = VERB_ALIASES[command][1] if command in VERB_ALIASES else COMMANDS[command][2]
-    return run_fn(**kwargs)
+    # A run that ends with its own exit code (docs/gen.md "Outcome") says its line on stderr, as for any message.
+    return outcome.entry(lambda: run_fn(**kwargs))
 
 
 if __name__ == "__main__":

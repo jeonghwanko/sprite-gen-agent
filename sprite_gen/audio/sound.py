@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """Generate one named game sound and publish its immutable audio bundle."""
 from __future__ import annotations
 
@@ -29,7 +30,7 @@ def generate(*, kind, prompt, duration, event, out_dir, cache_dir=None, loop=Non
     recipe = {'request': cache.digest(request), 'event': event, 'loop': loop,
               'target_lufs': target, 'crossfade_seconds': crossfade, 'processing_version': processing.PROCESSING_VERSION}
     if out_dir.exists():
-        manifest = json.loads((out_dir / 'sound.json').read_text()) if (out_dir / 'sound.json').is_file() else {}
+        manifest = json.loads((out_dir / 'sound.json').read_text(encoding="utf-8")) if (out_dir / 'sound.json').is_file() else {}
         if manifest.get('recipe') != recipe:
             raise ValueError('output directory already exists with a different sound; use a new directory')
         load_sound(out_dir/'sound.json', 50_000_000)
@@ -51,7 +52,7 @@ def generate(*, kind, prompt, duration, event, out_dir, cache_dir=None, loop=Non
         source.unlink()
         manifest = {'kind': 'sprite-gen-sound', 'version': playback.VERSION, 'event': event, 'audio_kind': kind,
                     'loop': loop, 'target_lufs': target, 'recipe': recipe, 'provider': receipt, **details}
-        (stage/'sound.json').write_text(json.dumps(manifest, indent=2, allow_nan=False)+'\n')
+        (stage/'sound.json').write_text(json.dumps(manifest, indent=2, allow_nan=False)+'\n', encoding="utf-8")
         stage.rename(out_dir)
     finally:
         shutil.rmtree(stage, ignore_errors=True)
@@ -79,7 +80,7 @@ def run(**kwargs):
     try:
         if (args.prompt is None) == (args.prompt_file is None):
             raise ValueError('provide exactly one of prompt or prompt_file')
-        prompt = Path(args.prompt_file).read_text() if args.prompt_file is not None else args.prompt
+        prompt = Path(args.prompt_file).read_text(encoding="utf-8") if args.prompt_file is not None else args.prompt
         result = generate(kind=args.kind, prompt=prompt, duration=args.duration, event=args.event,
                           out_dir=args.out_dir, cache_dir=args.cache_dir, loop=args.loop,
                           target_lufs=args.target_lufs, crossfade=args.crossfade)

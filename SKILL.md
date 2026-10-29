@@ -71,6 +71,10 @@ Ask it in these words, with the reason from the line's `cause` (`login`: "로그
 > 2. 그록으로 만들기
 > 3. 멈추기
 
+## Reading a failed generation
+
+Read a generation's report, not its stderr. `gen`, `gen-set`, `video*` and `video-set` reports carry `ok` (a set: `all_ok`), `errors` (`{state, code, retryable, message}`) and `provider_submitted`. **Exit 3** means the run failed before any provider request, so nothing was billed: fix the command and run it again. Retry without changes only when the error's `retryable` is true. A `generation-unfinished` video is fetched with `video-resume`; it is never sent again. `sprite-gen doctor --json` checks the logins and tools without calling a provider. See [gen.md "Outcome"](docs/gen.md#outcome--what-failed-whether-to-retry-whether-a-provider-was-charged).
+
 ## Side-view facing
 
 Keep the side still, canvas placement and motion prompt facing the same direction.

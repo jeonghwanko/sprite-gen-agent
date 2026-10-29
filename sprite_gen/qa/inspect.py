@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (machine-readable outcomes; see NOTICE).
 """Inspect generated sprite rows for closed-loop correction signals."""
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ from typing import Any
 
 from PIL import Image, ImageChops
 
+from sprite_gen.gen import outcome
 from sprite_gen.util.cli_kwargs import namespace_from_kwargs
 from sprite_gen.frames import extract
 from sprite_gen.spec.layout import frames_dir_rel, raw_rel, state_frame_total
@@ -381,12 +383,19 @@ def _inspect_run_impl(run_dir: Path, states: str = "all", **kwargs: object) -> d
         },
         "rows": rows,
         "errors": errors,
+        # The states with an error, by name: `errors` stays the "<state>: ..." lines it has always been.
+        "failed_states": [row["state"] for row in rows if not row["ok"]],
         "warnings": warnings,
     }
 
 
 def _run(args: argparse.Namespace) -> int:
     run_dir = args.run_dir.expanduser().resolve()
+    report_path = run_dir / args.report
+    if not args.no_write:
+        # Its folder is made, or refused, before the run is read: a report path that cannot be written is said
+        # first, not after the work (an absolute --report is used as given).
+        outcome.make_parent(report_path, "--report", verb="inspect")
     report = inspect_run(
         run_dir,
         states=args.states,
@@ -403,7 +412,7 @@ def _run(args: argparse.Namespace) -> int:
     )
     if not args.no_write:
         acquire_run_dir_lock(run_dir, "inspect_sprite_run")
-        atomic_write_text(run_dir / args.report, json.dumps(report, ensure_ascii=False, indent=2) + "\n")
+        atomic_write_text(report_path, json.dumps(report, ensure_ascii=False, indent=2) + "\n")
     print(json.dumps({k: v for k, v in report.items() if k != "rows"}, ensure_ascii=False, indent=2))
     return 0 if report["ok"] else 1
 
@@ -414,7 +423,7 @@ def run(**kwargs: object) -> int:
 
 def main() -> int:
     utf8_streams()
-    return _run(_build_parser().parse_args())
+    return outcome.entry(lambda: _run(_build_parser().parse_args()))
 
 
 if __name__ == "__main__":

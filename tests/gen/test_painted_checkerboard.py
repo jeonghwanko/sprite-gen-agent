@@ -12,6 +12,8 @@ not a painted checkerboard. Every sheet here is synthetic.
 
 from __future__ import annotations
 
+import json
+
 from pathlib import Path
 
 import numpy as np
@@ -133,4 +135,5 @@ def test_a_ui_kit_generation_that_comes_back_on_a_checkerboard_is_refused(tmp_pa
     with pytest.raises(SystemExit, match=r"^chroma: the background is a painted transparency checkerboard"):
         gen.run(provider="fake", prompt="A game UI kit in brass and walnut.", out=out, report=report,
                 transparent=True, layout_guide="ui-kit", aspect_ratio="2:3")
-    assert not out.exists() and not report.exists()
+    assert not out.exists()
+    assert json.loads(report.read_text(encoding="utf-8"))["errors"][0]["code"] == "postprocess-failed"

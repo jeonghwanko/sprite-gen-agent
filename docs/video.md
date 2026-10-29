@@ -150,6 +150,18 @@ read, so it ends at once and is never sent again. Its line is the transport's ow
 (`xai: request failed or timed out; no automatic retry (the server may have accepted
 it)`), or `xai: response was not valid JSON` for a whole answer that is not JSON.
 
+### The report however the run ends
+
+`--report` is written for every ending, with the outcome keys of
+[gen.md "Outcome"](gen.md#outcome--what-failed-whether-to-retry-whether-a-provider-was-charged):
+`ok`, `errors` and `provider_submitted` (`true` once the POST left; `video-resume` only polls,
+so it is `false` there). Its folder, and the folder of `--out`, are made before the POST is
+sent. If either cannot be made, the run is refused with exit 3. An unfinished generation keeps
+its `sprite-gen-video-unfinished` report and gains `errors: [{code: "generation-unfinished",
+retryable: false}]`. When SIGTERM arrives after xAI took the request, the report names the
+`request_id`, and its `interrupted` error carries the `resume` command. A stopped run asks for
+the clip with that command instead of sending a new request.
+
 ## Quotas and limits
 
 - Imagine quota is a weekly SuperGrok allowance; when it is exhausted the API
