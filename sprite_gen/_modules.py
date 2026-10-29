@@ -20,6 +20,8 @@ MODULE_DOMAIN = {
     'motion': 'qa',
     'handed': 'qa',
     'scale_check': 'qa',
+    'decisions': 'qa',
+    'decision_eval': 'qa',
     'render': 'scene',
     'inspect_scene': 'scene',
     'model': 'scene',
