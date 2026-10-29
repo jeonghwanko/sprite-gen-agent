@@ -23,6 +23,10 @@ These are the fork's additions on top of 3.4.0, first written for the AI Fighter
   - `gen` no longer calls codex a second time after a timeout. The timed-out `codex exec` was stopped after its request left, so it may already have made and been charged for an image. `--timeout-retry` asks for the second call; `--no-timeout-retry` still parses and is now the default.
   - `provider-timeout` is `retryable: false`.
   - A `gen-set` row or `video-set` item whose child ended after its request may have left, without a coded report (killed, out of memory, a crash), is `outcome-unknown` instead of the retryable `provider-failed`. A child that said it finished and left no image or clip stays `provider-failed`.
+- **Changed: `video-cycle-align` makes a loop whose beat still breaks of source frames only, where that jolts less.**
+  - Under `--between auto`, after RIFE's frames given way are made again and spread, a loop still at a jolt of `BEAT_JOLT` or more is resampled from source frames only. Its start and each frame's source frame are chosen so the largest jolt is least (`cadence.source_plan`); it is taken only where it jolts less. Loops that keep the beat keep their bytes.
+  - The report's `beat.source_plan` names the phase and the jolt it replaced, and the dropped made frames' `smear` rows are `method: "source-plan"`.
+  - New `--beat-limit` (0.25 to 0.4) sets the jolt at which a beat is broken (`broken-beat`). See [loop-repair](docs/loop-repair.md) section 4.
 - **Fixed: every text file is read and written as UTF-8**, whatever the platform's locale. On a cp949 Windows, a report holding an em dash had stopped `video-set`.
 
 ## v3.4.0 - Loop part pop retakes, cycle alignment walk beat repair and broken beats, ghost limb faults, and same foot, filmed jump, and seam jump retakes

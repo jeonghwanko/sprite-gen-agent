@@ -229,6 +229,59 @@ def test_a_loop_every_frame_of_which_stands_at_its_own_time_reads_no_jolt_withou
                              "path": "on-time"}
 
 
+def _paused(breaks=lambda i, t: True) -> Walk:
+    """A cut of 13 frames, one drawing each, whose feet stand still from frame 0 to 1 (a run's legs gathered under it) and
+    slide a step at every other frame; RIFE smears every frame it makes (a run's legs too fast for it)."""
+    walk = Walk(13, 1, width=208, breaks=breaks)
+    walk.at = [0, 0, 8, 16, 24, 32, 40, 48, 40, 32, 24, 16, 8]
+    walk.frames = [walk._drawn(x) for x in walk.at]
+    return walk
+
+
+def test_a_beat_still_broken_is_made_of_source_frames_where_they_jolt_less():
+    """13 frames to 12 with no frame made: one step is skipped wherever the loop is resampled. At phase 0 the nearer
+    source frames skip it where the feet slide, almost a whole beat; started half a frame on, the loop skips the frame
+    the feet hold still and jolts under half of it. The loop takes source frames only, and says it (`source_plan`)."""
+    walk = _paused()
+    cells: list[dict] = []
+    out, facts = align.resample(walk.frames, 12, walk, cells_from=cells)
+    beat = facts["beat"]
+    assert beat["source_plan"]["from_jolt"] >= 0.9 and beat["jolt"] == pytest.approx(0.417, abs=0.01)
+    assert beat["source_plan"]["phase"] == 0.5 and beat["over"]  # still over BEAT_JOLT: a reason to film again
+    assert all("source" in c for c in cells) and facts["made_by_rife"] == 0 and facts["made_at"] == []
+    assert [out[k] is walk.frames[c["source"]] for k, c in enumerate(cells)] == [True] * 12
+    assert {m["method"] for m in facts["smear"]} == {"source-plan"}
+    on = cadence.Beat(cadence.leg_path(walk.frames), 12, phase=beat["source_plan"]["phase"])
+    assert beat["jolt"] == pytest.approx(max(abs(j) for j in on.jolts([on.at(c["source"]) for c in cells])), abs=1e-3)
+    sources = [c["source"] for c in cells]
+    assert len(set(sources)) == 12 and sorted(set(range(13)) - set(sources)) == [1]  # the held frame dropped
+    line = align._fault_line("run", facts["smear"][0])
+    assert "the loop is made of source frames only" in line
+
+
+def test_a_loop_whose_made_frames_keep_the_beat_is_not_made_of_source_frames():
+    """With RIFE's frames clean nothing is given way, the beat holds, and no source-only plan is read."""
+    walk = _paused(breaks=lambda i, t: False)
+    _, facts = align.resample(walk.frames, 12, walk)
+    assert "source_plan" not in facts["beat"] and facts["made_by_rife"] > 0
+
+
+def test_a_larger_beat_limit_takes_a_loop_that_jolts_under_it():
+    """The beat read at the caller's limit: gaps over BEAT_JOLT and under the limit are not over it, and no reason to
+    film again; the record names the limit it was read at."""
+    walk = Walk(54, 3, first=-1)
+    _, strict = align.resample(walk.frames, 24, None, between="nearest")
+    _, eased = align.resample(walk.frames, 24, None, between="nearest", beat_limit=0.4)
+    assert strict["beat"]["jolt"] == eased["beat"]["jolt"] == pytest.approx(2 / 3, abs=0.01)
+    assert eased["beat"]["limit"] == 0.4 and eased["beat"]["over"] == strict["beat"]["over"]  # 2/3 is over both
+    near = {"path": "read", "jolt": 0.28, "gap": [3, 4], "jolts": [0.28, -0.1], "over": [], "limit": 0.3}
+    assert _retake(beat=near) is None
+    over = _retake(beat={**near, "jolt": 0.32, "over": [[3, 4]]})
+    assert over["reason"] == "broken-beat" and over["limits"] == {"beat_jolt": 0.3}
+    with pytest.raises(SystemExit, match="--beat-limit must be from 0.25 to 0.4"):
+        align.align_set([Path("unused")], beat_limit=0.5)
+
+
 def test_between_nearest_records_the_beat_it_leaves():
     walk = Walk(54, 3, first=-1)
     _, facts = align.resample(walk.frames, 24, None, between="nearest")

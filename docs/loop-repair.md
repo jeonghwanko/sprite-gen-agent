@@ -1625,8 +1625,26 @@ sprite-gen video-cycle-align --loop-dir set/front-walk/loop --loop-dir set/side-
     `method: "moved"` with `moved` (its new source or pair and fraction, its off, the new frame's
     measures); it counts in `made_at` when made.
   - 4. A run no choice keeps stays on the nearer source frame and is named: `beat.named` lists it
-    (frames of the turned loop). Under `--between auto`, where the loop's beat still has gaps at
-    `BEAT_JOLT` or more after the alignment kept what it could, `retake` carries the reason
+    (frames of the turned loop).
+  - 5. A loop whose beat still breaks is made of source frames only where that jolts less
+    (`cadence.source_plan`). The loop's start is searched `PLAN_PHASE_STEP` = 0.02 of a source frame
+    apart over one loop frame's span, and frame k takes one of the `PLAN_REACH` = 2 source frames on
+    each side of its own time (the start plus k n / L), chosen round the ring so the largest jolt is
+    least; filmed ghosts are passed over where another frame is in reach. Why: a cut a frame or two
+    longer than the loop (a Grok run cycles in 13 or 14 frames, the contract's run in 12) skips a step
+    wherever it is resampled, and where RIFE's frames of fast legs give way the nearer source frames
+    skip it wherever the even times fall. Placed where the legs move least, the skip jolts least: on
+    the Grok runs of 2026-10-28 a 14-frame cut went from 0.75 to 0.28, and cuts of 22 to 27 frames
+    to 0.24 to 0.25. Every frame made is dropped (its `smear` row `method: "source-plan"`, its fault
+    line saying so), `made_at` is empty, `nearest_at` lists the frames off their own time, and
+    `beat.source_plan` records the `phase` and the jolt it replaced (`from_jolt`).
+  - `--beat-limit` (default `BEAT_JOLT`, at most `align.BEAT_LIMIT_MAX` = 0.4) is the jolt at which
+    the loop's beat is read as broken (`beat.over`, `beat.limit`, the `broken-beat` reason and its
+    `limits.beat_jolt`). Making frames again and spreading a jolt keep to `BEAT_JOLT` whatever it is;
+    a caller that has looked at its gait's loops at a larger jolt takes them (the creator kit takes
+    a run at 0.3).
+  - Under `--between auto`, where the loop's beat still has gaps at
+    the beat limit or more after the alignment kept what it could, `retake` carries the reason
     `broken-beat` (details `broken_beat`: `jolt`, `gap`, `over`, `named` for the frames that kept
     the nearer source frame, `remedy` "recut-or-retake"; limit `beat_jolt`); under `--between nearest`
     a broken beat is recorded in `beat` but is no reason (that choice takes the nearer frame on
