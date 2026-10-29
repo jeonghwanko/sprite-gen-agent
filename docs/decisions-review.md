@@ -113,6 +113,9 @@ answers and changes during the request cannot become clear. No registration, gen
 retry, API key fallback or automatic threshold adjustment follows a decision.
 
 Exit 0 means preparation or a completed advisory report, **not** visual acceptance.
+Exit 1 means the report ended `unverified` (read it: a request may have been sent and billed); it was 2 before
+2026-10-29, which elsewhere means an argument was refused and nothing was sent. The response model may be the one
+asked for or a dated snapshot of it (`gpt-6-luna-2026-10-01` for `gpt-6-luna`); any other model is unverified.
 Exit 2 means the live request did not produce a verified response. Other local input or
 configuration errors stop with an explanation.
 
