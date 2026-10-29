@@ -59,5 +59,6 @@ machine-readable (report error codes, a not-started exit, the provider-submitted
 platform's locale, gives each motion stance reason a stable code, and offers
 pose-plan GPT motion as a workflow motion method. It also
 canonicalizes shipped audio player line endings so pack hashes remain portable
-across Windows and Unix checkouts. Source files it changed carry a "Modified for
+across Windows and Unix checkouts, and keeps a stable Python API for embedding programs
+(sprite_gen.api). Source files it changed carry a "Modified for
 sprite-gen-agent" line; the files it added carry their own SPDX header.
