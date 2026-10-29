@@ -74,6 +74,7 @@ from sprite_gen.frames.extract import _SPILL_FULL_MIN_TINT, DEFAULT_UNMIX_REACH
 from sprite_gen.frames.extract import BORDER_MIN_FRACTION, FRAME_SIDES, own_border
 from sprite_gen.spec.runio import atomic_write_text, new_stage, refuse_overlap
 from sprite_gen.util.console import utf8_streams
+from sprite_gen import local_tool
 
 EDGE_ROWS = 4  # rows/cols inspected at each edge
 # Spill (key colour the video model painted INTO the subject — a reflection on
@@ -142,10 +143,10 @@ def probe(clip: Path) -> dict[str, Any]:
     a one-frame mjpeg stream marked `attached_pic`. The frames come from the first video stream
     that is not a cover (`stream_index`); the audio is counted and never extracted."""
     ffprobe = _require("ffprobe")
-    proc = subprocess.run(
+    proc = local_tool.run(
         [ffprobe, "-v", "error", "-show_entries", "stream=index,codec_type,codec_name,pix_fmt,width,height,r_frame_rate,nb_frames",
          "-show_entries", "stream_disposition=attached_pic", "-show_entries", "format=duration", "-of", "json", str(clip)],
-        capture_output=True, text=True,
+        seconds=local_tool.PROBE_SECONDS, what="video-frames", capture_output=True, text=True,
     )
     if proc.returncode != 0:
         raise SystemExit(f"video-frames: ffprobe failed on {clip}: {proc.stderr.strip()[:300]}")
@@ -172,7 +173,8 @@ def extract(clip: Path, raw_dir: Path, stream_index: int | None = None) -> list[
     for old in raw_dir.glob("frame-*.png"):
         old.unlink()
     pick = ["-map", f"0:{stream_index}"] if stream_index is not None else []
-    proc = subprocess.run([ffmpeg, "-v", "error", "-y", "-i", str(clip), *pick, str(raw_dir / "frame-%04d.png")], capture_output=True, text=True)
+    proc = local_tool.run([ffmpeg, "-v", "error", "-y", "-i", str(clip), *pick, str(raw_dir / "frame-%04d.png")],
+                          seconds=local_tool.TOOL_SECONDS, what="video-frames", capture_output=True, text=True)
     if proc.returncode != 0:
         raise SystemExit(f"video-frames: ffmpeg failed on {clip}: {proc.stderr.strip()[:300]}")
     files = sorted(raw_dir.glob("frame-*.png"))
