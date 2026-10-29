@@ -187,7 +187,8 @@ def test_sigterm_during_the_request_writes_the_report_and_exits_143(tmp_path, mo
     assert stopped.value.code == outcome.INTERRUPTED_EXIT == 143
     written = _report(report)
     assert written["ok"] is False and written["provider_submitted"] is True and written["exit_code"] == 143
-    assert [(e["code"], e["retryable"]) for e in written["errors"]] == [("interrupted", True)]
+    # Stopped after its request left: the same command would send it again, and the stopped one may be billed.
+    assert [(e["code"], e["retryable"]) for e in written["errors"]] == [("interrupted", False)]
     assert signal.getsignal(signal.SIGTERM) is before  # the run's handler is gone with the run
 
 
@@ -581,3 +582,25 @@ def test_retry_marks_a_post_but_not_a_get():
         retry.ask(lambda: (200, {}, None), provider="xai", who="x", label="l")
         assert record.requests == ["xai"]
     outcome.submitted("after")  # no record open: marks nothing, fails nothing
+
+
+def test_a_stop_is_retryable_only_while_nothing_was_sent():
+    assert outcome.error(outcome.INTERRUPTED, "stopped")["retryable"] is True
+    assert outcome.error(outcome.INTERRUPTED, "stopped", submitted=False)["retryable"] is True
+    assert outcome.error(outcome.INTERRUPTED, "stopped", submitted=True)["retryable"] is False
+    record = outcome.Record("gen", requests=["codex"])
+    stop = outcome.error(outcome.INTERRUPTED, "stopped")
+    assert outcome.report_fields(record, errors=[stop])["errors"][0]["retryable"] is False
+    assert outcome.report_fields(outcome.Record("gen"), errors=[stop])["errors"][0]["retryable"] is True
+
+
+def test_a_set_sprite_gen_fails_in_still_reports_its_finished_items():
+    from concurrent.futures import Future
+    finished, raised, pending = Future(), Future(), Future()
+    finished.set_result({"state": "idle", "ok": True, "provider_submitted": True})
+    raised.set_exception(RuntimeError("bug"))
+    results: list = []
+    outcome.gather_finished({finished: "idle", raised: "walk", pending: "run"}, set(), results)
+    assert results == [{"state": "idle", "ok": True, "provider_submitted": True}] and pending.cancelled()
+    error = outcome.crash_error(RuntimeError("bug"), "gen-set")
+    assert (error["code"], error["retryable"]) == (outcome.INTERNAL, False) and "RuntimeError: bug" in error["message"]

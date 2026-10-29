@@ -355,3 +355,20 @@ def test_input_gait_guides_keep_xray_and_visible_roles(tmp_path):
     assert "Reference3" in spec["references"][1]["label"]
     assert "Reference4" in spec["references"][2]["label"]
     d.prepare_request(spec, base)
+
+
+def test_a_dated_snapshot_of_the_model_asked_for_is_the_same_model():
+    from sprite_gen.qa.decisions import same_model
+    assert same_model("gpt-6-luna", "gpt-6-luna") and same_model("gpt-6-luna-2026-10-01", "gpt-6-luna")
+    assert not same_model("gpt-6-lunar", "gpt-6-luna") and not same_model("gpt-6-sol", "gpt-6-luna") and not same_model(None, "gpt-6-luna")
+
+
+def test_an_unverified_review_exits_1_not_the_nothing_sent_2(tmp_path, monkeypatch):
+    from sprite_gen.qa import decisions
+    monkeypatch.setattr(decisions, "review", lambda *a, **kw: {"status": "unverified"})
+    spec = tmp_path / "spec.json"
+    spec.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(decisions, "read_json", lambda path: {})
+    assert decisions.run(out_dir=tmp_path / "out", spec=spec) == 1
+    monkeypatch.setattr(decisions, "review", lambda *a, **kw: {"status": "completed"})
+    assert decisions.run(out_dir=tmp_path / "out", spec=spec) == 0

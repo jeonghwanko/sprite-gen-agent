@@ -69,16 +69,19 @@ CODES: dict[str, bool] = {
     GENERATION_UNFINISHED: False,
     OUTCOME_UNKNOWN: False,
     POSTPROCESS_FAILED: True,
-    INTERRUPTED: True,
+    INTERRUPTED: True,  # when nothing had been sent: `error(submitted=)`, `report_fields`
     INTERNAL: False,
 }
 
 
-def error(code: str, message: str, *, state: str | None = None, **extra: Any) -> dict[str, Any]:
-    """One entry of a report's `errors`: the code's own `retryable`, the message as the run said it."""
+def error(code: str, message: str, *, state: str | None = None, submitted: bool | None = None, **extra: Any) -> dict[str, Any]:
+    """One entry of a report's `errors`: the code's own `retryable`, the message as the run said it. A stop
+    (`INTERRUPTED`) after a provider request had left (`submitted`) is not retryable: the same command sends
+    that request again, and the stopped one may already be billed (2026-10-29)."""
     if code not in CODES:
         raise ValueError(f"unknown outcome code {code!r}")
-    return {"state": state, "code": code, "retryable": CODES[code], "message": message, **extra}
+    retryable = CODES[code] and not (code == INTERRUPTED and submitted)
+    return {"state": state, "code": code, "retryable": retryable, "message": message, **extra}
 
 
 class Stop(SystemExit):
@@ -199,6 +202,9 @@ def report_fields(record: Record | None, *, errors: list[dict[str, Any]], exit_s
     """The outcome keys every generation report carries: `ok`, `errors`, `provider_submitted`, the providers
     requests left for (`provider_requests`), what the record kept (a request id) and, on a failure, the exit."""
     requests = list(record.requests) if record is not None else []
+    # A run of one request that was stopped after it left: running it again sends it again (`error`).
+    if requests:
+        errors = [{**e, "retryable": False} if e.get("code") == INTERRUPTED and e.get("retryable") else e for e in errors]
     return {
         "ok": not errors,
         "errors": errors,
@@ -366,6 +372,30 @@ def child_submitted(rc: int, report: Path | None) -> bool:
         if isinstance(said, bool):
             return said
     return rc not in (2, NOT_STARTED_EXIT)
+
+
+def gather_finished(futures: dict[Any, Any], done: set[Any], results: list[dict[str, Any]]) -> None:
+    """The items of a set that sprite-gen itself failed in (a bug, not a stop): those not begun never begin, those
+    under way end, and each one whose result can still be read is kept, so the set report names what was sent
+    (2026-10-29: a set that raised wrote no report, and its rows' requests went unrecorded)."""
+    for fut in futures:
+        if fut not in done:
+            fut.cancel()
+    for fut in futures:
+        if fut in done or fut.cancelled():
+            continue
+        try:
+            r = fut.result()
+        except Exception:  # noqa: BLE001 — the item that raised: its outcome cannot be read
+            continue
+        done.add(fut)
+        results.append(r)
+
+
+def crash_error(exc: BaseException, what: str) -> dict[str, Any]:
+    """The set report's error for sprite-gen failing in the middle of a set (`INTERNAL`): what may have been sent
+    is unknown, so nothing is retryable."""
+    return error(INTERNAL, f"{what}: sprite-gen failed ({type(exc).__name__}: {exc}); what the unfinished items sent cannot be told")
 
 
 def child_errors(report: Path | None) -> list[dict[str, Any]]:

@@ -319,6 +319,11 @@ def run_set(
     except outcome.Interrupted as exc:  # stopped between two stages, or while a stage's pool was closing
         stopped = exc
         _gather_stopped(futures, done, results, exc)
+    except Exception as exc:  # a bug in sprite-gen: the rows that ran are still reported, then it is raised
+        outcome.gather_finished(futures, done, results)
+        with outcome.deferred():
+            _set_report(run_dir, ordered, results, None, crashed=exc)
+        raise
     with outcome.deferred():  # the set report is written whole; a stop meanwhile ends the run after it
         return _set_report(run_dir, ordered, results, stopped)
 
@@ -336,14 +341,16 @@ def _gather_stopped(futures: dict[Any, str], done: set[Any], results: list[dict[
         r = fut.result()
         done.add(fut)
         if not r.get("ok"):
-            r["errors"] = [e if e.get("code") == outcome.INTERRUPTED else
-                           outcome.error(outcome.INTERRUPTED, f"{stop} while the row was generating", state=r["state"])
+            # A row under way may have sent its request: unless its `gen` said it sent nothing, the stop is not retryable.
+            sent = r.get("provider_submitted") is not False
+            r["errors"] = [{**e, "retryable": e.get("retryable", True) and not sent} if e.get("code") == outcome.INTERRUPTED else
+                           outcome.error(outcome.INTERRUPTED, f"{stop} while the row was generating", state=r["state"], submitted=sent)
                            for e in r.get("errors") or [{}]]
         results.append(r)
 
 
 def _set_report(run_dir: Path, ordered: list[str], results: list[dict[str, Any]],
-                stopped: outcome.Interrupted | None) -> dict[str, Any]:
+                stopped: outcome.Interrupted | None, *, crashed: BaseException | None = None) -> dict[str, Any]:
     results.sort(key=lambda r: ordered.index(r["state"]))
     report_dir = run_dir / REPORT_DIR / "gen-set"
     report_dir.mkdir(parents=True, exist_ok=True)
@@ -357,6 +364,8 @@ def _set_report(run_dir: Path, ordered: list[str], results: list[dict[str, Any]]
         errors += [outcome.error(outcome.INTERRUPTED, f"{stopped} before the row began", state=s) for s in skipped]
         if not any(e["code"] == outcome.INTERRUPTED for e in errors):  # stopped as the last row ended
             errors.append(outcome.error(outcome.INTERRUPTED, f"{stopped} after its rows ended"))
+    if crashed is not None:
+        errors.append(outcome.crash_error(crashed, "gen-set"))
     payload = {
         "kind": "sprite-gen-gen-set-report",
         "run_dir": str(run_dir),
@@ -368,12 +377,15 @@ def _set_report(run_dir: Path, ordered: list[str], results: list[dict[str, Any]]
         "not_started": skipped,
         **({"asked": asked} if asked else {}),
         "errors": errors,
-        "provider_submitted": any(r.get("provider_submitted") for r in results),
+        # A set sprite-gen failed in cannot show that a row under way sent nothing.
+        "provider_submitted": any(r.get("provider_submitted") for r in results) or crashed is not None,
         **({"interrupted": str(stopped)} if stopped is not None else {}),
         "items": results,
     }
     atomic_write_text(report_dir / "set.report.json", json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
     print(table)
+    if crashed is not None:
+        return payload
     if stopped is not None:
         raise outcome.Stop(f"gen-set: {stopped}; see {report_dir / 'set.report.json'}",
                            outcome.exit_code(outcome.INTERRUPTED, stopped), outcome=outcome.INTERRUPTED)

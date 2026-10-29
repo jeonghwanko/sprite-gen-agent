@@ -72,6 +72,7 @@ from .xai import (
     read_whole, rejected_fix, time_left,
 )
 from sprite_gen.util.console import utf8_streams
+from sprite_gen import local_tool
 
 DEFAULT_MODEL = "grok-imagine-video-1.5"
 # Extension and editing: the API rejects the 1.5 model on both endpoints, so the
@@ -262,9 +263,9 @@ def probe_duration_seconds(clip: Path, *, verb: str) -> float:
     ffprobe = shutil.which("ffprobe")
     if not ffprobe:
         raise SystemExit(f"{verb}: ffprobe is required to check the input clip's length before uploading (install ffmpeg)")
-    proc = subprocess.run(
+    proc = local_tool.run(
         [ffprobe, "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(clip)],
-        capture_output=True, text=True,
+        seconds=local_tool.PROBE_SECONDS, what=verb, capture_output=True, text=True,
     )
     text = proc.stdout.strip()
     if proc.returncode != 0 or not text:

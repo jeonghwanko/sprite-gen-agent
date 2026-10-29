@@ -26,6 +26,7 @@ from sprite_gen.spec.runio import (LOCK_FILENAME, acquire_run_dir_lock, atomic_w
                                    release_run_dir_lock, same_folder)
 from sprite_gen.util.resample import resize_cell
 from sprite_gen.util.console import utf8_streams
+from sprite_gen import local_tool
 
 
 FORMATS = ("png", "mp4", "gif")
@@ -119,7 +120,11 @@ def _ffmpeg_binary():
 
 
 def _ffmpeg(args):
-    process = subprocess.run([_ffmpeg_binary(), "-hide_banner", "-loglevel", "error", "-y", *args], capture_output=True, text=True)
+    try:
+        process = local_tool.run([_ffmpeg_binary(), "-hide_banner", "-loglevel", "error", "-y", *args],
+                                 seconds=local_tool.TOOL_SECONDS, what="scene render", capture_output=True, text=True)
+    except SystemExit as exc:
+        raise ValueError(str(exc)) from exc
     if process.returncode:
         raise ValueError(f"ffmpeg failed: {process.stderr[-3000:]}")
 

@@ -189,8 +189,14 @@ def validate_sources(binding):
             raise ValueError("review evidence changed or is missing; prepare a new report")
 
 
+def same_model(answered, asked):
+    """The model the response names is the one asked for, or a dated snapshot of it (`gpt-6-luna-2026-10-01` for
+    `gpt-6-luna`). An exact match refused every snapshot answer as unverified, after the request was paid for (2026-10-29)."""
+    return isinstance(answered, str) and (answered == asked or answered.startswith(f"{asked}-"))
+
+
 def parse_answers(response, request, threshold):
-    if not isinstance(response, dict) or response.get("model") != request["model"]:
+    if not isinstance(response, dict) or not same_model(response.get("model"), request["model"]):
         raise ValueError("missing or unexpected response model")
     names = [q["name"] for q in request["questions"]]
     answers = response.get("answers")
@@ -351,6 +357,8 @@ def run(*, out_dir, spec=None, pose_run=None, stage=None, frame=None, candidate=
         result = review(value, base, out_dir, execute=execute, confirm_api_billing=confirm_api_billing,
                         threshold=threshold, timeout=timeout)
         print(json.dumps({"status": result["status"], "mode": "advisory", "report": str(Path(out_dir).resolve() / "decision-review.json")}, ensure_ascii=False))
-        return 0 if result["status"] in ("prepared", "completed") else 2
+        # 1, never 2, for a review that ended unverified: exit 2 means an argument was refused and nothing was sent
+        # (sprite_gen/gen/outcome.py), and an unverified review may have sent its paid request (2026-10-29).
+        return 0 if result["status"] in ("prepared", "completed") else 1
     except (ValueError, OSError, KeyError, TypeError) as exc:
         raise SystemExit(f"review-decisions: {exc}") from None

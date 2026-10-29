@@ -62,6 +62,7 @@ from sprite_gen.video import evidence as evidence_mod
 from sprite_gen.video.frames import drop_specks
 from sprite_gen.util.console import utf8_streams
 from sprite_gen.video import wrap_blend as wrap_blend_mod
+from sprite_gen import local_tool
 
 ANALYSIS_SIZE = 96  # thumbnail edge for the distance matrix
 STRIP_MAX_CELLS = 64  # upper bound on cells even when they are narrow
@@ -881,7 +882,8 @@ def write_webp(frames: list[Image.Image], out: Path, *, delay_ms: int, loop: int
             p = workdir / f"webp-{k:03d}.png"
             im.save(p)
             paths.append(str(p))
-        proc = subprocess.run([img2webp, "-loop", str(loop), "-lossless", "-exact", "-d", str(delay_ms), *paths, "-o", str(out)], capture_output=True, text=True)
+        proc = local_tool.run([img2webp, "-loop", str(loop), "-lossless", "-exact", "-d", str(delay_ms), *paths, "-o", str(out)],
+                              seconds=local_tool.TOOL_SECONDS, what="video-loop", capture_output=True, text=True)
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
     if proc.returncode != 0 or not out.is_file():

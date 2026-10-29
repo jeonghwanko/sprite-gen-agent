@@ -346,10 +346,11 @@ def test_review_needs_observations_and_exact_binding(tmp_path):
 
 def test_real_cli_runner_explicit_provider_refs_and_no_bottom_trim(tmp_path, monkeypatch):
     seen = []
-    def fake_run(command, **kwargs):
+    def fake_run(command, log):  # run_logged: the child gets SIGTERM from a stopped gen-motion (base.stop_children)
         seen.extend(command)
-        return type("Completed", (), {"returncode": 0})()
-    monkeypatch.setattr(motion.subprocess, "run", fake_run)
+        return 0
+    from sprite_gen.gen import base
+    monkeypatch.setattr(base, "run_logged", fake_run)
     refs = [tmp_path / "original.png", tmp_path / "pose.png", tmp_path / "anchor.png"]
     motion.run_gen(tmp_path / "prompt.txt", tmp_path / "out.png", refs, tmp_path / "report.json", model="chosen-model", log=tmp_path / "gen.log")
     assert seen[seen.index("--provider")+1] == "codex"

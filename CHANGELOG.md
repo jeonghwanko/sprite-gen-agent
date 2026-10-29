@@ -27,6 +27,12 @@ These are the fork's additions on top of 3.4.0, first written for the AI Fighter
   - Under `--between auto`, after RIFE's frames given way are made again and spread, a loop still at a jolt of `BEAT_JOLT` or more is resampled from source frames only. Its start and each frame's source frame are chosen so the largest jolt is least (`cadence.source_plan`); it is taken only where it jolts less. Loops that keep the beat keep their bytes.
   - The report's `beat.source_plan` names the phase and the jolt it replaced, and the dropped made frames' `smear` rows are `method: "source-plan"`.
   - New `--beat-limit` (0.25 to 0.4) sets the jolt at which a beat is broken (`broken-beat`). See [loop-repair](docs/loop-repair.md) section 4.
+- **Behavior change: the remaining paid paths say what they sent (2026-10-29).**
+  - A stop (`interrupted`) after a provider request left is `retryable: false`, in `gen`'s report and in the rows and items of `gen-set` and `video-set`: the same command would send the request again.
+  - A `gen-set` or `video-set` that sprite-gen itself fails in (a bug) still writes its set report: the rows and items that finished, an `internal-error`, and `provider_submitted` true.
+  - Local tools on the hosted path (ffprobe, ffmpeg frame extraction, img2webp, `extract`'s heal child, scene render) run with a time bound (`sprite_gen.local_tool`); one that hangs fails the step instead of holding the run.
+  - `gen-motion` runs its `gen` through `run_logged` under a recording: a stopped `gen-motion` sends `gen` SIGTERM, so `gen` writes its report.
+  - `review-decisions` takes a dated snapshot of the model asked for, and exits 1 (not 2) for an unverified review.
 - **Fixed: every text file is read and written as UTF-8**, whatever the platform's locale. On a cp949 Windows, a report holding an em dash had stopped `video-set`.
 
 ## v3.4.0 - Loop part pop retakes, cycle alignment walk beat repair and broken beats, ghost limb faults, and same foot, filmed jump, and seam jump retakes

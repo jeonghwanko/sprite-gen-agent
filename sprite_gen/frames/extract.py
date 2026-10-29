@@ -30,6 +30,7 @@ from sprite_gen.frames.segment import separate_fused_poses
 from sprite_gen.spec.subject import SUBJECT_DEFAULT, default_min_used_pixels, sparse_frame_error, subject_kind
 from sprite_gen.util.resample import resize_cell
 from sprite_gen.util.console import utf8_streams
+from sprite_gen import local_tool
 
 
 def color_distance(left: tuple[int, int, int], right: tuple[int, int, int]) -> float:
@@ -3958,7 +3959,11 @@ def heal_run(run_dir: Path | str) -> dict[str, Any]:
         for state in candidates:
             cmd = [sys.executable, "-m", "sprite_gen.frames.extract",
                    "--run-dir", str(run_dir), "--states", state, *extract_flags]
-            proc = subprocess.run(cmd, capture_output=True, text=True, env=env)
+            try:
+                proc = local_tool.run(cmd, seconds=local_tool.CHILD_SECONDS, what=f"extract {state}", capture_output=True, text=True, env=env)
+            except SystemExit:  # stopped at its bound: this state is not healed
+                report["failed"].append(state)
+                continue
             if proc.returncode == 0:
                 report["healed"].append(state)
             else:

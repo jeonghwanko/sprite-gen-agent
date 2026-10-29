@@ -11,7 +11,6 @@ import argparse
 import hashlib
 import io
 import json
-import subprocess
 import sys
 from pathlib import Path
 
@@ -330,8 +329,10 @@ def run_gen(prompt_file: Path, out: Path, refs: list[Path], report: Path, *, mod
         cmd += ["--ref", str(ref)]
     if model:
         cmd += ["--model", model]
-    with log.open("w", encoding="utf-8") as handle:
-        return subprocess.run(cmd, stdout=handle, stderr=subprocess.STDOUT, text=True).returncode
+    # run_logged, not subprocess.run (2026-10-29): a stopped gen-motion sends its `gen` SIGTERM (`base.stop_children`), so
+    # gen writes its report saying whether its request left; subprocess.run killed it outright and left no report.
+    from sprite_gen.gen import base
+    return base.run_logged(cmd, log)
 
 
 def _normalize_canvas(path: Path, receipt: dict, target_size: list[int]) -> None:
@@ -614,7 +615,10 @@ def run(*, plan: Path, run_dir: Path, prepare_only: bool = False, frame: str | N
         elif measure is not None or register is not None:
             result = measure_geometry(run_dir, manifest, measure if measure is not None else register, register=register is not None)
         else:
-            result = generate(run_dir, manifest, frame, model=model, retry=retry, reconcile=reconcile, normalize_canvas=normalize_canvas)
+            # Recording turns SIGTERM / SIGHUP into `Interrupted`, after the stop hook has sent the running `gen` SIGTERM
+            # (`run_gen`); the attempt receipt then reads gen's report (`generate`).
+            with outcome.recording("gen-motion"):
+                result = generate(run_dir, manifest, frame, model=model, retry=retry, reconcile=reconcile, normalize_canvas=normalize_canvas)
         print(_json(result), end="")
         return 0
     except (ValueError, OSError) as exc:
