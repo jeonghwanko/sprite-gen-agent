@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 # The IFNet below follows Practical-RIFE's IFNet_HDv3 and warplayer (MIT, Copyright (c) 2021 hzwer; NOTICE).
 # The augmentation loop follows rife-ncnn-vulkan 20221029's RIFE::process_v4 (MIT, Copyright (c) 2020 nihui; NOTICE).
 """rife-v4.6 in PyTorch: the torch backend of `rife.Rife` (SPRITE_GEN_RIFE_BACKEND=torch, docs/loop-repair.md section 1).
@@ -201,7 +202,7 @@ def _swap(c: torch.Tensor) -> torch.Tensor:
 def _driver() -> str:
     """The NVIDIA driver's version: from /proc/driver/nvidia/version, else nvidia-smi's; '' where neither reads."""
     try:
-        found = re.search(r"Kernel Module(?: for \S+)?\s+(\d+(?:\.\d+)+)", NVIDIA_VERSION.read_text().splitlines()[0])
+        found = re.search(r"Kernel Module(?: for \S+)?\s+(\d+(?:\.\d+)+)", NVIDIA_VERSION.read_text(encoding="utf-8").splitlines()[0])
         if found:
             return found.group(1)
     except (OSError, IndexError):

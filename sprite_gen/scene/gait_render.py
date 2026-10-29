@@ -194,7 +194,7 @@ def deliver(profile,states,out):
         for i,board in enumerate(boards):sheet.paste(board.resize((480,270)),((i%2)*480,(i//2)*270))
         # Two columns, no blank lower half.
         sheet.crop((0,0,960,math.ceil(len(seq)/2)*270)).save(out/f"{motion}-contact-sheet.png")
-        folder.joinpath("poses.json").write_text(json.dumps({"kind":"authored-gait-poses","coordinates":"world XYZ; X forward, Y lateral, Z up","durations_ms":durations,"frames":seq},indent=2))
+        folder.joinpath("poses.json").write_text(json.dumps({"kind":"authored-gait-poses","coordinates":"world XYZ; X forward, Y lateral, Z up","durations_ms":durations,"frames":seq},indent=2), encoding="utf-8")
         evidence[motion]={"frames":len(seq),"duration_ms":sum(durations),"per_frame":records,
                          "total_leg_overlap_pixels":sum(r["leg_overlap_pixels"] for r in records),
                          "wrong_depth_winner_pixels":sum(r["wrong_depth_winner_pixels"] for r in records),
@@ -206,5 +206,5 @@ def deliver(profile,states,out):
     (out/"preview.html").write_text(page,encoding="utf-8")
     for p in sorted(out.rglob("*")):
         if p.is_file():inventory.append({"file":str(p.relative_to(out)),"sha256":hashlib.sha256(p.read_bytes()).hexdigest()})
-    (out/"file-hashes.json").write_text(json.dumps(inventory,indent=2))
+    (out/"file-hashes.json").write_text(json.dumps(inventory,indent=2), encoding="utf-8")
     return evidence
