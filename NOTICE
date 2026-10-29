@@ -56,5 +56,6 @@ creator kit, finds a codex session's rollout through codex's state DB, and makes
 machine-readable (report error codes, a not-started exit, the provider-submitted record kept on SIGTERM,
 `version` and `doctor`), reads and writes its text files as UTF-8 whatever the
 platform's locale, gives each motion stance reason a stable code, and offers pose-plan GPT motion as a
-workflow motion method. Source files it changed carry a "Modified for
+workflow motion method, and keeps a stable Python API for embedding programs (sprite_gen.api). Source files it
+changed carry a "Modified for
 sprite-gen-agent" line; the files it added carry their own SPDX header.

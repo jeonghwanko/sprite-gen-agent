@@ -136,8 +136,9 @@ grouping is derived from `sprite_gen/_modules.py`, the one taxonomy table.
 | Doc | Owns |
 |---|---|
 | [interpreter.md](interpreter.md) | Why the project venv is the only interpreter (no global `python3`, no NumPy fallback) |
+| [api.md](api.md) | `sprite_gen.api`: the names a program embedding sprite-gen may import, kept stable |
 | [rename-gate.md](rename-gate.md) | What must move together when a vocabulary word or key is renamed |
 | [release.md](release.md) | How a vX.Y.Z tag becomes a release page, what the lane builds and the publisher attaches, and what stays manual |
 | [troubleshooting.md](troubleshooting.md) | Symptoms of a pipeline that is "quietly wrong", with causes and fixes |
 
-<!-- Modified for sprite-gen-agent: indexes pose-motion.md, gait-guide.md and scale-check.md (see NOTICE). -->
+<!-- Modified for sprite-gen-agent: indexes pose-motion.md, gait-guide.md, scale-check.md and api.md (see NOTICE). -->
