@@ -33,6 +33,7 @@ These are the fork's additions on top of 3.4.0, first written for the AI Fighter
   - Local tools on the hosted path (ffprobe, ffmpeg frame extraction, img2webp, `extract`'s heal child, scene render) run with a time bound (`sprite_gen.local_tool`); one that hangs fails the step instead of holding the run.
   - `gen-motion` runs its `gen` through `run_logged` under a recording: a stopped `gen-motion` sends `gen` SIGTERM, so `gen` writes its report.
   - `review-decisions` takes a dated snapshot of the model asked for, and exits 1 (not 2) for an unverified review.
+- **Faster: `transform_cell` (the gait fallback's scaled-back frames in `video-loop`) maps only up to the figure's reach, bytes unchanged.** 1.85x on a real 73-frame run (29.9 s to 16.2 s). `face_bake` and the curation export run their tools bounded too.
 - **Fixed: every text file is read and written as UTF-8**, whatever the platform's locale. On a cp949 Windows, a report holding an em dash had stopped `video-set`.
 
 ## v3.4.0 - Loop part pop retakes, cycle alignment walk beat repair and broken beats, ghost limb faults, and same foot, filmed jump, and seam jump retakes
