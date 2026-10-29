@@ -93,7 +93,58 @@ def transform_cell(image: Image.Image, size: tuple[int, int], inverse: tuple[flo
     rings the way LANCZOS does (a smaller negative lobe, the same division by low coverage at
     the edge), so coverage and colour are mapped apart here too. Coverage keeps BICUBIC's edge,
     held to the range of the 2 x 2 source pixels the colour mixes from; colour is a BILINEAR mix
-    of premultiplied colour, a filter with no negative lobe. docs/video-pipeline.md "Cells"."""
+    of premultiplied colour, a filter with no negative lobe. docs/video-pipeline.md "Cells".
+
+    Only the part of `size` up to where the figure maps to is computed (`_figure_window`, from the cell's origin): beyond
+    it every filter reads coverage 0, and the cell is transparent there either way. A keyed video frame is mostly empty canvas; mapping all of it nine
+    times took 0.4 s a frame (2026-10-29, a 73-frame Grok run in `video-loop`)."""
+    window = _figure_window(image, size, inverse)
+    if window is None:
+        return _transform_whole(image, size, inverse)
+    (_sx0, _sy0, sx1, sy1), (_ox0, _oy0, ox1, oy1) = window
+    out = Image.new("RGBA", tuple(size), (0, 0, 0, 0))
+    if ox1 <= 0 or oy1 <= 0:
+        return out
+    # Trimmed on the right and below only: Pillow steps each row's source point from the cell's origin, so a window that
+    # began elsewhere would round those points apart and change a pixel here and there. From (0, 0) the map is the same map.
+    out.paste(_transform_whole(image.crop((0, 0, sx1, sy1)), (ox1, oy1), inverse), (0, 0))
+    return out
+
+
+# Source pixels kept around the figure's box: BICUBIC reads 2 beyond the mapped point, the coverage bounds and NEAREST
+# corners half a pixel more.
+_FIGURE_PAD = 4
+
+
+def _figure_window(image: Image.Image, size: tuple[int, int], inverse: tuple[float, ...]
+                   ) -> tuple[tuple[int, int, int, int], tuple[int, int, int, int]] | None:
+    """The source box around the figure (its coverage, padded) and the output box that maps into it, or None where the
+    map cannot be inverted (the whole cell is mapped then). A cell with no coverage maps nowhere."""
+    a, b, c, d, e, f = (float(v) for v in inverse)
+    det = a * e - b * d
+    if abs(det) < 1e-12:
+        return None
+    rgba = image if image.mode == "RGBA" else image.convert("RGBA")
+    box = rgba.getchannel("A").getbbox()
+    W, H = rgba.size
+    w, h = size
+    if box is None:
+        return (0, 0, 0, 0), (0, 0, 0, 0)
+    sx0, sy0 = max(0, box[0] - _FIGURE_PAD), max(0, box[1] - _FIGURE_PAD)
+    sx1, sy1 = min(W, box[2] + _FIGURE_PAD), min(H, box[3] + _FIGURE_PAD)
+    # Output points whose source point falls in the padded box (inverse of out -> in), a pixel more each side.
+    xs, ys = [], []
+    for X in (sx0, sx1):
+        for Y in (sy0, sy1):
+            u, v = X - c, Y - f
+            xs.append((e * u - b * v) / det)
+            ys.append((-d * u + a * v) / det)
+    ox0, oy0 = max(0, int(np.floor(min(xs))) - 2), max(0, int(np.floor(min(ys))) - 2)
+    ox1, oy1 = min(w, int(np.ceil(max(xs))) + 2), min(h, int(np.ceil(max(ys))) + 2)
+    return (sx0, sy0, sx1, sy1), (ox0, oy0, ox1, oy1)
+
+
+def _transform_whole(image: Image.Image, size: tuple[int, int], inverse: tuple[float, ...]) -> Image.Image:
     w, h = size
     src = np.asarray(image.convert("RGBA"), dtype=np.float32)
     alpha = src[..., 3]

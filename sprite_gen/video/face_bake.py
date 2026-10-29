@@ -36,6 +36,7 @@ from sprite_gen._deps import np
 from sprite_gen.util.console import utf8_streams
 from sprite_gen.video import face_layer as fl
 from sprite_gen.video import face_pack
+from sprite_gen import local_tool
 
 PROG = "face-bake"
 RATE = 48000
@@ -63,8 +64,8 @@ def decode(path: Path, seconds: float | None = None) -> np.ndarray:
     """A sound as mono float samples at RATE (ffmpeg folds the channels), cut or padded to `seconds` when given."""
     if shutil.which("ffmpeg") is None:
         raise SystemExit(f"{PROG}: ffmpeg is required on PATH to read {path}")
-    proc = subprocess.run(["ffmpeg", "-v", "error", "-nostdin", "-i", str(path), "-map", "0:a:0", "-ac", "1", "-ar", str(RATE),
-                           "-f", "f32le", "pipe:1"], capture_output=True)
+    proc = local_tool.run(["ffmpeg", "-v", "error", "-nostdin", "-i", str(path), "-map", "0:a:0", "-ac", "1", "-ar", str(RATE),
+                           "-f", "f32le", "pipe:1"], seconds=local_tool.TOOL_SECONDS, what=PROG, capture_output=True)
     if proc.returncode:
         raise SystemExit(f"{PROG}: ffmpeg could not read the sound of {path}")
     x = np.frombuffer(proc.stdout, dtype="<f4").astype(np.float32)
@@ -90,8 +91,9 @@ def plan_line(folder: Path, voice: np.ndarray, play: str | None, start: int, tag
         tmp = Path(tmp_name)
         (tmp / "samples.f32").write_bytes(voice.astype("<f4").tobytes())
         (tmp / "args.json").write_text(json.dumps({"rate": RATE, "tags": tags, "play": play, "start": start}), encoding="utf-8")
-        proc = subprocess.run([node, str(PLAN), str(folder / face_pack.PLAYER_PATH.name), str(folder / "face-pack.json"),
-                               str(tmp / "samples.f32"), str(tmp / "args.json"), str(tmp / "plan.json")], capture_output=True, encoding="utf-8")
+        proc = local_tool.run([node, str(PLAN), str(folder / face_pack.PLAYER_PATH.name), str(folder / "face-pack.json"),
+                               str(tmp / "samples.f32"), str(tmp / "args.json"), str(tmp / "plan.json")],
+                              seconds=local_tool.TOOL_SECONDS, what=PROG, capture_output=True, encoding="utf-8")
         if proc.returncode:
             raise SystemExit(f"{PROG}: the pack's player failed: {proc.stderr.strip()[-600:]}")
         return json.loads((tmp / "plan.json").read_text(encoding="utf-8"))
@@ -221,9 +223,9 @@ def video(out: Path, report: dict[str, Any], beside: Path | None, height: int | 
         scale = f",scale=-2:{height}:flags=lanczos" if height else ""
         chain += f";[{last}]format=yuv420p{scale}[v]"
         target = out / ("beside.mp4" if beside is not None else "baked.mp4")
-        proc = subprocess.run(["ffmpeg", "-v", "error", "-nostdin", "-y", *inputs, "-filter_complex", chain, "-map", "[v]",
+        proc = local_tool.run(["ffmpeg", "-v", "error", "-nostdin", "-y", *inputs, "-filter_complex", chain, "-map", "[v]",
                                "-map", f"{panels}:a", "-c:v", "libx264", "-crf", "20", "-preset", "slow", "-c:a", "aac", "-b:a", "128k",
-                               "-shortest", str(target)], capture_output=True, encoding="utf-8")
+                               "-shortest", str(target)], seconds=local_tool.TOOL_SECONDS, what=PROG, capture_output=True, encoding="utf-8")
         if proc.returncode:
             raise SystemExit(f"{PROG}: ffmpeg could not write {target.name}: {proc.stderr.strip()[-400:]}")
     return target

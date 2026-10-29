@@ -65,6 +65,7 @@ from sprite_gen.spec.runio import load_request, publish_guard, read_guard, write
 from sprite_gen.util.hexcolor import parse_hex
 from sprite_gen._modules import qualified
 from sprite_gen.util.console import utf8_streams
+from sprite_gen import local_tool
 
 # The SPA assets are package data (declared in pyproject's `package-data`), so the one
 # path that finds them is relative to this module — the same place in a repo checkout and
@@ -1350,7 +1351,11 @@ class CurationHandler(BaseHTTPRequestHandler):
                         else:
                             args += ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "18"]
                         args.append(str(out))
-                        proc = subprocess.run(args, capture_output=True, text=True)
+                        try:
+                            proc = local_tool.run(args, seconds=local_tool.TOOL_SECONDS, what="curation export", capture_output=True, text=True)
+                        except SystemExit as exc:  # ffmpeg hung: the request fails, the server keeps serving
+                            self._send_json({"error": str(exc)}, 500)
+                            return
                         if proc.returncode != 0 or not out.exists():
                             self._send_json({"error": f"ffmpeg failed: {proc.stderr[-300:]}"}, 500)
                             return

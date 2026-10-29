@@ -4,8 +4,9 @@ pixels. None of them sends a provider request, so one stopped at its bound is a 
 
 Before 2026-10-29 these calls waited forever: a tool that hung (a clip ffmpeg cannot finish reading, a stuck pipe) held
 the whole run, and an unattended caller (the creator kit's worker) could only stop it at its stage's own limit, with
-nothing saying which step hung. Calls that start a provider (`gen`, `video`, codex) keep their own limits and are not
-run through here.
+nothing saying which step hung. Calls that start a provider (`gen`, `video`, codex), or may (the curation server's
+reroll, `correction-loop`'s provider command), keep their own limits and are not run through here, and neither is a native
+file picker that waits on a person (`serve_compose`).
 """
 
 from __future__ import annotations
