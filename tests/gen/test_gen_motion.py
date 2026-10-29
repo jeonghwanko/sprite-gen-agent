@@ -199,6 +199,33 @@ def test_unknown_outcome_preserved_and_reconciled_without_duplicate_call(tmp_pat
     assert result["status"] == "awaiting_review"
 
 
+@pytest.mark.parametrize("report", [{"provider": None, "provider_submitted": False}, None], ids=["report-says-not-sent", "exit-3-no-report"])
+def test_a_gen_that_sent_nothing_is_not_started_and_the_same_attempt_runs_again(tmp_path, report):
+    """gen failing before its request (exit 3 or `provider_submitted: false`) cost nothing: the pose is not stuck behind
+    --reconcile, and the next --frame tries again in the same attempt folder, not as one of the two attempts."""
+    from sprite_gen.gen import outcome
+
+    _, run, manifest = setup_run(tmp_path)
+    def not_sent(prompt, out, refs, report_path, *, model, log):
+        if report is not None:
+            report_path.write_text(json.dumps(report), encoding="utf-8")
+        log.write_text("offline fake: refused before the request", encoding="utf-8")
+        return outcome.NOT_STARTED_EXIT
+    with pytest.raises(outcome.Stop, match="sent no request") as stopped:
+        motion.generate(run, manifest, "contact-a", runner=not_sent)
+    assert stopped.value.code == outcome.NOT_STARTED_EXIT
+    attempt = run / "poses/pose-contact-a/attempt-01"
+    assert json.loads((attempt / "attempt.json").read_text(encoding="utf-8"))["status"] == "not-started"
+    for flag in ("retry", "reconcile"):
+        with pytest.raises(ValueError, match="sent nothing"):
+            motion.generate(run, manifest, "contact-a", runner=fake_runner(), **{flag: True})
+    seen = []
+    result = motion.generate(run, manifest, "contact-a", runner=fake_runner(seen))
+    assert len(seen) == 1 and result["status"] == "awaiting_review"
+    assert sorted(p.name for p in (run / "poses/pose-contact-a").glob("attempt-*")) == ["attempt-01"]
+    assert json.loads((attempt / "attempt.json").read_text(encoding="utf-8"))["status"] == "generated"
+
+
 def test_missing_report_is_unknown_not_retry_permission(tmp_path):
     _, run, manifest = setup_run(tmp_path)
     def runner(prompt, out, refs, report, **kwargs):

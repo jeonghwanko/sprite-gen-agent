@@ -55,5 +55,6 @@ measured figure size, applied by game-pack), first written for the AI Fighter
 creator kit, finds a codex session's rollout through codex's state DB, and makes generation outcomes
 machine-readable (report error codes, a not-started exit, the provider-submitted record kept on SIGTERM,
 `version` and `doctor`), reads and writes its text files as UTF-8 whatever the
-platform's locale, and gives each motion stance reason a stable code. Source files it changed carry a "Modified for
+platform's locale, gives each motion stance reason a stable code, and offers pose-plan GPT motion as a
+workflow motion method. Source files it changed carry a "Modified for
 sprite-gen-agent" line; the files it added carry their own SPDX header.
