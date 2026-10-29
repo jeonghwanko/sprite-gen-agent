@@ -17,6 +17,7 @@ from pathlib import Path
 
 from PIL import Image
 
+from sprite_gen.gen import outcome
 from sprite_gen.spec import pose_plan, pose_geometry, gait_inputs
 from sprite_gen.spec.runio import (acquire_run_dir_lock, release_run_dir_lock,
                                    atomic_save_image, atomic_write_text, atomic_write_set)
@@ -426,19 +427,24 @@ def generate(run_dir: Path, manifest: dict, fid: str, *, model: str | None = Non
               "provider": "codex", "refs": [{"path": str(p), "sha256": _hash(p)} for p in refs]}
     input_hash = digest(_json(inputs).encode("utf-8"))
     attempts = _attempts(run_dir, fid)
+    again = None  # the folder of an attempt whose request never left: tried again as the same attempt
     if attempts:
         path = attempts[-1]
         previous = _read(path)
         if previous["input_sha256"] != input_hash:
             raise ValueError("attempt inputs/model changed; use a new run directory")
-        if reconcile:
+        if previous["status"] == "not-started":
+            if retry or reconcile:
+                raise ValueError("the last attempt sent nothing; run --frame again without --retry/--reconcile")
+            again = path.parent
+        elif reconcile:
             recoverable_canvas = previous["status"] == "invalid" and normalize_canvas and "canvas differs" in previous.get("reason", "")
             if previous["status"] not in ("started", "unknown") and not recoverable_canvas:
                 raise ValueError("only an unknown/interrupted outcome needs reconciliation")
             return _complete(path, previous, manifest, normalize_canvas=normalize_canvas)
-        if previous["status"] in ("started", "unknown"):
+        elif previous["status"] in ("started", "unknown"):
             raise ValueError("generation outcome unknown; preserve files, inspect provider records, then --reconcile; no automatic retry")
-        if previous["status"] == "generated":
+        elif previous["status"] == "generated":
             _validate_receipt(path, manifest)
             status = _review_status(path.parent / "review.json", _binding(previous), POSE_CHECKS)
             if retry and 3 <= manifest["contract"] < 5:
@@ -470,18 +476,21 @@ def generate(run_dir: Path, manifest: dict, fid: str, *, model: str | None = Non
                 raise ValueError("retry requires a failed visual review with observations")
         else:
             raise ValueError("structural rejection cannot trigger another generation; inspect/reconcile the existing output (resolution-only: --reconcile --normalize-canvas)")
-        if len(attempts) >= MAX_ATTEMPTS:
+        if again is None and len(attempts) >= MAX_ATTEMPTS:
             raise ValueError("two attempts exhausted; stop this pose approach and preserve evidence")
     elif retry or reconcile:
         raise ValueError("no prior candidate to retry/reconcile")
-    folder = _folder(run_dir, fid) / f"attempt-{len(attempts)+1:02d}"
+    folder = again or _folder(run_dir, fid) / f"attempt-{len(attempts)+1:02d}"
+    if again:
+        for name in ("output.png", "gen-report.json", "gen.log", "retry-feedback.json"):
+            (folder / name).unlink(missing_ok=True)
     prompt = (_folder(run_dir, fid) / "prompt.txt").read_text(encoding="utf-8")
     feedback_record = None
-    if attempts:
+    if attempts and again is None:
         prior = attempts[-1].parent
         feedback, feedback_record = _retry_feedback(prior, "geometry-review.json" if 3 <= manifest["contract"] < 5 else "review.json")
         prompt += feedback
-    folder.mkdir()
+    folder.mkdir(exist_ok=again is not None)
     if feedback_record:
         _write(folder / "retry-feedback.json", feedback_record)
     atomic_write_text(folder / "prompt.txt", prompt)
@@ -492,10 +501,17 @@ def generate(run_dir: Path, manifest: dict, fid: str, *, model: str | None = Non
         rc = (runner or run_gen)(folder / "prompt.txt", folder / "output.png", refs,
                                  folder / "gen-report.json", model=model, log=folder / "gen.log")
     except BaseException as exc:
-        receipt.update(status="unknown", reason=type(exc).__name__)
+        # gen's own report says whether its request left (a stop reaches gen too, and it writes the report first)
+        sent = outcome.child_submitted(1, folder / "gen-report.json")
+        receipt.update(status="unknown" if sent else "not-started", reason=type(exc).__name__)
         _write(path, receipt)
         raise
     if rc != 0:
+        if not outcome.child_submitted(rc, folder / "gen-report.json"):
+            receipt.update(status="not-started", reason=f"provider exit {rc}; gen sent no request")
+            _write(path, receipt)
+            raise outcome.Stop(f"gen-motion: {receipt['reason']}; run --frame again (see {folder / 'gen.log'})",
+                               outcome.NOT_STARTED_EXIT, outcome="preflight")
         receipt.update(status="unknown", reason=f"provider exit {rc}; outcome not confirmed")
         _write(path, receipt)
         raise ValueError(receipt["reason"])

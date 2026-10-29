@@ -262,6 +262,11 @@ An interrupted call, nonzero provider exit or missing output/report is **unknown
 not a confirmed failure. Inspect provider records and existing files. `--reconcile`
 can recognize a complete output and provider report without another generation
 call. It cannot make an incomplete result successful. No automatic retry occurs.
+The one exception is a `gen` that says it sent nothing: it exited 3, or its report has
+`provider_submitted: false` ([gen](gen.md#outcome--what-failed-whether-to-retry-whether-a-provider-was-charged)). That attempt is `not-started`, `gen-motion` exits 3
+too, and the next `--frame` runs again in the same attempt folder. It is not one of the two
+attempts, and it needs no `--retry` or `--reconcile`, which are refused for it.
+In the guided workflow this method is `--motion-method pose-plan` (experimental, codex).
 The motion runner also disables the lower-level `gen` timeout retry. It retains
 the Codex session for recovery; the report captures observed image-tool call
 source in `extra.image_tool_trace`. Requested `refs` alone are not proof of the

@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (the pose-plan motion method; see NOTICE).
 """The two user journeys and their selectable fields, declared once."""
 from sprite_gen.gen import CODEX_UNAVAILABLE_CHOICES, CODEX_UNAVAILABLE_SETTING, PROVIDERS
 
@@ -7,6 +8,9 @@ MOTION_METHODS = {
                  "steps": ["prepare", "gen-set", "extract", "compose-atlas", "compose-gif"]},
     "grok-video": {"label": "그록 영상", "provider": "grok", "doc": "docs/video-pipeline.md",
                    "steps": ["video-set"]},
+    # One pose at a time from an authored pose plan and its joint guides (experimental; docs/pose-motion.md).
+    "pose-plan": {"label": "지피티 포즈 가이드 (실험)", "provider": "codex", "doc": "docs/pose-motion.md",
+                  "steps": ["gen-motion"]},
 }
 # One label per registered provider. A provider with no label here is a bug, not
 # a row to drop quietly: the mapping is checked rather than zipped positionally,
@@ -32,7 +36,7 @@ FIELDS = {
     "image_provider": {"options": {provider: PROVIDER_LABELS[provider] for provider in GUIDED_PROVIDERS},
                        "question": "이미지를 지피티로 만들까요, 그록으로 만들까요?"},
     "motion_method": {"options": {k: v["label"] for k, v in MOTION_METHODS.items()},
-                      "question": "동작을 그록 영상으로 만들까요, 지피티 이미지 스프라이트로 만들까요?"},
+                      "question": "동작을 그록 영상, 지피티 이미지 스프라이트, 지피티 포즈 가이드(실험) 중 무엇으로 만들까요?"},
     "curation": {"options": {"open": "열기", "skip": "열지 않기"},
                  "question": "큐레이션뷰에서 결과를 확인하고 골라볼까요?"},
 }
