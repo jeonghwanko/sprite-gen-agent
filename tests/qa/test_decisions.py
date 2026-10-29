@@ -138,6 +138,7 @@ def test_malformed_answers_are_unverified_and_not_retried(evidence, monkeypatch,
         return response, "req-test"
     report = live(evidence, monkeypatch, transport)
     assert report["status"] == "unverified"
+    assert report["request_id"] == "req-test"
     assert all(c["status"] == "unverified" for c in report["checks"].values())
     with pytest.raises(ValueError, match="unknown outcome"):
         live(evidence, monkeypatch, transport)
@@ -204,10 +205,27 @@ def test_http_endpoint_timeout_and_no_redirect(monkeypatch):
 def test_provider_error_body_is_not_exposed(monkeypatch):
     class Opener:
         def open(self, *_args, **_kwargs):
-            raise urllib.error.HTTPError(d.ENDPOINT, 429, "secret-body", {}, io.BytesIO(b"secret-body"))
+            raise urllib.error.HTTPError(d.ENDPOINT, 429, "secret-body", {"x-request-id": "req-http-error"}, io.BytesIO(b"secret-body"))
     monkeypatch.setattr(d.urllib.request, "build_opener", lambda handler: Opener())
-    with pytest.raises(d.RequestFailure, match="^http_429$"):
+    with pytest.raises(d.RequestFailure, match="^http_429$") as error:
         d.post_request({}, "fake", 1)
+    assert error.value.request_id == "req-http-error"
+
+
+def test_invalid_json_keeps_request_id_in_unverified_report(evidence, monkeypatch):
+    class Reply(io.BytesIO):
+        headers = {"x-request-id": "req-invalid-json"}
+    class Opener:
+        def open(self, *_args, **_kwargs):
+            return Reply(b"invalid-secret-response-body")
+    monkeypatch.setattr(d.urllib.request, "build_opener", lambda handler: Opener())
+    report = live(evidence, monkeypatch, d.post_request)
+    assert report["status"] == "unverified"
+    assert report["error_code"] == "invalid_response_json"
+    assert report["request_id"] == "req-invalid-json"
+    assert "invalid-secret-response-body" not in (evidence[2] / "decision-review.json").read_text()
+    with pytest.raises(ValueError, match="unknown outcome"):
+        live(evidence, monkeypatch, d.post_request)
 
 
 def dataset_for(report, out):

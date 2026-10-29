@@ -225,8 +225,9 @@ def parse_answers(response, request, threshold):
 class RequestFailure(Exception):
     """Sanitized provider error; deliberately excludes response bodies and credentials."""
 
-    def __init__(self, code):
+    def __init__(self, code, request_id=None):
         self.code = code
+        self.request_id = request_id
         super().__init__(code)
 
 
@@ -239,18 +240,20 @@ def post_request(request, api_key, timeout):
     # One fixed endpoint, no redirect, no generation/provider fallback, no automatic retry.
     req = urllib.request.Request(ENDPOINT, data=json_bytes(request), method="POST",
                                  headers={"Authorization": "Bearer " + api_key, "Content-Type": "application/json"})
+    request_id = None
     try:
         with urllib.request.build_opener(_NoRedirect()).open(req, timeout=timeout) as response:
+            request_id = response.headers.get("x-request-id")
             raw = response.read(4 * 1024 * 1024 + 1)
             if len(raw) > 4 * 1024 * 1024:
-                raise RequestFailure("response_too_large")
-            return json.loads(raw), response.headers.get("x-request-id")
+                raise RequestFailure("response_too_large", request_id)
+            return json.loads(raw), request_id
     except urllib.error.HTTPError as exc:
-        raise RequestFailure(f"http_{exc.code}") from None
+        raise RequestFailure(f"http_{exc.code}", (exc.headers or {}).get("x-request-id")) from None
     except (urllib.error.URLError, TimeoutError, OSError):
-        raise RequestFailure("transport_outcome_unknown") from None
+        raise RequestFailure("transport_outcome_unknown", request_id) from None
     except (ValueError, UnicodeError):
-        raise RequestFailure("invalid_response_json") from None
+        raise RequestFailure("invalid_response_json", request_id) from None
 
 
 def review(spec, base, out_dir, *, execute=False, confirm_api_billing=False, threshold=0.8,
@@ -297,12 +300,14 @@ def review(spec, base, out_dir, *, execute=False, confirm_api_billing=False, thr
         report["status"] = "request_started"
         write_json(report_path, report)  # persisted before any potentially billable request
         start = time.monotonic()
+        request_id = None
         try:
             response, request_id = (transport or post_request)(request, key, timeout)
             checks = parse_answers(response, request, threshold)
             validate_sources(binding)
         except (RequestFailure, ValueError, OSError, TypeError, KeyError) as exc:
             report.update(status="unverified", error_code=exc.code if isinstance(exc, RequestFailure) else "invalid_or_stale_evidence_response",
+                          request_id=exc.request_id if isinstance(exc, RequestFailure) else request_id,
                           elapsed_seconds=time.monotonic() - start,
                           checks={q["name"]: {"status": "unverified", "reason": "request_not_verified"} for q in request["questions"]})
             write_json(report_path, report)
