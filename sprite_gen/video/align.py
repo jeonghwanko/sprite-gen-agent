@@ -356,8 +356,8 @@ def resample(frames: list[Image.Image], length: int, interpolate: rife_mod.Inter
 
     The loop's beat is read on the legs (`beat`, `_keep_the_beat`: how far each frame standing off its own time jolts
     the legs into it and out of it); under auto, where the nearer source frames taken break it, a frame given way is
-    made again at another fraction of its pair where that keeps it (`smear` method retimed). A loop whose beat still breaks
-    is made of source frames only where that jolts less (`cadence.source_plan`, `beat` `source_plan`; every made frame's
+    made again at another fraction of its pair where that keeps it (`smear` method retimed). A loop whose beat still breaks, cut
+    longer than the loop, is made of source frames only where that jolts less (`cadence.source_plan`, `beat` `source_plan`; every made frame's
     `smear` method source-plan). The beat's `over` and `limit` are read at `beat_limit` (`--beat-limit`): BEAT_JOLT
     unless the caller takes a larger jolt for its gait; what is made again and spread keeps to BEAT_JOLT either way."""
     count = len(frames)
@@ -434,7 +434,9 @@ def resample(frames: list[Image.Image], length: int, interpolate: rife_mod.Inter
             entry["method"], entry["moved"] = "moved", moved
         elif "measure" in m:
             smears.append({"at": k, "method": "moved", **m["measure"], "faults": [], "look": looks(m["measure"]), "moved": moved})
-    if between == "auto" and beat.get("path") == "read" and beat["over"]:
+    # Only a cut longer than the loop: one shorter is made longer by frames RIFE makes, and of source frames alone it can only
+    # hold some (2026-10-29: a 4-frame cut to 6 dropped its clean made frames for held ones — the fork's first CI run).
+    if between == "auto" and count > length and beat.get("path") == "read" and beat["over"]:
         steps = cadence_mod.leg_path(frames)
         plan = cadence_mod.source_plan(steps, length, avoid=set(ghosts))
         if plan is not None and plan["jolt"] < beat["jolt"]:
