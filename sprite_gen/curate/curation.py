@@ -459,6 +459,15 @@ def edit_index(curation: dict[str, Any] | None, state: str, index: int) -> int:
         return index
 
 
+def frame_edits(curation: dict[str, Any] | None, state: str, index: int,
+                transforms: dict[int, dict[str, float]]) -> tuple[dict[str, Any] | None, dict[str, float] | None]:
+    """The pixel edits and the transform instance `index` is baked with (`transforms` from `state_plan`): its own, or a
+    linked clone's source frame's (`edit_index`). Every bake — atlas, GIF, PNG export, cycle, anchor, the breathe
+    reference — looks them up here; `compose-cycle` once looked up the clone's own index and baked it unedited."""
+    edit = edit_index(curation, state, index)
+    return state_pixel_ops(curation, state).get(edit), transforms.get(edit)
+
+
 def frame_variant(curation: dict[str, Any] | None, state: str | None = None) -> str:
     """Which extracted frame variant consumers read: 'pixel' or 'plain'.
 

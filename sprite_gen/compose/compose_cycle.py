@@ -17,7 +17,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 from sprite_gen.util.cli_kwargs import namespace_from_kwargs
-from sprite_gen.curate.curation import apply_pixel_edits, apply_transform, edit_index, frame_variant, load_curation, pixel_snap_scale, source_frame_index, state_pixel_ops, state_plan
+from sprite_gen.curate.curation import apply_pixel_edits, apply_transform, frame_edits, frame_variant, load_curation, pixel_snap_scale, source_frame_index, state_plan
 from sprite_gen.spec.layout import row_frame_rel, state_frame_total
 from sprite_gen.frames.extract import require_frames_manifest
 from sprite_gen.qa.preview import flatten
@@ -126,17 +126,16 @@ def _run_guarded(args, run_dir):
     else:
         user_frames = [index + 1 for index in ordered]
 
-    pixel_ops = state_pixel_ops(curation, args.state)
-    edits = [edit_index(curation, args.state, number - 1) for number in user_frames]
+    edits = [frame_edits(curation, args.state, number - 1, transforms) for number in user_frames]
     selected = [
         # 파일은 원본 프레임(복제 인스턴스면 소스)을 읽고, 변형/픽셀편집은 edit_index 로 조회
         # (링크 복제 = 원본 편집 truth — atlas/GIF/export 와 같은 규칙)
         load_frame(run_dir, rows_by_state[args.state],
                    source_frame_index(curation, args.state, number - 1, default_count) + 1,
-                   transforms.get(edit), cell_size,
+                   transform, cell_size,
                    frame_variant(curation, args.state), pixel_snap_scale(request),
-                   pixel_ops.get(edit))
-        for number, edit in zip(user_frames, edits)
+                   ops)
+        for number, (ops, transform) in zip(user_frames, edits)
     ]
     frame_paths = [path for path, _image in selected]
     frames = [(number, image) for number, (_path, image) in zip(user_frames, selected)]
@@ -162,7 +161,7 @@ def _run_guarded(args, run_dir):
         "selected_user_frames": user_frames,
         "selected_zero_based_frames": [frame - 1 for frame in user_frames],
         "selection_source": "explicit-frames" if args.frames is not None else "curation.json",
-        "transforms_applied": {str(n - 1): transforms[e] for n, e in zip(user_frames, edits) if e in transforms},
+        "transforms_applied": {str(n - 1): transform for n, (_ops, transform) in zip(user_frames, edits) if transform is not None},
         "duration_ms": duration_ms,
         "delay_ticks": round(duration_ms / 10),
         "loop": True,

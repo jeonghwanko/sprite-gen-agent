@@ -31,9 +31,9 @@ import json
 from pathlib import Path
 from typing import Any
 
-from sprite_gen.curate.curation import (anchor_choices, apply_pixel_edits, apply_transform, edit_index,
+from sprite_gen.curate.curation import (anchor_choices, apply_pixel_edits, apply_transform, frame_edits,
                        frame_variant, load_curation, pixel_snap_scale, source_frame_index,
-                       state_instances, state_pixel_ops, state_plan)
+                       state_instances, state_plan)
 from sprite_gen.spec.layout import row_frame_rel, state_frame_total
 from sprite_gen.util.console import utf8_streams
 
@@ -249,12 +249,11 @@ def bake_frame(run_dir: Path, request: dict[str, Any], curation: dict[str, Any] 
     if not src_path.is_file():
         raise AnchorUnavailable(
             "frame-file-missing", f"anchor: frame file missing for {state}#{index}: {src_path}")
-    edit_idx = edit_index(curation, state, index)
+    ops, transform = frame_edits(curation, state, index, transforms)
     with Image.open(src_path) as opened:
         return apply_transform(
-            apply_pixel_edits(opened.convert("RGBA"),
-                              state_pixel_ops(curation, state).get(edit_idx)),
-            transforms.get(edit_idx), cell_size,
+            apply_pixel_edits(opened.convert("RGBA"), ops),
+            transform, cell_size,
             snap_scale=pixel_snap_scale(request) if variant == "pixel" else None)
 
 

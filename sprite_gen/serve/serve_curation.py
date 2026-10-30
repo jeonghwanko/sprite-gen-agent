@@ -126,8 +126,8 @@ def _breathe_source_frame(run_dir: Path, state: str):
     해부는 상태 단위 상수라 첫 실재 프레임 하나면 충분하다 — 그리고 굽기도 그 계약을
     지킨다(`breathe.resolve_anatomy` 가 줄마다 한 벌만 확정한다). 예전엔 굽기가 프레임마다
     다시 재서 이 단언이 거짓이었고 프리뷰와 갈렸다 (validator 실측 2026-07-25)."""
-    from sprite_gen.curate.curation import (apply_pixel_edits, apply_transform, edit_index,
-                                     source_frame_index, state_pixel_ops, state_plan)
+    from sprite_gen.curate.curation import (apply_pixel_edits, apply_transform, frame_edits,
+                                     source_frame_index, state_plan)
     manifest = load_consistent_frames_manifest(run_dir, allow_pending_states=True) or {"rows": []}
     row = next((r for r in manifest.get("rows", []) if r.get("state") == state), None)
     if not row:
@@ -157,15 +157,14 @@ def _breathe_source_frame(run_dir: Path, state: str):
         candidate = run_dir / row_frame_rel(row, source_index, variant)
         if not candidate.is_file():
             continue
-        edit_idx = edit_index(curation, state, index)
-        ops = state_pixel_ops(curation, state).get(edit_idx)
+        ops, transform = frame_edits(curation, state, index, transforms)
         with Image.open(candidate) as opened:
             source = apply_pixel_edits(opened.convert("RGBA"), ops)
         key = reference_key(state=state, variant=variant,
                             request_stamp=_file_stamp(run_dir / "sprite-request.json"),
                             source_index=source_index, source_stamp=_file_stamp(candidate),
-                            pixel_ops=ops, transform=transforms.get(edit_idx))
-        return apply_transform(source, transforms.get(edit_idx), cell, snap_scale=snap), key
+                            pixel_ops=ops, transform=transform)
+        return apply_transform(source, transform, cell, snap_scale=snap), key
     return None, None
 
 
