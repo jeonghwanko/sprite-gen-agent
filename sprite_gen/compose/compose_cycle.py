@@ -79,8 +79,7 @@ def contact_sheet(frames: list[tuple[int, Image.Image]], gap: int = 4, label_hei
     return sheet
 
 
-def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=__doc__)
+def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--run-dir", required=True, type=Path)
     parser.add_argument("--state", required=True)
     parser.add_argument("--frames", type=parse_frames, help="1-based frame numbers, for example 2,3,4,5; defaults to curation.json selection")
@@ -88,6 +87,11 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--duration-ms", type=int, default=190)
     parser.add_argument("--delay-ticks", type=int, help="GIF delay in 1/100 second ticks; overrides --duration-ms")
     parser.add_argument("--note", default="")
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    add_arguments(parser)
     return parser
 
 

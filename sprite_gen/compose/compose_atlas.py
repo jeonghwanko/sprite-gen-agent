@@ -33,8 +33,7 @@ def cell_geometry(cell: dict[str, Any]) -> tuple[int, int]:
     return width, height
 
 
-def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=__doc__)
+def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--run-dir", required=True, type=Path)
     parser.add_argument("--atlas", default="sprite-sheet-alpha.png")
     parser.add_argument("--manifest", default="manifest.json")
@@ -42,6 +41,11 @@ def _build_parser() -> argparse.ArgumentParser:
     # None = derive from the request's subject + drawable cell geometry
     # (sprite_gen.spec.subject); the flag is an explicit override only.
     parser.add_argument("--min-used-pixels", type=int, default=None)
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    add_arguments(parser)
     return parser
 
 

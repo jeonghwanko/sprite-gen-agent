@@ -23,8 +23,7 @@ BEST_CANDIDATE = "best-candidate"
 REPORT = "correction-loop.report.json"
 
 
-def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=__doc__)
+def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--run-dir", required=True, type=Path)
     parser.add_argument("--states", default="all")
     parser.add_argument("--out-dir", type=Path)
@@ -34,6 +33,11 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--provider-command", help="optional command template; {prompt_file}, {next_run_dir}, {attempt}")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--no-preserve-best", action="store_true")
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    add_arguments(parser)
     return parser
 
 

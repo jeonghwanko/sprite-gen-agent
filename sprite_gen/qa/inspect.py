@@ -30,8 +30,7 @@ DEFAULT_DHASH_MIN = 0.55
 DEFAULT_MOTION_MIN = 0.01
 
 
-def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=__doc__)
+def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--run-dir", required=True, type=Path)
     parser.add_argument("--states", default="all")
     parser.add_argument("--report", default="sprite-inspect.report.json")
@@ -46,6 +45,11 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--chroma-mode", choices=("rgb", "ycbcr"), default=None)
     parser.add_argument("--decontam", choices=("off", "auto", "palette"), default=None)
     parser.add_argument("--no-write", action="store_true")
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    add_arguments(parser)
     return parser
 
 

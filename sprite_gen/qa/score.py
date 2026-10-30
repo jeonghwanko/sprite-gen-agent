@@ -25,11 +25,15 @@ def _unique(items: list[str]) -> list[str]:
     return result
 
 
-def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=__doc__)
+def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--inspect-report", required=True, type=Path)
     parser.add_argument("--output", default="sprite-score.report.json")
     parser.add_argument("--no-write", action="store_true")
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    add_arguments(parser)
     return parser
 
 

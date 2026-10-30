@@ -464,8 +464,7 @@ def parse_grid(value: str) -> tuple[int, int]:
     return int(cols), int(rows)
 
 
-def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=__doc__)
+def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--atlas", type=Path, help="sprite sheet PNG (or use --manifest)")
     parser.add_argument("--manifest", type=Path, help="manifest JSON with frame layout")
     parser.add_argument("--pngs-dir", type=Path, help="folder of separate PNGs to import as one state's frames")
@@ -477,6 +476,11 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--states", help="comma-separated state names to override detected/row names")
     parser.add_argument("--auto", action="store_true", help="force alpha auto-detect even if a manifest is given")
     parser.add_argument("--force", action="store_true", help="overwrite an existing out-dir")
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    add_arguments(parser)
     return parser
 
 
