@@ -18,6 +18,7 @@ from pathlib import Path
 
 from PIL import Image
 
+from sprite_gen._deps import np
 from sprite_gen.util.cli_kwargs import namespace_from_kwargs
 from sprite_gen.frames.extract import require_frames_manifest
 from sprite_gen.spec.runio import REQUEST_FILENAME, load_request, read_guard
@@ -30,13 +31,10 @@ def checker(size: tuple[int, int], square: int = 16) -> Image.Image:
     sprite-gen's previews: these contact sheets, `compose-gif`'s and `compose-cycle`'s, and
     `pixel-draw`'s pick sheet."""
     w, h = size
-    bg = Image.new("RGBA", size, (210, 210, 210, 255))
-    px = bg.load()
-    for y in range(h):
-        for x in range(w):
-            if ((x // square) + (y // square)) % 2 == 0:
-                px[x, y] = (235, 235, 235, 255)
-    return bg
+    y, x = np.ogrid[:h, :w]
+    light = ((x // square) + (y // square)) % 2 == 0
+    return Image.fromarray(np.where(light[..., None], np.uint8([235, 235, 235, 255]),
+                                    np.uint8([210, 210, 210, 255])).astype(np.uint8))
 
 
 def flatten(frame: Image.Image) -> Image.Image:
