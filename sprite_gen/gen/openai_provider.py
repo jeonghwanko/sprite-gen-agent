@@ -28,9 +28,6 @@ most and each time said on stderr — `retry`, the rule every direct provider ca
 """
 from __future__ import annotations
 
-import base64
-import binascii
-import io
 import json
 import time
 import urllib.error
@@ -39,19 +36,19 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from PIL import Image, UnidentifiedImageError
-
 from . import refusal, retry
 from .xai import NO_ANSWER, error_body, read_whole, time_left
 from .base import (
     GEN_TIMEOUT_SECONDS,
     QUALITIES,
+    REFERENCE_MIMES,
     TRANSPARENCY_NATIVE,
     GenRequest,
     ProviderRun,
     announce_api_billing,
     env_api_key,
-    publish_png,
+    publish_b64_image,
+    read_reference,
 )
 
 API_BASE = "https://api.openai.com/v1"
@@ -91,7 +88,6 @@ SIZES = {
 }
 DEFAULT_SIZE = SIZES["1:1"]
 
-_REFERENCE_MIMES = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp"}
 
 # `error.moderation_details.moderation_stage` on a `moderation_blocked` answer
 # (image-generation guide, 2026-09-30): whether the prompt/input images or the
@@ -128,16 +124,8 @@ def _reference(path: Path, index: int) -> tuple[str, str, bytes]:
     their data, and a name carrying a quote or a newline would forge the part
     header it is written into.
     """
-    try:
-        data = path.read_bytes()
-        with Image.open(io.BytesIO(data)) as source:
-            source.load()
-            mime = Image.MIME.get(source.format)
-        if mime not in _REFERENCE_MIMES:
-            raise ValueError("reference must be PNG, JPEG or WebP")
-    except (OSError, ValueError, UnidentifiedImageError) as exc:
-        raise SystemExit(f"openai-gen: invalid reference image {path}") from exc
-    return f"image-{index}.{_REFERENCE_MIMES[mime]}", mime, data
+    mime, data = read_reference(path, label="openai-gen")
+    return f"image-{index}.{REFERENCE_MIMES[mime]}", mime, data
 
 
 def _fields(request: GenRequest) -> dict[str, str]:
@@ -268,19 +256,6 @@ def _refusal(reply: Any) -> refusal.Refusal:
     return refusal.read("openai", reply, details)
 
 
-def _publish_image(item: dict, path: Path) -> None:
-    # gpt-image models always answer with inline base64 — no signed URL to follow
-    # and no bearer token to forward.
-    encoded = item.get("b64_json")
-    if not isinstance(encoded, str) or not encoded:
-        raise SystemExit("openai-gen: response has no b64_json image; nothing published")
-    try:
-        data = base64.b64decode(encoded, validate=True)
-    except (ValueError, binascii.Error) as exc:
-        raise SystemExit("openai-gen: response image is invalid; nothing published") from exc
-    publish_png(data, path, label="openai-gen")
-
-
 class OpenAIProvider:
     name = "openai"
     # `background: transparent` returns a real alpha channel on gpt-image-2.5.
@@ -334,10 +309,7 @@ class OpenAIProvider:
                 f"openai-gen: {refused.reason('image request failed')} (HTTP {status}){refused.suffix()}; "
                 f"{retry.tail(asks)}{refusal.said(reply, token)}"
             )
-        items = reply.get("data") if isinstance(reply, dict) else None
-        if not isinstance(items, list) or len(items) != 1 or not isinstance(items[0], dict):
-            raise SystemExit("openai-gen: expected exactly one image in the response; nothing published")
-        _publish_image(items[0], request.raw)
+        publish_b64_image(reply, request.raw, label="openai-gen")
         usage = reply.get("usage") if isinstance(reply, dict) else None
         return ProviderRun(
             provider=self.name,
