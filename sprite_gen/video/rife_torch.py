@@ -286,12 +286,15 @@ class TorchRunner:
         """One run, as one call of the binary makes it (`rife.Run`): `t` as the binary is handed it (`-s`, four
         decimals), the augmentation `modes` (None: `rife.tta()`); on CUDA under the settings that make it the same bytes,
         set again for each run (other code in the process may set them), whoever asks for it — a frame, a read, or an
-        executor's request (`serve`). A run that fails on the device (out of its memory) is a RIFE that fails
+        executor's request (`serve`). On CUDA the run waits for the machine's GPU turn and gives back what it cached
+        (`rife.gpu_turn`). A run that fails on the device (out of its memory) is a RIFE that fails
         (`DEVICE_FAILURES`, `rife.RifeUnavailable`)."""
         modes = rife.tta() if modes is None else modes
         try:
             if self.device == "cuda":
-                _deterministic()
+                with rife.gpu_turn(torch.cuda.empty_cache):
+                    _deterministic()
+                    return self._run(x, y, float(f"{t:.4f}"), tuple(modes))
             return self._run(x, y, float(f"{t:.4f}"), tuple(modes))
         except DEVICE_FAILURES as exc:
             raise rife.RifeUnavailable(f"rife-torch on {self.device} failed: {exc}") from exc

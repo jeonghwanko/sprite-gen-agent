@@ -63,6 +63,7 @@ again would give the same bytes.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import importlib
 import io
@@ -75,7 +76,7 @@ import sys
 import tempfile
 import zipfile
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Iterator
 
 import PIL
 from PIL import Image, ImageFilter, PngImagePlugin
@@ -235,6 +236,39 @@ INSTALL_HINT = (
     f"ships beside it (SPRITE_GEN_RIFE_MODEL overrides); on Linux without a GPU also `libvulkan1 mesa-vulkan-drivers`; "
     f"see docs/loop-repair.md"
 )
+
+
+# Processes running RIFE on one machine's GPU take turns, a run at a time, each giving back the memory its run left
+# cached before the next starts (`gpu_turn`). Two loops of one job aligned at once each loaded the network on an 8 GB
+# GPU, one held 5.95 GiB of cache between its runs and the other ran out of memory on every frame (2026-10-28).
+GPU_LOCK = Path(tempfile.gettempdir()) / "sprite-gen-rife-gpu.lock"
+
+
+@contextlib.contextmanager
+def gpu_turn(release: Callable[[], None]) -> Iterator[None]:
+    """Hold the machine's RIFE GPU turn (GPU_LOCK) for one run, then `release` the memory it left cached and hand the
+    turn on. The lock is the publish lock's (`runio`); where it cannot be had, runs go untimed as before."""
+    from sprite_gen.spec import runio
+
+    if runio._LOCK_IMPL is None:
+        yield
+        return
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(GPU_LOCK, os.O_RDWR | os.O_CREAT | nofollow, 0o666)
+    except PermissionError:  # made by another user: a lock is taken through a handle that only reads
+        fd = os.open(GPU_LOCK, os.O_RDONLY | nofollow)
+    try:
+        runio._lock_fd(fd, exclusive=True)
+        try:
+            yield
+        finally:
+            try:
+                release()
+            finally:
+                runio._unlock_fd(fd)
+    finally:
+        os.close(fd)
 
 
 class RifeUnavailable(RuntimeError):
