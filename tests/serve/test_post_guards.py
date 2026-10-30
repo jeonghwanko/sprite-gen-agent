@@ -93,3 +93,42 @@ def test_compose_refuses_a_post_from_another_page(tmp_path: Path, monkeypatch):
         status, _payload = _post(port, "/api/mount", {"Origin": f"http://127.0.0.1:{port}"}, body)
         assert status == 200
         assert serve_compose.ComposeHandler.mount_root == tmp_path.resolve()
+
+
+def test_curation_refuses_a_post_from_a_name_rebound_to_this_server(curation):
+    """DNS rebinding: the attacker's own name, re-pointed at 127.0.0.1, sends it as both Origin and
+    Host. Equal is not enough; a browser's POST must name the server by localhost or an IP literal."""
+    port, calls = curation
+    name = f"rebind.attacker.example:{port}"
+    status, payload = _post(port, "/api/export", {"Origin": f"http://{name}", "Host": name}, b"{}")
+    assert status == 403 and payload["error"] == "cross-origin POST refused"
+    assert calls == []
+
+
+@pytest.mark.parametrize(("origin", "host", "refused"), [
+    (None, "127.0.0.1:8765", False),                        # not a browser: curl, scripts
+    (None, "rebind.attacker.example:8765", False),
+    ("http://127.0.0.1:8765", "127.0.0.1:8765", False),
+    ("http://localhost:8765", "localhost:8765", False),
+    ("http://LOCALHOST:8765", "localhost:8765", False),
+    ("http://curator.localhost:8765", "curator.localhost:8765", False),
+    ("http://[::1]:8765", "[::1]:8765", False),
+    ("http://192.168.30.23:8765", "192.168.30.23:8765", False),  # --host 0.0.0.0, opened by LAN address
+    ("http://localhost:8765", "127.0.0.1:8765", True),      # another origin, though the same machine
+    ("http://127.0.0.1:1", "127.0.0.1:8765", True),
+    ("http://evil.example", "127.0.0.1:8765", True),
+    ("null", "127.0.0.1:8765", True),
+    ("http://rebind.attacker.example:8765", "rebind.attacker.example:8765", True),
+    ("http://127.0.0.1:8765", None, True),
+])
+def test_which_requests_are_cross_origin(origin, host, refused):
+    from email.message import Message
+
+    from sprite_gen.serve.origin import cross_origin
+
+    headers = Message()
+    if origin is not None:
+        headers["Origin"] = origin
+    if host is not None:
+        headers["Host"] = host
+    assert cross_origin(headers) is refused

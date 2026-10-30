@@ -62,7 +62,7 @@ from sprite_gen.curate.curation import (CURATION_FILENAME, SCHEMA_VERSION, effec
 from sprite_gen.frames.extract import heal_run, load_consistent_frames_manifest
 from sprite_gen.spec.layout import frames_dir_rel, raw_rel, row_frame_rel, row_orig_rel, state_frame_total
 from sprite_gen.spec.runio import load_request, publish_guard, read_guard, write_request
-from sprite_gen.serve.origin import cross_origin
+from sprite_gen.serve.origin import cross_origin, drain_body
 from sprite_gen.util.hexcolor import parse_hex
 from sprite_gen._modules import qualified
 from sprite_gen.util.console import utf8_streams
@@ -1223,6 +1223,7 @@ class CurationHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         path = urlparse(self.path).path
         if cross_origin(self.headers):
+            drain_body(self)
             self._send_json({"error": "cross-origin POST refused", "path": path}, 403)
             return
         try:

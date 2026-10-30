@@ -40,6 +40,7 @@ These are the fork's additions on top of 3.4.0, first written for the AI Fighter
   - Each of those modules (`extract`, `compose-atlas`, `preview`, `compose-cycle`, `compose-gif`, `unpack-atlas`, `export-pngs`, `slice-sheet`, `inspect`, `score`, `correction-loop`) now declares its flags once, in `add_arguments`, and the CLI uses that.
 - **Fixed: `compose-cycle` bakes a linked clone with its source frame's transform and pixel edits** (`edit_index`), as the atlas, GIF and PNG export already did. It had baked the clone unedited.
 - **Fixed: the curation and compose webviews refuse a POST a browser sent from another page** (`Origin` not their own address: 403). A page on another site could POST to localhost with no CORS preflight (body-less, or `text/plain`) and reach `/api/reroll`, `/api/compose`, `/api/mount` and the other write routes. Requests without `Origin` (curl, scripts) are unchanged.
+  - A browser's POST must also address the server as `localhost`, a `*.localhost` name or an IP literal (a LAN address included), so a page whose own name is re-pointed at 127.0.0.1 (DNS rebinding) is refused too. A webview opened through another host name (a reverse proxy, a MagicDNS name) can still read but not write; open it by address.
 - **Fixed: a curation POST route that refuses by `SystemExit` answers 500 with the reason**, as GET routes do. It had dropped the connection with no response.
 
 ## v3.4.0 - Loop part pop retakes, cycle alignment walk beat repair and broken beats, ghost limb faults, and same foot, filmed jump, and seam jump retakes

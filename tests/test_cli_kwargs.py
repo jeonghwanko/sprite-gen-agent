@@ -128,23 +128,19 @@ def test_no_function_reads_a_parsers_actions_but_these():
                        ("sprite_gen/frames/extract.py", "_nondefault_args")}
 
 
-def _flags(parser: argparse.ArgumentParser) -> list[tuple[str, tuple[str, ...]]]:
-    return [(a.dest, tuple(a.option_strings)) for a in parser._actions if a.dest != "help"]
-
-
-def test_every_cli_verb_takes_the_flags_of_its_modules_own_parser():
+def test_every_cli_verb_takes_its_modules_own_add_arguments():
     """`sprite-gen <verb>` and `python -m <module>` are one declaration. cli.py once kept its own copy of
     ten verbs' flags, and they drifted: `sprite-gen extract --chroma-mode` and `compose-gif --scale` were
-    refused while the module (and the docs) took them."""
+    refused while the module (and the docs) took them. A verb whose module declares `add_arguments` uses
+    that very function — not a copy that matches it today."""
     from sprite_gen import cli
 
     checked = []
     for name, (_description, add_arguments, run) in cli.COMMANDS.items():
-        build = getattr(importlib.import_module(run.__module__), "_build_parser", None)
-        if build is None or run.__name__ != "run":
+        declared = getattr(importlib.import_module(run.__module__), "add_arguments", None)
+        if declared is None or run.__name__ != "run":
             continue
-        sub = argparse.ArgumentParser()
-        add_arguments(sub)
-        assert _flags(sub) == _flags(build()), name
+        assert add_arguments is declared, name
         checked.append(name)
-    assert {"extract", "compose-gif", "compose-cycle", "correction-loop", "inspect", "score"} <= set(checked)
+    assert {"extract", "compose-atlas", "preview", "compose-cycle", "compose-gif", "unpack-atlas", "export-pngs",
+            "slice-sheet", "inspect", "score", "correction-loop"} <= set(checked)
