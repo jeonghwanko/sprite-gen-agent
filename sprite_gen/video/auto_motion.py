@@ -64,14 +64,16 @@ def _reference(a, box):
     return box, mask, centered, norm
 
 
-def _correlate(region, kernel, rows, cols):
-    """Valid-window cross-correlation of one 2-D channel with a 2-D kernel through one FFT pair.
+def _correlate(region_spectrum, kernel_spectrum, shape, rows, cols):
+    """Valid-window cross-correlation of one 2-D channel with a 2-D kernel, from their spectra:
+    `np.fft.rfft2(region)` and `np.conj(np.fft.rfft2(kernel, s=region.shape))` (`shape`).
 
     The transform is the size of the region, so the circular product only wraps for offsets
-    past the last valid window; those are cut off and no wrapped pixel reaches a result.
+    past the last valid window; those are cut off and no wrapped pixel reaches a result. The
+    spectra are taken by the caller so a channel's, and the mask's, are each transformed once
+    for the several correlations that share them.
     """
-    spectrum = np.fft.rfft2(region) * np.conj(np.fft.rfft2(kernel, s=region.shape))
-    return np.fft.irfft2(spectrum, s=region.shape)[:rows, :cols]
+    return np.fft.irfft2(region_spectrum * kernel_spectrum, s=shape)[:rows, :cols]
 
 
 def _match(reference, moving, center, radius):
@@ -126,13 +128,17 @@ def _match_costs(reference, moving, center, radius):
     kernel[mask] = feature
     product = np.zeros((rows, cols))
     energy = np.zeros((rows, cols))
+    shape = region.shape[:2]
+    weights_spectrum = np.conj(np.fft.rfft2(weights, s=shape))
     for channel in range(region.shape[2]):
         values = region[:, :, channel]
-        total = _correlate(values, weights, rows, cols)
+        values_spectrum = np.fft.rfft2(values)
+        total = _correlate(values_spectrum, weights_spectrum, shape, rows, cols)
         # sum((p - mean p) * f) = sum(p * f) - mean p * sum(f); the reference was centered in
         # float32, so its sum is near zero but not zero, and is kept rather than assumed away.
-        product += _correlate(values, kernel[:, :, channel], rows, cols) - total * kernel[:, :, channel].sum() / count
-        energy += _correlate(values * values, weights, rows, cols) - total * total / count
+        feature_spectrum = np.conj(np.fft.rfft2(kernel[:, :, channel], s=shape))
+        product += _correlate(values_spectrum, feature_spectrum, shape, rows, cols) - total * kernel[:, :, channel].sum() / count
+        energy += _correlate(np.fft.rfft2(values * values), weights_spectrum, shape, rows, cols) - total * total / count
     denominator = np.sqrt(np.maximum(energy, 0.0)) * norm
     return 1 - product / np.maximum(1e-10, denominator), xs, ys
 
@@ -275,8 +281,11 @@ def analyse(frames: list[Image.Image], *, fps: float) -> tuple[np.ndarray, np.nd
         normalized.append(motion_anchor._features(canvas).reshape(-1))
     flat = np.stack(normalized)
     distances = np.empty((n, n), dtype=np.float32)
+    # |a - b| is |b - a| to the bit and each row's mean adds the same values in the same order, so the
+    # matrix is symmetric exactly: the upper triangle is measured and mirrored.
     for k in range(n):
-        distances[k] = np.abs(flat-flat[k]).mean(axis=1)
+        distances[k, k:] = np.abs(flat[k:]-flat[k]).mean(axis=1)
+        distances[k:, k] = distances[k, k:]
     report['analysis_only_translation_xy'] = (shifts*scale).tolist()
     report['analysis_only'] = True
     return distances, trajectory, report

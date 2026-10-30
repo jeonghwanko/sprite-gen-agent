@@ -35,6 +35,7 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -107,6 +108,10 @@ CONTENT_TYPES = {
 # 축별 브루트포스(경계 질량 ≥80% 인 최대 간격). 측정 실패한 줄은 격자를 그리지 않는다
 # (가짜 격자 금지). 결과는 (경로, mtime) 키로 캐시.
 _PITCH_CACHE: dict = {}
+# (path, mtime_ns, size) -> (frame size, alpha bbox). `/api/run` reports every frame's size and content box;
+# decoding each PNG for that was most of the request, and a frame file changes only when it is re-extracted.
+_FRAME_BOX_CACHE: dict = {}
+_CACHE_LIMIT = 4096  # a cache past this many entries starts over (runs come and go under one server)
 _BASE_GRID_CACHE: dict = {}  # (base path, mtime_ns) -> /api/base-grid 응답 (검출은 수 초짜리)
 
 
@@ -210,16 +215,46 @@ def _base_grid_response(run_dir: Path, base_path: Path) -> dict:
     return result
 
 
-def _uniform_blocks(px, w, h, k):
-    """이미지가 k×k 단색 블록으로만 이루어졌는가 (정확 판정)."""
-    for by in range(0, h, k):
-        for bx in range(0, w, k):
-            first = px[bx, by]
-            for y in range(by, by + k):
-                for x in range(bx, bx + k):
-                    if px[x, y] != first:
-                        return False
-    return True
+def _block_pitch(im) -> int:
+    """이미지를 이루는 단색 k×k 블록의 최대 k (≥1) — 정확 판정.
+
+    k×k 단색 블록으로만 이루어졌다 ⇔ k 가 폭·높이를 나누고, 이웃 픽셀 색이 바뀌는 모든
+    x(열 경계)·y(행 경계)가 k 의 배수다. 그러니 그런 최대 k 는 폭·높이·경계 위치 전부의
+    최대공약수다 — 후보 k 마다 블록을 픽셀 단위로 훑던 옛 판정과 같은 답을, 경계 한 번
+    찾기로 낸다 (2x/3x/4x 확대본 포함 실측 일치)."""
+    from sprite_gen._deps import np
+
+    rgba = np.ascontiguousarray(np.asarray(im.convert("RGBA"))).view(np.uint32)[..., 0]
+    h, w = rgba.shape
+    pitch = math.gcd(w, h)
+    xs = np.flatnonzero((rgba[:, 1:] != rgba[:, :-1]).any(axis=0)) + 1
+    ys = np.flatnonzero((rgba[1:] != rgba[:-1]).any(axis=1)) + 1
+    for edge in np.concatenate([xs, ys]).tolist():
+        if pitch == 1:
+            break
+        pitch = math.gcd(pitch, edge)
+    return max(1, pitch)
+
+
+def _frame_box(path: Path) -> tuple[tuple[int, int], tuple[int, int, int, int] | None] | None:
+    """A frame's (size, alpha bbox) — the bbox of the whole image when it has no alpha; None when unreadable."""
+    try:
+        stat = os.stat(path)
+    except OSError:
+        return None
+    key = (str(path), stat.st_mtime_ns, stat.st_size)
+    if key in _FRAME_BOX_CACHE:
+        return _FRAME_BOX_CACHE[key]
+    try:
+        with Image.open(path) as im:
+            alpha = im.getchannel("A") if "A" in im.getbands() else None
+            result = (im.size, alpha.getbbox() if alpha is not None else im.getbbox())
+    except OSError:
+        return None
+    if len(_FRAME_BOX_CACHE) >= _CACHE_LIMIT:
+        _FRAME_BOX_CACHE.clear()
+    _FRAME_BOX_CACHE[key] = result
+    return result
 
 
 def detect_pixel_pitch(path):
@@ -247,21 +282,13 @@ def detect_pixel_pitch(path):
     key = (str(path), stat.st_mtime_ns)
     if key in _PITCH_CACHE:
         return _PITCH_CACHE[key]
-    scale = 1
     try:
         with Image.open(path) as im:
-            im = im.convert("RGBA")
-            px = im.load()
-            w, h = im.size
-            # 양축을 나누어떨어지게 하는 k 만 후보 (블록이 이미지에 딱 맞아야 한다)
-            for k in range(min(w, h), 1, -1):
-                if w % k or h % k:
-                    continue
-                if _uniform_blocks(px, w, h, k):
-                    scale = k
-                    break
+            scale = _block_pitch(im)
     except OSError:
         scale = 1
+    if len(_PITCH_CACHE) >= _CACHE_LIMIT:
+        _PITCH_CACHE.clear()
     _PITCH_CACHE[key] = scale
     return scale
 
@@ -463,18 +490,15 @@ def _build_run_state_impl(run_dir: Path) -> dict:
                 frame["inputGrid"] = row_grids[index]
             if present and Image is not None:
                 # 실제 스프라이트 픽셀 크기(투명 패딩 제외 알파 bbox) — 사이즈 통일 검수용
-                try:
-                    with Image.open(run_dir / rel) as im:
-                        frame["size"] = [im.width, im.height]
-                        alpha = im.getchannel("A") if "A" in im.getbands() else None
-                        bbox = alpha.getbbox() if alpha is not None else im.getbbox()
-                        if bbox:
-                            frame["contentSize"] = [bbox[2] - bbox[0], bbox[3] - bbox[1]]
-                            # 최종 픽셀 콘텐츠 bbox(셀 좌표) — 원본 뷰의 "최종 대응 격자"
-                            # (칸 수 = 최종 픽셀 수)가 이 상자를 균등 분할해 그린다
-                            frame["contentBox"] = list(bbox)
-                except OSError:
-                    pass
+                measured = _frame_box(run_dir / rel)
+                if measured is not None:
+                    size, bbox = measured
+                    frame["size"] = list(size)
+                    if bbox:
+                        frame["contentSize"] = [bbox[2] - bbox[0], bbox[3] - bbox[1]]
+                        # 최종 픽셀 콘텐츠 bbox(셀 좌표) — 원본 뷰의 "최종 대응 격자"
+                        # (칸 수 = 최종 픽셀 수)가 이 상자를 균등 분할해 그린다
+                        frame["contentBox"] = list(bbox)
             frames.append(frame)
         state_scale = None
         if pixel_unfake is not None:

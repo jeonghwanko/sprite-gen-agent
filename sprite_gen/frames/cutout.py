@@ -387,16 +387,12 @@ def cutout(
     result.save(out_path)
 
     # No Silent Fallback verification.
-    check = result.load()
+    from sprite_gen._deps import np
+    check = np.asarray(result)
+    zero = check[..., 3] == 0
     total = width * height
-    alpha_zero = stale_rgb = 0
-    for y in range(height):
-        for x in range(width):
-            r, g, b, a = check[x, y]
-            if a == 0:
-                alpha_zero += 1
-                if r or g or b:
-                    stale_rgb += 1
+    alpha_zero = int(np.count_nonzero(zero))
+    stale_rgb = int(np.count_nonzero(zero & check[..., :3].any(axis=-1)))
     if stale_rgb:
         raise SystemExit(
             f"cutout: transparent pixels still contain non-zero RGB ({stale_rgb} px) in {out_path}"

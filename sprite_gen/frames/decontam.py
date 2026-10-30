@@ -200,15 +200,22 @@ def _ring_depth(seed: np.ndarray, rings: int) -> np.ndarray:
 
 
 def _box_sum(values: np.ndarray, radius: int) -> np.ndarray:
-    """Sum over a (2r+1)^2 window, clipped at the image edge. Integer-valued input stays exact."""
+    """Sum over a (2r+1)^2 window, clipped at the image edge. Integer-valued input stays exact.
+
+    The edge-padded table stands in for clipping each window's corners: padding by r repeats the
+    first and last table rows and columns, so a slice of it reads the same corner values the clipped
+    indices did, in the same `((a - b) - c) + d` order, as views instead of four full-size copies."""
     height, width = values.shape[:2]
     table = np.zeros((height + 1, width + 1) + values.shape[2:], dtype=np.float64)
     table[1:, 1:] = values.cumsum(0).cumsum(1)
-    y0 = np.clip(np.arange(height) - radius, 0, height)
-    y1 = np.clip(np.arange(height) + radius + 1, 0, height)
-    x0 = np.clip(np.arange(width) - radius, 0, width)
-    x1 = np.clip(np.arange(width) + radius + 1, 0, width)
-    return table[y1][:, x1] - table[y0][:, x1] - table[y1][:, x0] + table[y0][:, x0]
+    r = radius
+    p = np.pad(table, ((r, r), (r, r)) + ((0, 0),) * (values.ndim - 2), mode="edge")
+    hi_y, lo_y = slice(2 * r + 1, 2 * r + 1 + height), slice(0, height)
+    hi_x, lo_x = slice(2 * r + 1, 2 * r + 1 + width), slice(0, width)
+    out = p[hi_y, hi_x] - p[lo_y, hi_x]
+    out -= p[hi_y, lo_x]
+    out += p[lo_y, lo_x]
+    return out
 
 
 def _box_sum_at(values: np.ndarray, radius: int, rows: np.ndarray, cols: np.ndarray) -> np.ndarray:
