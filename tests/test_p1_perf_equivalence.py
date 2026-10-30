@@ -16,7 +16,7 @@ import pytest
 from PIL import Image
 
 from sprite_gen._deps import np
-from sprite_gen.frames import extract, morph
+from sprite_gen.frames import decontam, extract, morph
 from sprite_gen.qa import inspect, preview
 from sprite_gen.serve import serve_curation
 from sprite_gen.video import auto_motion, loop
@@ -92,6 +92,29 @@ def _ref_box_sum(values, radius):
     x0 = np.clip(np.arange(width) - radius, 0, width)
     x1 = np.clip(np.arange(width) + radius + 1, 0, width)
     return table[y1][:, x1] - table[y0][:, x1] - table[y1][:, x0] + table[y0][:, x0]
+
+
+def _ref_box_sum_at(values, radius, rows, cols):
+    height, width = values.shape
+    table = np.zeros((height + 1, width + 1), dtype=np.float64)
+    table[1:, 1:] = values.cumsum(0).cumsum(1)
+    y0 = np.clip(rows - radius, 0, height)
+    y1 = np.clip(rows + radius + 1, 0, height)
+    x0 = np.clip(cols - radius, 0, width)
+    x1 = np.clip(cols + radius + 1, 0, width)
+    return table[y1, x1] - table[y0, x1] - table[y1, x0] + table[y0, x0]
+
+
+def _ref_local_background(rgb, preferred, fallback, radius):
+    out = np.zeros(rgb.shape, dtype=np.float64)
+    found = np.zeros(rgb.shape[:2], dtype=bool)
+    for mask in (preferred, fallback):
+        weight = _ref_box_sum(mask.astype(np.float64), radius)
+        total = _ref_box_sum(rgb * mask[..., None], radius)
+        fill = (weight > 0) & ~found
+        out[fill] = total[fill] / weight[fill][:, None]
+        found |= fill
+    return out
 
 
 def _ref_edge_histograms(image):
@@ -279,6 +302,40 @@ def test_box_sum_is_the_clipped_corner_lookup():
         for values in (rng.integers(0, 2, (h, w)), rng.integers(0, 256, (h, w, 3)), rng.random((h, w))):
             for radius in (0, 1, 3, 12, 50):
                 assert morph.box_sum(values, radius).tobytes() == _ref_box_sum(values, radius).tobytes()
+
+
+def test_integer_box_sums_are_the_float_tables():
+    # boolean and narrow unsigned input is summed in an integer table (int32, or int64 past its range): the
+    # same sums as the float64 table, at every pixel and at chosen ones, channels included
+    rng = np.random.default_rng(23)
+    for h, w in [(1, 1), (1, 9), (17, 5), (40, 33)]:
+        rows, cols = np.nonzero(rng.random((h, w)) < 0.4)
+        for values in (rng.random((h, w)) < 0.5, rng.integers(0, 256, (h, w, 4)).astype(np.uint8),
+                       rng.integers(0, 65536, (h, w)).astype(np.uint16)):
+            wide = values.astype(np.float64)
+            for radius in (0, 1, 3, 12, 50):
+                assert morph.box_sum(values, radius).dtype.kind == "i"
+                assert morph.box_sum(values, radius).astype(np.float64).tobytes() == _ref_box_sum(wide, radius).tobytes()
+                got = morph.box_sum_at(values, radius, rows, cols).astype(np.float64)
+                planes = wide[..., None] if wide.ndim == 2 else wide
+                want = np.stack([_ref_box_sum_at(planes[..., c], radius, rows, cols) for c in range(planes.shape[2])], -1)
+                assert got.tobytes() == want.reshape(got.shape).tobytes()
+    big = np.full((3000, 3000), 255, dtype=np.uint8)  # 2.3e9 past int32: the table widens
+    assert int(morph.box_sum_at(big, 5000, np.array([2999]), np.array([2999]))[0]) == 255 * 3000 * 3000
+
+
+def test_local_background_is_the_two_float_passes():
+    rng = np.random.default_rng(29)
+    for h, w in [(1, 1), (6, 40), (33, 31), (64, 48)]:
+        rgb = rng.integers(0, 256, (h, w, 3)).astype(np.float64)
+        for share in (0.0, 0.02, 0.3, 1.0):
+            fallback = rng.random((h, w)) < 0.7
+            for preferred in (fallback & (rng.random((h, w)) < share), np.zeros((h, w), dtype=bool)):
+                for radius in (0, 2, 12):
+                    want = _ref_local_background(rgb, preferred, fallback, radius)
+                    for source in (rgb, rgb.astype(np.int32)):
+                        got = decontam.local_background(source, preferred, fallback, radius)
+                        assert got.tobytes() == want.tobytes()
 
 
 def test_frame_scans_are_the_per_pixel_loops():
