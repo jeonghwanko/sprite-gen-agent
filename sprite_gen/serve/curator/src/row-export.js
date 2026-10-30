@@ -116,10 +116,5 @@ async function downloadRowVideo(stateName, fmt) {
     const data = await res.json().catch(() => ({}));
     throw new Error(data.error || res.status);
   }
-  const blob = await res.blob();
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(blob);
-  link.download = `${run.characterId || "row"}-${stateName}.${fmt}`;
-  link.click();
-  URL.revokeObjectURL(link.href);
+  saveBlob(await res.blob(), `${run.characterId || "row"}-${stateName}.${fmt}`);
 }

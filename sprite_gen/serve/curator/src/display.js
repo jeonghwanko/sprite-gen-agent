@@ -169,7 +169,6 @@ const PIXEL_SCALE_TARGETS = [
   ".preview canvas",                   // 줄 재생 미리보기
   ".breathe-strip .bs-cell canvas",    // 호흡 필름스트립
   ".tree-node img",                    // 파이프라인 트리 썸네일
-  ".ap-card img",                      // 후보 풀 썸네일
   "#compare-modal .cmp-item img",      // 비교 모달 썸네일
   ".final-atlas .atlas-sheet img",     // 최종 아틀라스 시트
   ".recolor-variants .rc-stage img",   // 컬러웨이 비교 스테이지

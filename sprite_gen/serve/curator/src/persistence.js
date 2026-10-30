@@ -155,12 +155,7 @@ async function downloadArtifact(kind, doneMsg) {
     } catch { /* 비 JSON 에러 응답 — 기본 메시지 유지 */ }
     throw new Error(msg);
   }
-  const blob = await res.blob();
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(blob);
-  link.download = res.headers.get("X-Filename") || `${kind}.zip`;
-  link.click();
-  URL.revokeObjectURL(link.href);
+  saveBlob(await res.blob(), res.headers.get("X-Filename") || `${kind}.zip`);
   if (kind === "atlas") await refreshFinalAtlas();  // 방금 재계산된 시트/문서 반영
   setStatus(doneMsg, "ok");
 }

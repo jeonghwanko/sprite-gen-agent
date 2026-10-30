@@ -46,3 +46,12 @@ function escapeHtml(s) {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 }
+
+// 받은 파일(blob)을 `name` 으로 내려받게 한다 — 비교 GIF/WebP, 내보내기 ZIP, 줄 내보내기가 같은 경로.
+function saveBlob(blob, name) {
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = name;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
