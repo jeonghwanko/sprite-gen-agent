@@ -328,15 +328,3 @@ def test_grid_phase_is_the_per_pixel_scan():
         for im in (_random_rgba(rng, w, h), small.resize((small.width * 4, small.height * 4), Image.NEAREST)):
             for pitch in (2, 3, 4, 7, 80):
                 assert extract._grid_phase(im, pitch) == _ref_grid_phase(im, pitch)
-
-
-def test_masses_from_the_loops_features_are_frame_masses(tmp_path):
-    rng = random.Random(23)
-    files = []
-    for k in range(5):
-        path = tmp_path / f"{k:03}.png"
-        _blobs(rng, 90, 70).save(path)
-        files.append(path)
-    features = np.stack([loop._load_small(f) for f in files])
-    assert loop._masses(features).tobytes() == loop.frame_masses(files).tobytes()
-    assert loop._distances(features).tobytes() == loop.distance_matrix(files).tobytes()

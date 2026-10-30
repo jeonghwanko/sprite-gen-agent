@@ -38,9 +38,9 @@ import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
-from functools import partial
+from functools import cache, partial
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from PIL import Image
 
@@ -284,12 +284,6 @@ def frame_masses(files: list[Path]) -> np.ndarray:
     """Per-frame pixel mass of the analysis thumbnail (mean |premultiplied rgba|): how much
     subject there is, on the same scale as the distance matrix."""
     return np.array([float(np.abs(_load_small(f)).mean()) for f in files], dtype=np.float32)
-
-
-def _masses(flat: np.ndarray) -> np.ndarray:
-    """`frame_masses` of the frames whose analysis features (`_load_small`) are the rows of `flat`, without reading the
-    frames again: each row is the same contiguous array, so its mean is the same sum."""
-    return np.array([float(np.abs(row).mean()) for row in flat], dtype=np.float32)
 
 
 def leg_signals(frames: list[Image.Image]) -> dict[str, list[float]] | None:
@@ -2106,7 +2100,7 @@ def _select_fixed(sel: _Selection, report_base: dict[str, Any], *, scratch: _Scr
 
 
 def _select_periodic(sel: _Selection, *, prof: Any, fps: float, window: CutWindow, skip: int, cycle_mode: str, n: int,
-                     masses: np.ndarray) -> None:
+                     masses: Callable[[], np.ndarray]) -> None:
     """`--cycle auto` / `periodic`: the period of the clip (`detect_cycle`), a flat one failed over to a one-shot where the
     state may be one (the periodic attempt kept), else refused."""
     lo, hi = window.lo, window.hi
@@ -2127,7 +2121,7 @@ def _select_periodic(sel: _Selection, *, prof: Any, fps: float, window: CutWindo
             # so cut rest -> excursion -> rest instead. The periodic attempt stays in the report.
             sel.periodic_attempt = {**cycle, "window": [lo, hi], "why_rejected": flat}
             # A one-shot may run past the periodic window — not past the caller's ceiling.
-            sel.cycle = _one_shot(sel.D, window, max(hi, round(n * 0.9)), masses)
+            sel.cycle = _one_shot(sel.D, window, max(hi, round(n * 0.9)), masses())
         else:
             raise SystemExit(
                 f"video-loop: no periodic cycle found — {flat}; the motion does not repeat, widen the window, "
@@ -2136,7 +2130,7 @@ def _select_periodic(sel: _Selection, *, prof: Any, fps: float, window: CutWindo
 
 
 def _select_cut(sel: _Selection, run: _Run, *, scratch: _Scratch, state: str | None, prof: Any, fps: float, window: CutWindow,
-                skip: int, n: int, masses: np.ndarray, cycle_mode: str, anchor: str, start: int | None, length: int | None,
+                skip: int, n: int, masses: Callable[[], np.ndarray], cycle_mode: str, anchor: str, start: int | None, length: int | None,
                 size_hold: str, seam_max: float, seam_pop_max: float | None, steps: int | None) -> None:
     """The cut the mode chooses, read on the clip after its lead-in (`skip`) and said in the clip's own frame numbers,
     inside the caller's bounds (`window.hold`); refused, with the cut as it stood, where a mode finds none."""
@@ -2148,17 +2142,17 @@ def _select_cut(sel: _Selection, run: _Run, *, scratch: _Scratch, state: str | N
                                 size_hold=size_hold, seam_max=seam_max, seam_pop_max=seam_pop_max, steps=steps)
         elif cycle_mode == "once":
             source_frames = [Image.open(f).convert("RGBA") for f in sel.files]
-            sel.cycle = nonloop.select_cut(sel.D, masses, fps=fps, ending=partial(
+            sel.cycle = nonloop.select_cut(sel.D, masses(), fps=fps, ending=partial(
                 nonloop.hold_ending, pose=nonloop.end_pose(state, source_frames, _small_features)))
             nonloop.validate_body(source_frames[sel.cycle["start"]:sel.cycle["end_frame"] + 1])
         elif cycle_mode == "lifetime":
-            sel.cycle = nonloop.select_cut(sel.D, masses, fps=fps, kind=cycle_mode,
+            sel.cycle = nonloop.select_cut(sel.D, masses(), fps=fps, kind=cycle_mode,
                                            ending=effect.lifetime_ending)
         elif cycle_mode == "fixed":
             _select_fixed(sel, report_base, scratch=scratch, window=window, start=start, length=length,
                           size_hold=size_hold, seam_max=seam_max)
         elif cycle_mode == "one-shot":
-            sel.cycle = _one_shot(sel.D, window, window.hi, masses)
+            sel.cycle = _one_shot(sel.D, window, window.hi, masses())
         elif cycle_mode == "pinned":
             sel.cycle = pinned_cycle(sel.D, seam_max=seam_max)
         elif cycle_mode == "once-return":
@@ -2719,14 +2713,13 @@ def _cut_loop(
     # Every search below reads its window off this one (`CutWindow`): none sets a bound of its own.
     window = CutWindow.of(prof, n - skip, fps, min_len, max_len)
     lo, hi = window.lo, window.hi
-    # The frames' analysis features, read once: the distance between every two (`distance_matrix`) and each one's mass
-    # (`frame_masses`); an effect's mass is read at full size (`effect.frame_masses`).
-    features = np.stack([_load_small(f) for f in files])
-    D = _distances(features)
+    D = distance_matrix(files)
     # The clip's steps as keyed, before `--anchor motion-auto` reads its own distance or moves a frame:
     # the hold is read on them, over the clip and over the cut (sprite_gen/video/held.py).
     clip_steps = [float(D[k, k + 1]) for k in range(n - 1)]
-    masses = effect.frame_masses(files) if cycle_mode == "lifetime" else _masses(features)
+    # Each frame's mass, read only where a mode reads it (a cut played once, an effect's lifetime, a one-shot, a periodic
+    # search failed over to one): a walk's search never does. An effect's is read at full size (`effect.frame_masses`).
+    masses = cache(partial(effect.frame_masses if cycle_mode == "lifetime" else frame_masses, files))
     report_base = {
         "kind": "sprite-gen-video-loop-report", "frames_dir": str(frames_dir),
         "source": evidence_mod.source_identity(files, fps),
