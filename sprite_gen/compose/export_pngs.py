@@ -27,7 +27,7 @@ from pathlib import Path
 from PIL import Image
 
 from sprite_gen.util.cli_kwargs import namespace_from_kwargs
-from sprite_gen.curate.curation import edit_index, apply_pixel_edits, apply_transform, frame_variant, load_curation, pixel_snap_scale, source_frame_index, state_pixel_ops, state_plan
+from sprite_gen.curate.curation import frame_edits, apply_pixel_edits, apply_transform, frame_variant, load_curation, pixel_snap_scale, source_frame_index, state_plan
 from sprite_gen.spec.layout import row_frame_rel, state_frame_total
 from sprite_gen.frames.extract import require_frames_manifest
 from sprite_gen.spec.runio import acquire_run_dir_lock, atomic_save_image, load_request
@@ -90,8 +90,8 @@ def _run(args: argparse.Namespace):
                     f"skipping it would silently drop a PNG."
                 )
             with Image.open(src_path) as opened:
-                edit_idx = edit_index(curation, state, index)
-                baked = apply_transform(apply_pixel_edits(opened.convert("RGBA"), state_pixel_ops(curation, state).get(edit_idx)), transforms.get(edit_idx), cell_size,
+                ops, transform = frame_edits(curation, state, index, transforms)
+                baked = apply_transform(apply_pixel_edits(opened.convert("RGBA"), ops), transform, cell_size,
                                         snap_scale=pixel_snap_scale(request) if variant == "pixel" else None)
             name = labels[index] if index < len(labels) and labels[index] else f"frame-{index}"
             filename = f"{state}-{name}.png" if multi_state else f"{name}.png"
