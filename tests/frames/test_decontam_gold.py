@@ -16,7 +16,8 @@ import pytest
 from PIL import Image
 
 from sprite_gen.frames.cutout import extract_route
-from sprite_gen.frames.extract import _grow_chebyshev, remove_chroma_background_ycbcr
+from sprite_gen.frames.extract import remove_chroma_background_ycbcr
+from sprite_gen.frames.morph import grow_chebyshev
 
 GREEN = (0, 255, 0)
 SIZE, SCALE = 160, 4
@@ -45,7 +46,7 @@ def _scene(key: tuple[int, int, int]) -> tuple[Image.Image, np.ndarray, np.ndarr
     stroke = ((np.abs(yy - 45) < 16) & (xx > 12) & (xx < 148)) | ((np.abs(xx - 42) < 14) & (yy > 30) & (yy < 150))
     outline = stroke.copy()
     for _ in range(3 * SCALE):
-        outline = _grow_chebyshev(outline)
+        outline = grow_chebyshev(outline)
     outline &= ~stroke
     cover |= outline
     colour[outline] = (140, 12, 14)
@@ -85,7 +86,7 @@ def _solid_gold_at_the_edge(coverage: np.ndarray, is_gold: np.ndarray) -> np.nda
     """Fully covered gold pixels within the pass's band of the background."""
     near = coverage < 0.02
     for _ in range(EDGE_BAND):
-        near = _grow_chebyshev(near)
+        near = grow_chebyshev(near)
     return is_gold & (coverage >= 0.999) & near
 
 

@@ -16,7 +16,7 @@ import pytest
 from PIL import Image
 
 from sprite_gen._deps import np
-from sprite_gen.frames import decontam, extract
+from sprite_gen.frames import extract, morph
 from sprite_gen.qa import inspect, preview
 from sprite_gen.serve import serve_curation
 from sprite_gen.video import auto_motion, loop
@@ -278,7 +278,7 @@ def test_box_sum_is_the_clipped_corner_lookup():
     for h, w in [(1, 1), (1, 9), (17, 5), (40, 33)]:
         for values in (rng.integers(0, 2, (h, w)), rng.integers(0, 256, (h, w, 3)), rng.random((h, w))):
             for radius in (0, 1, 3, 12, 50):
-                assert decontam._box_sum(values, radius).tobytes() == _ref_box_sum(values, radius).tobytes()
+                assert morph.box_sum(values, radius).tobytes() == _ref_box_sum(values, radius).tobytes()
 
 
 def test_frame_scans_are_the_per_pixel_loops():

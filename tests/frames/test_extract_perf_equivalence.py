@@ -57,8 +57,8 @@ def _synthetic_keyed(width: int = 60, height: int = 48) -> Image.Image:
 
 def _ref_cells(component, pitch, phase):
     """Cell-by-cell opaque pixels, in the scorer's iteration order."""
-    xs = extract._grid_edges(component.width, pitch[0], phase[0])
-    ys = extract._grid_edges(component.height, pitch[1], phase[1])
+    xs = extract.grid_edges(component.width, pitch[0], phase[0])
+    ys = extract.grid_edges(component.height, pitch[1], phase[1])
     p = component.load()
     for yi in range(len(ys) - 1):
         for xi in range(len(xs) - 1):

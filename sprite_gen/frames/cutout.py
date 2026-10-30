@@ -53,7 +53,7 @@ KEY_TARGETS: dict[str, tuple[int, int, int]] = {
     "green": (0, 255, 0),
 }
 # extract.remove_chroma_background params — the extract CLI defaults (SSoT: extract.py argparse).
-_EXTRACT_KEY_THRESHOLD = 96.0
+EXTRACT_KEY_THRESHOLD = 96.0
 _EXTRACT_FRINGE_THRESHOLD = 180.0
 _EXTRACT_FRINGE_DELTA = 18.0
 
@@ -90,7 +90,7 @@ def estimate_background(image: Image.Image) -> tuple[int, int, int]:
     )
 
 
-def _corner_average(image: Image.Image) -> tuple[int, int, int]:
+def corner_average(image: Image.Image) -> tuple[int, int, int]:
     """Raw average of the non-transparent corner pixels — no brightness filter.
 
     Used for route detection so a saturated key colour (magenta/green, which the
@@ -109,7 +109,7 @@ def _corner_average(image: Image.Image) -> tuple[int, int, int]:
     return tuple(sum(s[i] for s in samples) // n for i in range(3))  # type: ignore[return-value]
 
 
-def _detect_key_kind(color: tuple[int, int, int]) -> str:
+def detect_key_kind(color: tuple[int, int, int]) -> str:
     """Classify a corner background colour into a route: magenta | green | white.
 
     Saturated magenta/green keys — at whatever brightness or balance the model
@@ -296,7 +296,7 @@ def extract_route(image: Image.Image, kind: str, *, spill_max_fraction: float | 
 
     target = KEY_TARGETS[kind]
     if background_key is None:
-        painted = detect_background_key_rgb(image, target, _EXTRACT_KEY_THRESHOLD)
+        painted = detect_background_key_rgb(image, target, EXTRACT_KEY_THRESHOLD)
     else:
         painted = (int(background_key[0]), int(background_key[1]), int(background_key[2]))
     extra: dict[str, Any] = {}
@@ -313,7 +313,7 @@ def extract_route(image: Image.Image, kind: str, *, spill_max_fraction: float | 
                      decontam_history=decontam_history)
     # the colour detected above, not a second detection of the same borders
     result = remove_chroma_background(
-        image, target, _EXTRACT_KEY_THRESHOLD, _EXTRACT_FRINGE_THRESHOLD, _EXTRACT_FRINGE_DELTA,
+        image, target, EXTRACT_KEY_THRESHOLD, _EXTRACT_FRINGE_THRESHOLD, _EXTRACT_FRINGE_DELTA,
         background_key=painted, **extra
     )
     stats: dict[str, Any] = {
@@ -367,7 +367,7 @@ def cutout(
     image = Image.open(input_path).convert("RGBA")
     width, height = image.size
 
-    route = _detect_key_kind(_corner_average(image)) if key == "auto" else key
+    route = detect_key_kind(corner_average(image)) if key == "auto" else key
     if route in ("magenta", "green"):
         result, route_stats = extract_route(image, route, spill_max_fraction=spill_max_fraction,
                                             spill_min_tint=spill_min_tint, spill_require_hue=spill_require_hue,

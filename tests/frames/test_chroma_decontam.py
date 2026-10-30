@@ -17,9 +17,10 @@ import numpy as np
 import pytest
 from PIL import Image, ImageDraw
 
-from sprite_gen.frames import decontam
+from sprite_gen.frames import decontam, keyfield, morph
 from sprite_gen.frames.cutout import cutout
-from sprite_gen.frames.extract import (_key_channel_split, _key_excess_field, detect_background_key_rgb, hard_key_mask,
+from sprite_gen.frames.keyfield import key_channel_split, key_excess_field
+from sprite_gen.frames.extract import (detect_background_key_rgb, hard_key_mask,
                                        remove_chroma_background)
 from sprite_gen.video import frames as frames_mod
 
@@ -127,8 +128,8 @@ def _hard_cut(raw: np.ndarray, key=(0, 255, 0)) -> np.ndarray:
 def _edge(raw: np.ndarray, key=(0, 255, 0)) -> tuple[np.ndarray, np.ndarray]:
     """(edge, interior): the pass's band+flank region and what lies deeper."""
     keyed = _hard_cut(raw, key)
-    depth = decontam._ring_depth(keyed, decontam.BAND_PX)
-    flank = keyed & (decontam._ring_depth(~keyed, decontam.FLANK_PX) <= decontam.FLANK_PX)
+    depth = morph.ring_depth(keyed, decontam.BAND_PX)
+    flank = keyed & (morph.ring_depth(~keyed, decontam.FLANK_PX) <= decontam.FLANK_PX)
     band = ~keyed & (depth <= decontam.BAND_PX)
     return band | flank, ~keyed & ~band
 
@@ -290,11 +291,11 @@ GROK_MAGENTA = (216, 46, 147)
 def test_key_hue_cap_touches_only_key_hued_colours():
     colours = np.array([[110, 70, 50], [40, 70, 230], [232, 180, 150], [200, 40, 30],  # no magenta hue
                         [210, 60, 120], [190, 150, 190], [60, 200, 70], [30, 110, 40]], np.float64)
-    green = decontam._cap_key_hue(colours, [1], [0, 2], 8.0)
+    green = keyfield.cap_key_hue(colours, [1], [0, 2], 8.0)
     classic = colours.copy()
     classic[:, 1] = np.minimum(colours[:, 1], colours[:, [0, 2]].max(1) + 8)  # G <= max(R, B) + 8
     assert np.array_equal(green, classic)
-    magenta = decontam._cap_key_hue(colours, [0, 2], [1], 8.0)
+    magenta = keyfield.cap_key_hue(colours, [0, 2], [1], 8.0)
     assert np.array_equal(magenta[:4], colours[:4])  # warm, blue, skin and red are not magenta
     assert magenta[4].tolist() == [158, 60, 68]  # a red with a magenta cast stays red
     assert magenta[5].tolist() == [158, 150, 158]  # a grey with a magenta cast comes back grey
@@ -605,9 +606,9 @@ def _alpha_error(out, A, edge):
 
 def _key_part_lost(out, F, A, edge, key_rgb=(0, 255, 0)):
     """Share of the edge's key-hued truth (a green part's rim) that lost half its key hue or coverage."""
-    keyed_channels, unkeyed_channels = _key_channel_split(key_rgb)
-    truth = _key_excess_field(F, keyed_channels, unkeyed_channels)
-    got = _key_excess_field(out[..., :3].astype(np.float64), keyed_channels, unkeyed_channels)
+    keyed_channels, unkeyed_channels = key_channel_split(key_rgb)
+    truth = key_excess_field(F, keyed_channels, unkeyed_channels)
+    got = key_excess_field(out[..., :3].astype(np.float64), keyed_channels, unkeyed_channels)
     part = edge & (A >= 0.1) & (truth > 8)
     lost = part & ((got < 0.5 * truth) | (out[..., 3] / 255.0 < 0.5 * A))
     return float(lost.sum() / max(1, part.sum()))
@@ -770,7 +771,7 @@ def _near_key_part(plain, raw):
     _edge_region, interior = _edge(raw)
     green = plain[..., 1].astype(np.int32) - np.maximum(plain[..., 0], plain[..., 2]) > decontam.KEY_HUE_TINT
     part = interior & (plain[..., 3] == 255) & green
-    return part, decontam._ring_depth(part, decontam.KEY_PART_GUARD_PX) <= decontam.KEY_PART_GUARD_PX
+    return part, morph.ring_depth(part, decontam.KEY_PART_GUARD_PX) <= decontam.KEY_PART_GUARD_PX
 
 
 def test_video_fit_leaves_the_rim_of_a_small_key_coloured_part_as_the_matte_keyed_it(tmp_path: Path):
@@ -800,13 +801,13 @@ def test_video_frames_default_keeps_a_small_key_coloured_part_and_still_cleans_t
     assert _mean(_key_part_lost, tmp_path / "on", files, truth) <= _mean(_key_part_lost, tmp_path / "off", files, truth) + 0.1
     # away from the part and its ribbon, the strands are cleaned as on a subject without one. The ribbon's far
     # end is thin, with no key-coloured interior beside it, and is repainted (docs/chroma-alpha.md, limits)
-    keyed_channels, unkeyed_channels = _key_channel_split((0, 255, 0))
+    keyed_channels, unkeyed_channels = key_channel_split((0, 255, 0))
     before, after = [], []
     for path, (F, A, raw) in zip(files, truth):
         plain = _keyed(tmp_path / "off", path)
         _part, near = _near_key_part(plain, raw)
-        green = (_key_excess_field(F, keyed_channels, unkeyed_channels) > decontam.KEY_HUE_TINT) & (A > 0)
-        elsewhere = _edge(raw)[0] & ~near & (decontam._ring_depth(green, decontam.BAND_PX) > decontam.BAND_PX)
+        green = (key_excess_field(F, keyed_channels, unkeyed_channels) > decontam.KEY_HUE_TINT) & (A > 0)
+        elsewhere = _edge(raw)[0] & ~near & (morph.ring_depth(green, decontam.BAND_PX) > decontam.BAND_PX)
         before.append(_toward_key(plain, F, A, elsewhere))
         after.append(_toward_key(_keyed(tmp_path / "on", path), F, A, elsewhere))
     assert np.mean(before) > 0.05 and np.mean(after) <= 0.5 * np.mean(before)

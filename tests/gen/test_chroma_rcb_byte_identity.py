@@ -7,7 +7,7 @@
 
 부모 플랜의 `tests/test_extract_perf_equivalence.py` 는 좋은 설계지만 그 참조들이
 프로덕션 프리미티브를 **그대로 호출한다** (`extract.rgb_to_ycc`, `extract.ycc_to_rgb`,
-`extract.smoothstep`, `extract._grid_edges`, `extract._YCC_*`). 부모가 깎은 함수들은
+`extract.smoothstep`, `extract.grid_edges`, `extract._YCC_*`). 부모가 깎은 함수들은
 그 프리미티브를 건드리지 않았으니 그 파일 안에서는 유효한 계약이다. 그러나 이 플랜은
 정확히 그 층(픽셀 단위 산수)을 배열 연산으로 바꾸므로, 같은 파일에 새 단정을 얹으면
 **참조가 프로덕션을 따라 움직여** 새 코드를 새 코드와 비교하고 무조건 통과한다.
@@ -72,7 +72,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from sprite_gen.frames import extract
+from sprite_gen.frames import extract, keyfield
 
 FIXTURES = Path(__file__).resolve().parent.parent / "fixtures" / "moe"
 
@@ -798,7 +798,7 @@ def _synthetic_negative_fringe_delta_field(width: int = 32, height: int = 24) ->
 
     여섯 자리 모두 피험체 블록의 왼쪽 열이라 keyed 배경과 붙어 **깊이 1** 이고,
     (10, 17) 을 뺀 다섯은 키 거리 213.6~217.3 > 180 이라 `_BLEND_OUT_OF_BAND` 다 —
-    in-band 깊이 제한(`_IN_BAND_UNMIX_KEY_DEPTH`)과 무관하게 unmix 된다. (10, 17) 은
+    in-band 깊이 제한(`IN_BAND_UNMIX_KEY_DEPTH`)과 무관하게 unmix 된다. (10, 17) 은
     거리 159.8 로 in-band 이고 깊이 1 <= 2 라 역시 unmix 된다.
 
     블록 본체 `(200, 40, 180)` 은 tint -150 < -5 라 음수 delta 에서도 `_SUBJECT` 로
@@ -1177,7 +1177,7 @@ _KEYS = [
     (192, 255, 0), (0, 255, 64),
 ]
 # 축퇴 키 — 키 채널이 아예 없거나(전부 어두움) 언키 채널이 아예 없다(전부 밝음).
-# 두 방향이 다 있어야 `_key_channel_split` 의 가드가 양쪽에서 잠긴다: 한쪽 항만
+# 두 방향이 다 있어야 `key_channel_split` 의 가드가 양쪽에서 잠긴다: 한쪽 항만
 # 남기면 나머지 방향에서 0 나눗셈이 샌다.
 _DEGENERATE_KEYS = [(128, 128, 128), (255, 255, 255), (0, 0, 0), (200, 200, 200), (63, 63, 63)]
 
@@ -1292,7 +1292,7 @@ def test_unmix_key_blend_alpha_overflows_upward_only_for_negative_tint():
 
 # --- 배열 커널: 프로덕션 vs 같은 동결 사본 ------------------------------------
 # `remove_chroma_background` 는 이제 픽셀마다 `color_distance`·`key_tint_score` 를
-# 부르지 않고 `_key_distance_field`·`_key_tint_field` 에 이미지를 통째로 넘긴다.
+# 부르지 않고 `key_distance_field`·`key_tint_field` 에 이미지를 통째로 넘긴다.
 # 위의 스칼라 스윕이 지키던 그 산수가 **이 함수들로 옮겨간 것**이라, 스윕도 같이
 # 옮긴다 — 안 옮기면 rcb 가 타는 경로는 픽스처 몇 장으로만 덮이고, float32 강등처럼
 # 임계에 정확히 걸리는 픽셀이 없으면 관측되지 않는 슬립이 조용히 통과한다
@@ -1311,7 +1311,7 @@ def test_key_distance_field_matches_frozen_scalar_reference():
     colors, field = _sweep_color_field()
     checked = 0
     for key in _KEYS:
-        got = extract._key_distance_field(field, key)
+        got = keyfield.key_distance_field(field, key)
         assert got.dtype == np.float64, f"key={key}: {got.dtype} — float64 계약 위반"
         for index, color in enumerate(colors):
             ref = _ref_color_distance(color, key)
@@ -1325,8 +1325,8 @@ def test_key_tint_field_matches_frozen_scalar_reference():
     colors, field = _sweep_color_field()
     checked = 0
     for key in _KEYS + _DEGENERATE_KEYS:
-        keyed_channels, unkeyed_channels = extract._key_channel_split(key)
-        got = extract._key_tint_field(field, keyed_channels, unkeyed_channels)
+        keyed_channels, unkeyed_channels = keyfield.key_channel_split(key)
+        got = keyfield.key_tint_field(field, keyed_channels, unkeyed_channels)
         assert got.dtype == np.float64, f"key={key}: {got.dtype} — float64 계약 위반"
         for index, color in enumerate(colors):
             ref = _ref_key_tint_score(color, key)
