@@ -16,10 +16,6 @@
 //   { state, idx, rect:{x,y,w,h}, src:[{x,y,hex}], t:{dx,dy,rotate,shx,shy}, canvas }
 let regionEdit = null;
 
-function regionActive(stateName, idx) {
-  return !!regionEdit && regionEdit.state === stateName && regionEdit.idx === idx;
-}
-
 // 선택 영역의 **현재 보이는** 픽셀을 읽어 둔다 — 원본 프레임이 아니라 픽셀 편집까지
 // 합성된 상태여야 한다(연필로 고친 뒤 그 영역을 옮기면 고친 게 따라가야 한다).
 function regionCapture(stage, stateName, idx, rect) {
