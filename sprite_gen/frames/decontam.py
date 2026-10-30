@@ -478,11 +478,57 @@ def palette_from_stats(stats: dict[str, Any]) -> dict[str, Any]:
             "material_spread": float(stats["material_spread"])}
 
 
+def prepare(source_rgb: np.ndarray, keyed: np.ndarray, keyed_mask: np.ndarray, chroma_key: tuple[int, int, int], *,
+            fit: str = "still", edge_band: int = 0) -> dict[str, Any]:
+    """What `decontaminate` reads from the frame alone, before any palette or clip history: the band and
+    flank, the local background and its noise, the pixels examined and the material behind each. A clip's
+    frames can be prepared in any order (`decontaminate`'s `prepared`)."""
+    keyed_channels, unkeyed_channels = key_channel_split(chroma_key)
+    rgb = np.asarray(source_rgb, dtype=np.float64)[..., :3]
+    subject = ~keyed_mask
+    depth = ring_depth(keyed_mask, BAND_PX)
+    band = subject & (depth <= BAND_PX)
+    flank = keyed_mask & (ring_depth(subject, FLANK_PX) <= FLANK_PX)
+    # *Frame edge*: what the matte left transparent along the top, left and right edges stays so
+    frame_edge = np.zeros(keyed_mask.shape, dtype=bool)
+    if edge_band > 0:
+        frame_edge[:edge_band] = frame_edge[:, :edge_band] = frame_edge[:, -edge_band:] = True
+        frame_edge &= np.asarray(keyed)[..., 3] == 0
+
+    far_background = keyed_mask & ~flank
+    background = local_background(rgb, far_background, keyed_mask, BACKGROUND_RADIUS)
+    if np.count_nonzero(far_background):
+        residual = rgb[far_background] - background[far_background]
+        sigma_luma = 1.4826 * float(np.median(np.abs(residual @ LUMA)))
+        sigma_rgb = 1.4826 * float(np.median(np.linalg.norm(residual, axis=-1)))
+    else:
+        sigma_luma = sigma_rgb = 0.0
+
+    # the video fit gives no coverage back to the keyed flank (*Background flank*): it examines the band only
+    rows, cols = np.nonzero(band if fit == "video" else band | flank)
+    edge = IN_BAND_UNMIX_KEY_DEPTH  # a still's antialiased edge: the engine's in-band unmix depth
+    # the still fit reads an edge pixel's colour as evidence of the subject's own material; a decoded
+    # video frame's chroma is blurred, so there the colour is no such evidence and the fit decides alone
+    if fit == "still":
+        # the subject's plain material right behind the edge: deeper than it and without the key's hue
+        source_int = np.asarray(source_rgb)[..., :3].astype(np.int32)
+        behind = subject & (depth > edge) & (key_excess_field(source_int, keyed_channels, unkeyed_channels) <= 0)
+        reach = edge
+    else:
+        # *Material behind*: a decoded frame's edge carries the key's blurred hue, so no hue test
+        behind = subject & (depth > edge)
+        reach = VIDEO_BEHIND_PX
+    return {"depth": depth, "band": band, "flank": flank, "frame_edge": frame_edge, "background": background,
+            "sigma_luma": sigma_luma, "sigma_rgb": sigma_rgb, "rows": rows, "cols": cols,
+            "behind_sums": box_sum_at(_counted(rgb, behind), reach, rows, cols)}
+
+
 def decontaminate(source_rgb: np.ndarray, keyed: np.ndarray, keyed_mask: np.ndarray,
                   chroma_key: tuple[int, int, int], *, fit: str = "still", alpha_depth: int = 4,
                   palette: dict[str, Any] | None = None, mode: str = "palette",
                   source_alpha: np.ndarray | None = None, edge_band: int = 0,
-                  history: dict[str, Any] | None = None) -> tuple[np.ndarray, dict[str, Any]]:
+                  history: dict[str, Any] | None = None,
+                  prepared: dict[str, Any] | None = None) -> tuple[np.ndarray, dict[str, Any]]:
     """Re-explain the edge of an already keyed image. Returns (RGBA uint8, stats).
 
     `source_rgb` (H, W, 3) is the frame as generated and `source_alpha` (H, W) its own
@@ -495,6 +541,7 @@ def decontaminate(source_rgb: np.ndarray, keyed: np.ndarray, keyed_mask: np.ndar
     `history` (video fit) is a dict a clip hands to every frame in order: the pass reads the
     previous frame's record from it (*Hold*, *Blend*, *Settle*) and leaves this frame's; empty, it
     starts from this frame alone. The still fit ignores it.
+    `prepared` is `prepare`'s result for these same inputs, computed elsewhere (a worker process).
     `mode="auto"` returns the input unchanged, with the reason in the stats, where the
     pass does not apply; `mode="palette"` raises SystemExit there instead.
     """
@@ -510,50 +557,24 @@ def decontaminate(source_rgb: np.ndarray, keyed: np.ndarray, keyed_mask: np.ndar
                 history.clear()  # a frame left as keyed: the next one has no last frame to hold to
             return np.array(keyed, dtype=np.uint8, copy=True), {"mode": mode, "applied": False, "reason": reason}
     keyed_channels, unkeyed_channels = key_channel_split(chroma_key)
+    if prepared is None:
+        prepared = prepare(source_rgb, keyed, keyed_mask, chroma_key, fit=fit, edge_band=edge_band)
     rgb = np.asarray(source_rgb, dtype=np.float64)[..., :3]
     out = np.array(keyed, dtype=np.uint8, copy=True)
     subject = ~keyed_mask
-    depth = ring_depth(keyed_mask, BAND_PX)
-    band = subject & (depth <= BAND_PX)
-    flank = keyed_mask & (ring_depth(subject, FLANK_PX) <= FLANK_PX)
+    depth, band, flank, frame_edge = prepared["depth"], prepared["band"], prepared["flank"], prepared["frame_edge"]
+    background, sigma_luma, sigma_rgb = prepared["background"], prepared["sigma_luma"], prepared["sigma_rgb"]
+    rows, cols, behind_sums = prepared["rows"], prepared["cols"], prepared["behind_sums"]
     learned = subject_palette(out, keyed_mask, chroma_key) if palette is None else palette
     palette_rgb = np.asarray(learned["palette"], dtype=np.float64)
     keyfree = bool(learned["keyfree"])
     key_material = float(learned["key_material_share"])
     spread = float(learned["material_spread"])
-    # the still fit reads an edge pixel's colour as evidence of the subject's own material; a decoded
-    # video frame's chroma is blurred, so there the colour is no such evidence and the fit decides alone
     material_test = fit == "still"
-    # *Frame edge*: what the matte left transparent along the top, left and right edges stays so
-    frame_edge = np.zeros(keyed_mask.shape, dtype=bool)
-    if edge_band > 0:
-        frame_edge[:edge_band] = frame_edge[:, :edge_band] = frame_edge[:, -edge_band:] = True
-        frame_edge &= out[..., 3] == 0
-
-    far_background = keyed_mask & ~flank
-    background = local_background(rgb, far_background, keyed_mask, BACKGROUND_RADIUS)
-    if np.count_nonzero(far_background):
-        residual = rgb[far_background] - background[far_background]
-        sigma_luma = 1.4826 * float(np.median(np.abs(residual @ LUMA)))
-        sigma_rgb = 1.4826 * float(np.median(np.linalg.norm(residual, axis=-1)))
-    else:
-        sigma_luma = sigma_rgb = 0.0
     margin = max(OPAQUE_MARGIN, NOISE_SIGMAS * sigma_rgb, spread if material_test else 0.0)
 
-    # the video fit gives no coverage back to the keyed flank (*Background flank*): it examines the band only
-    rows, cols = np.nonzero(band if fit == "video" else band | flank)
     last = _last_frame(history, keyed_mask.shape, palette_rgb) if fit == "video" else None
     edge = IN_BAND_UNMIX_KEY_DEPTH  # a still's antialiased edge: the engine's in-band unmix depth
-    if material_test:
-        # the subject's plain material right behind the edge: deeper than it and without the key's hue
-        source_int = np.asarray(source_rgb)[..., :3].astype(np.int32)
-        behind = subject & (depth > edge) & (key_excess_field(source_int, keyed_channels, unkeyed_channels) <= 0)
-        reach = edge
-    else:
-        # *Material behind*: a decoded frame's edge carries the key's blurred hue, so no hue test
-        behind = subject & (depth > edge)
-        reach = VIDEO_BEHIND_PX
-    behind_sums = box_sum_at(_counted(rgb, behind), reach, rows, cols)
     behind_weight = behind_sums[:, 0].astype(np.float64)
     behind_mean = behind_sums[:, 1:] / np.maximum(behind_weight, 1.0)[:, None]
     guarded = np.zeros(len(rows), dtype=bool)
