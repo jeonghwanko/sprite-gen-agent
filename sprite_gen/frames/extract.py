@@ -1446,9 +1446,12 @@ def detect_pixel_pitch(strip: Image.Image, max_pitch: int = 48) -> int:
     부풀어 창 없는 약수(p<8)에게 졌다 — k=8,10,12,14 에서 정확히 k/2 를
     반환하던 원인 (합성 정답 테스트 test_pitch_ground_truth 로 고정).
     창이 p 를 넘어 잉여류를 중복 합산하지 않도록 잉여류는 집합으로 센다."""
-    image = strip.convert("RGBA")
-    col_edges, row_edges, width, height = _edge_histograms(image)
+    col_edges, row_edges, _, _ = _edge_histograms(strip.convert("RGBA"))
+    return _pitch_from_edges(col_edges, row_edges, max_pitch)
 
+
+def _pitch_from_edges(col_edges: list[int], row_edges: list[int], max_pitch: int) -> int:
+    """`detect_pixel_pitch` on a strip's edge histograms (`_edge_histograms`), for a caller that reads them anyway."""
     # 단순 argmax — 진짜 피치의 약수(p=7 vs 14)는 우연 기대치 |잉여류|/p 가
     # 커서 자동으로 밀린다. 최고점이 문턱(0.2) 미만이면 그리드 확신 없음 →
     # 1(스냅 안 함)로 관측 가능하게 폴백.
@@ -1533,11 +1536,11 @@ def detect_pixel_grid(
 
     격자 확신이 없으면 ((1.0, 1.0), (0,0)) — 스냅하지 않는다.
     """
-    image = strip.convert("RGBA")
-    combined = detect_pixel_pitch(image, max_pitch)
+    # The edge histograms are read once: the integer seed (`detect_pixel_pitch`) and the refinement both read them.
+    col_edges, row_edges, _, _ = _edge_histograms(strip.convert("RGBA"))
+    combined = _pitch_from_edges(col_edges, row_edges, max_pitch)
     if combined <= 1:
         return (1.0, 1.0), (0.0, 0.0)
-    col_edges, row_edges, _, _ = _edge_histograms(image)
 
     half_span, step = 0.75, 0.02
     span = int(round(half_span / step))
@@ -2023,22 +2026,11 @@ def grid_edges(length: int, pitch: float, offset: float) -> list[int]:
 
 
 def _grid_phase(image: Image.Image, pitch: int) -> tuple[int, int]:
-    pixels = image.convert("RGBA").load()
-    width, height = image.size
-    col_hits = [0] * pitch
-    row_hits = [0] * pitch
-    for y in range(0, height, 2):
-        for x in range(1, width):
-            a = pixels[x, y]
-            b = pixels[x - 1, y]
-            if abs(a[0] - b[0]) + abs(a[1] - b[1]) + abs(a[2] - b[2]) + abs(a[3] - b[3]) > 96:
-                col_hits[x % pitch] += 1
-    for x in range(0, width, 2):
-        for y in range(1, height):
-            a = pixels[x, y]
-            b = pixels[x, y - 1]
-            if abs(a[0] - b[0]) + abs(a[1] - b[1]) + abs(a[2] - b[2]) + abs(a[3] - b[3]) > 96:
-                row_hits[y % pitch] += 1
+    """The grid's phase on each axis: the residue mod `pitch` where most colour edges fall (the first, on a tie). The
+    edge counts are `_edge_histograms`' folded mod `pitch` — the same scan of every other row and column."""
+    col_edges, row_edges, _, _ = _edge_histograms(image.convert("RGBA"))
+    col_hits = [sum(col_edges[r::pitch]) for r in range(pitch)]
+    row_hits = [sum(row_edges[r::pitch]) for r in range(pitch)]
     offset_x = max(range(pitch), key=lambda i: col_hits[i])
     offset_y = max(range(pitch), key=lambda i: row_hits[i])
     return offset_x, offset_y

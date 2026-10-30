@@ -302,3 +302,29 @@ def test_components_and_their_group_image_keep_pixel_order_and_bytes():
                 for preserve_y in (False, True):
                     assert (extract.component_group_image(im, got, preserve_y=preserve_y).tobytes()
                             == _ref_component_group_image(im, want, preserve_y=preserve_y).tobytes())
+
+
+def _ref_grid_phase(image, pitch):
+    pixels = image.convert("RGBA").load()
+    width, height = image.size
+    col_hits, row_hits = [0] * pitch, [0] * pitch
+    for y in range(0, height, 2):
+        for x in range(1, width):
+            a, b = pixels[x, y], pixels[x - 1, y]
+            if abs(a[0] - b[0]) + abs(a[1] - b[1]) + abs(a[2] - b[2]) + abs(a[3] - b[3]) > 96:
+                col_hits[x % pitch] += 1
+    for x in range(0, width, 2):
+        for y in range(1, height):
+            a, b = pixels[x, y], pixels[x, y - 1]
+            if abs(a[0] - b[0]) + abs(a[1] - b[1]) + abs(a[2] - b[2]) + abs(a[3] - b[3]) > 96:
+                row_hits[y % pitch] += 1
+    return max(range(pitch), key=lambda i: col_hits[i]), max(range(pitch), key=lambda i: row_hits[i])
+
+
+def test_grid_phase_is_the_per_pixel_scan():
+    rng = random.Random(19)
+    for w, h in [(1, 1), (3, 2), (40, 30), (64, 48)]:
+        small = _random_rgba(rng, max(1, w // 4), max(1, h // 4), alphas=(0, 255))
+        for im in (_random_rgba(rng, w, h), small.resize((small.width * 4, small.height * 4), Image.NEAREST)):
+            for pitch in (2, 3, 4, 7, 80):
+                assert extract._grid_phase(im, pitch) == _ref_grid_phase(im, pitch)
