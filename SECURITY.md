@@ -40,7 +40,8 @@ mercy of another package's dependency list.
 
 Pillow requires `>=12.3.0,<13`, which excludes versions affected by the
 security issues fixed in the [Pillow 12.3.0 release](https://pillow.readthedocs.io/en/stable/releasenotes/12.3.0.html).
-NumPy requires `>=2.2.6,<3` to retain CPython 3.10 compatibility. A version floor
+NumPy requires `>=2.2.6,<3`; that floor kept CPython 3.10 working, and
+`requires-python` is now `>=3.11`. A version floor
 does not guarantee future advisory coverage: audit the exact versions resolved
 for each supported interpreter when releasing, and audit existing environments
 separately. Changing package metadata does not upgrade an already installed venv.
@@ -52,7 +53,7 @@ loudly rather than silently take a slower route. `sprite_gen/_deps.py` is the
 single module that imports NumPy and is imported by `sprite_gen/__init__.py`, so
 that failure happens at package import and names both the interpreter that was
 used and the install command for the skill venv;
-`tests/test_numpy_dependency_gate.py` holds it there.
+`tests/packaging/test_numpy_dependency_gate.py` holds it there.
 
 This repository currently has no npm lockfile, so `safedeps audit npm` cannot
 produce a reproducible npm verdict yet. If a package manager is added later,
@@ -66,7 +67,8 @@ Run the local release gate before a release:
 safedeps gates run --root . --strict
 ```
 
-GitHub-hosted CI is not used for this repository: the test gates and the release
-build run on the maintainer's own Linux runner through `scripts/linux_lane.sh`, and
-the RIFE torch backend's CUDA gates on a T4 rented from Modal through
-`scripts/t4_lane.py` (see [docs/release.md](docs/release.md)).
+Upstream runs the test gates and the release build on the maintainer's own Linux
+runner through `scripts/linux_lane.sh`, and the RIFE torch backend's CUDA gates on
+a T4 rented from Modal through `scripts/t4_lane.py` (see
+[docs/release.md](docs/release.md)). This fork also runs the fast test suite on
+GitHub-hosted CI (`.github/workflows/test.yml`) for pull requests and pushes to `main`.
