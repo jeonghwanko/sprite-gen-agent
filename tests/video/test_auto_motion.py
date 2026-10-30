@@ -111,8 +111,8 @@ def _rounding(monkeypatch, seed):
     rng = np.random.default_rng(seed)
     correlate = auto_motion._correlate
 
-    def noisy(region, kernel, rows, cols):
-        out = correlate(region, kernel, rows, cols)
+    def noisy(*args):
+        out = correlate(*args)
         return out + rng.uniform(-1e-12, 1e-12, out.shape)*max(1.0, float(np.abs(out).max()))
     monkeypatch.setattr(auto_motion, '_correlate', noisy)
 

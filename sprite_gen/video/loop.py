@@ -311,8 +311,10 @@ def _distances(flat: np.ndarray) -> np.ndarray:
     """The distance between every two frames of their analysis features (`_small_features`)."""
     n = len(flat)
     D = np.zeros((n, n), dtype=np.float32)
+    # Symmetric to the bit (|a - b| is |b - a|, each row's mean the same sum): measure the upper triangle, mirror it.
     for i in range(n):
-        D[i] = np.abs(flat - flat[i]).mean(axis=1)
+        D[i, i:] = np.abs(flat[i:] - flat[i]).mean(axis=1)
+        D[i:, i] = D[i, i:]
     return D
 
 

@@ -13,6 +13,7 @@ from typing import Any
 
 from PIL import Image, ImageChops
 
+from sprite_gen._deps import np
 from sprite_gen.gen import outcome
 from sprite_gen.util.cli_kwargs import namespace_from_kwargs
 from sprite_gen.frames import extract
@@ -178,20 +179,15 @@ def dhash_similarity(left: int, right: int) -> float:
 
 
 def _alpha_centroid(image: Image.Image) -> tuple[float, float] | None:
-    alpha = image.getchannel("A")
-    total = 0
-    weighted_x = 0
-    weighted_y = 0
-    for y in range(image.height):
-        for x in range(image.width):
-            value = alpha.getpixel((x, y))
-            if value <= 10:
-                continue
-            total += value
-            weighted_x += x * value
-            weighted_y += y * value
+    """Alpha-weighted centre of the pixels above alpha 10. The sums are exact integers, divided as
+    Python ints (correctly rounded), so the result is the per-pixel loop's to the bit."""
+    alpha = np.asarray(image.getchannel("A"), dtype=np.int64)
+    weights = np.where(alpha > 10, alpha, 0)
+    total = int(weights.sum())
     if total == 0:
         return None
+    weighted_x = int((weights.sum(axis=0) * np.arange(alpha.shape[1], dtype=np.int64)).sum())
+    weighted_y = int((weights.sum(axis=1) * np.arange(alpha.shape[0], dtype=np.int64)).sum())
     return weighted_x / total, weighted_y / total
 
 

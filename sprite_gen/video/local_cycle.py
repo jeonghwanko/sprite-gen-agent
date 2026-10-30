@@ -342,11 +342,16 @@ def detect(distances, trajectory, *, min_len, max_len, gait_floor,
         raise ValueError(f"automatic motion cycle window [{lo}, {hi}] has no repeated cycle")
     candidates = []
     refused = []
+    # A window's repeat profile depends on its frames (start, radius) only, and radius = length//4 is the
+    # same for about four lengths in a row: each is measured once and read, never changed, by every length.
+    profiles = {}
     for length in range(max(lo, gait_floor), hi+1):
         radius = max(2, length//4)
         for start in range(n-length-radius-1):
             _, js = _around(start, length)
-            profile = _profile(distances, js, radius, lo, hi)
+            profile = profiles.get((start, radius))
+            if profile is None:
+                profile = profiles[(start, radius)] = _profile(distances, js, radius, lo, hi)
 
             def refuse(why, start=start, length=length, profile=profile):
                 row = _measure(distances, trajectory, start, length, profile)
