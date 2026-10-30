@@ -17,7 +17,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 from sprite_gen.util.cli_kwargs import namespace_from_kwargs
-from sprite_gen.curate.curation import apply_pixel_edits, apply_transform, frame_variant, load_curation, pixel_snap_scale, source_frame_index, state_pixel_ops, state_plan
+from sprite_gen.curate.curation import apply_pixel_edits, apply_transform, edit_index, frame_variant, load_curation, pixel_snap_scale, source_frame_index, state_pixel_ops, state_plan
 from sprite_gen.spec.layout import row_frame_rel, state_frame_total
 from sprite_gen.frames.extract import require_frames_manifest
 from sprite_gen.qa.preview import flatten
@@ -79,8 +79,7 @@ def contact_sheet(frames: list[tuple[int, Image.Image]], gap: int = 4, label_hei
     return sheet
 
 
-def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=__doc__)
+def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--run-dir", required=True, type=Path)
     parser.add_argument("--state", required=True)
     parser.add_argument("--frames", type=parse_frames, help="1-based frame numbers, for example 2,3,4,5; defaults to curation.json selection")
@@ -88,6 +87,11 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--duration-ms", type=int, default=190)
     parser.add_argument("--delay-ticks", type=int, help="GIF delay in 1/100 second ticks; overrides --duration-ms")
     parser.add_argument("--note", default="")
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    add_arguments(parser)
     return parser
 
 
@@ -122,14 +126,17 @@ def _run_guarded(args, run_dir):
     else:
         user_frames = [index + 1 for index in ordered]
 
+    pixel_ops = state_pixel_ops(curation, args.state)
+    edits = [edit_index(curation, args.state, number - 1) for number in user_frames]
     selected = [
-        # 파일은 원본 프레임(복제 인스턴스면 소스)을 읽고, 변형/픽셀편집은 인스턴스 번호로 조회
+        # 파일은 원본 프레임(복제 인스턴스면 소스)을 읽고, 변형/픽셀편집은 edit_index 로 조회
+        # (링크 복제 = 원본 편집 truth — atlas/GIF/export 와 같은 규칙)
         load_frame(run_dir, rows_by_state[args.state],
                    source_frame_index(curation, args.state, number - 1, default_count) + 1,
-                   transforms.get(number - 1), cell_size,
+                   transforms.get(edit), cell_size,
                    frame_variant(curation, args.state), pixel_snap_scale(request),
-                   state_pixel_ops(curation, args.state).get(number - 1))
-        for number in user_frames
+                   pixel_ops.get(edit))
+        for number, edit in zip(user_frames, edits)
     ]
     frame_paths = [path for path, _image in selected]
     frames = [(number, image) for number, (_path, image) in zip(user_frames, selected)]
@@ -155,7 +162,7 @@ def _run_guarded(args, run_dir):
         "selected_user_frames": user_frames,
         "selected_zero_based_frames": [frame - 1 for frame in user_frames],
         "selection_source": "explicit-frames" if args.frames is not None else "curation.json",
-        "transforms_applied": {str(n - 1): transforms[n - 1] for n in user_frames if (n - 1) in transforms},
+        "transforms_applied": {str(n - 1): transforms[e] for n, e in zip(user_frames, edits) if e in transforms},
         "duration_ms": duration_ms,
         "delay_ticks": round(duration_ms / 10),
         "loop": True,

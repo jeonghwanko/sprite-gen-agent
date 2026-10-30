@@ -126,3 +126,21 @@ def test_no_function_reads_a_parsers_actions_but_these():
                 readers.add((path.relative_to(ROOT).as_posix(), function.name))
     assert readers == {("sprite_gen/util/cli_kwargs.py", "namespace_from_kwargs"),
                        ("sprite_gen/frames/extract.py", "_nondefault_args")}
+
+
+def test_every_cli_verb_takes_its_modules_own_add_arguments():
+    """`sprite-gen <verb>` and `python -m <module>` are one declaration. cli.py once kept its own copy of
+    ten verbs' flags, and they drifted: `sprite-gen extract --chroma-mode` and `compose-gif --scale` were
+    refused while the module (and the docs) took them. A verb whose module declares `add_arguments` uses
+    that very function — not a copy that matches it today."""
+    from sprite_gen import cli
+
+    checked = []
+    for name, (_description, add_arguments, run) in cli.COMMANDS.items():
+        declared = getattr(importlib.import_module(run.__module__), "add_arguments", None)
+        if declared is None or run.__name__ != "run":
+            continue
+        assert add_arguments is declared, name
+        checked.append(name)
+    assert {"extract", "compose-atlas", "preview", "compose-cycle", "compose-gif", "unpack-atlas", "export-pngs",
+            "slice-sheet", "inspect", "score", "correction-loop"} <= set(checked)

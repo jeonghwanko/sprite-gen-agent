@@ -34,12 +34,16 @@ from sprite_gen.spec.runio import acquire_run_dir_lock, atomic_save_image, load_
 from sprite_gen.util.console import utf8_streams
 
 
-def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=__doc__)
+def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--run-dir", required=True, type=Path)
     parser.add_argument("--state", help="state to export; defaults to all states")
     parser.add_argument("--out-dir", type=Path, help="output dir (default: <run-dir>/curated)")
     parser.add_argument("--selected-only", action="store_true", help="export only selected frames")
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    add_arguments(parser)
     return parser
 
 

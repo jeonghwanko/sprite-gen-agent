@@ -2872,8 +2872,7 @@ def inspect_frames(frames: list[Image.Image], chroma_key: tuple[int, int, int], 
     return errors, warnings, records
 
 
-def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=__doc__)
+def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--run-dir", required=True, type=Path)
     parser.add_argument("--states", default="all")
     parser.add_argument("--key-threshold", type=float, default=96.0)
@@ -2931,6 +2930,11 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--chroma-adjacent-pixel-threshold", type=int, default=120)
     parser.add_argument("--small-outlier-ratio", type=float, default=0.35)
     parser.add_argument("--large-outlier-ratio", type=float, default=2.75)
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    add_arguments(parser)
     return parser
 
 

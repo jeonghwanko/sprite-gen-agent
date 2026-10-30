@@ -447,9 +447,7 @@ def _parse_grid(value: str) -> tuple[int, int]:
     return int(cols), int(rows)
 
 
-def main(argv: list[str] | None = None) -> int:
-    utf8_streams()
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--sheet", required=True, type=Path)
     parser.add_argument("--out-dir", required=True, type=Path)
     parser.add_argument("--chroma-key", required=True, help=CHROMA_KEY_HELP)
@@ -471,6 +469,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--alpha-edge", type=int, default=2, help=ALPHA_EDGE_HELP)
     parser.add_argument("--scale", choices=SCALES, default="cell", help=SCALE_HELP)
     parser.add_argument("--fit", choices=FITS, default="none", help=FIT_HELP)
+
+
+def main(argv: list[str] | None = None) -> int:
+    utf8_streams()
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    add_arguments(parser)
     args = parser.parse_args(argv)
     return run(**vars(args))
 

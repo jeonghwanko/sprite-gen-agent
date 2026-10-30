@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 from typing import Callable
 
 from sprite_gen import _modules, gen
@@ -47,181 +46,6 @@ from sprite_gen.workflow import doctor, guide, preferences
 from sprite_gen.util.console import utf8_streams
 
 
-def _parse_frames(value: str) -> list[int]:
-    frames = [int(part.strip()) for part in value.split(",") if part.strip()]
-    if not frames:
-        raise argparse.ArgumentTypeError("at least one frame number is required")
-    if any(frame <= 0 for frame in frames):
-        raise argparse.ArgumentTypeError("frame numbers are 1-based and must be positive")
-    return frames
-
-
-def _parse_frame_order(value: str) -> list[int]:
-    frames = [int(part.strip()) for part in value.split(",") if part.strip()]
-    if not frames:
-        raise argparse.ArgumentTypeError("frame order must contain at least one frame")
-    if any(frame <= 0 for frame in frames):
-        raise argparse.ArgumentTypeError("frame order is 1-based and must be positive")
-    return frames
-
-
-def _parse_grid(value: str) -> tuple[int, int]:
-    cols, rows = value.lower().split("x")
-    return int(cols), int(rows)
-
-
-def _add_extract(p: argparse.ArgumentParser) -> None:
-    p.add_argument("--run-dir", required=True, type=Path)
-    p.add_argument("--states", default="all")
-    p.add_argument("--key-threshold", type=float, default=96.0)
-    p.add_argument("--fringe-key-threshold", type=float, default=180.0)
-    p.add_argument("--fringe-delta", type=float, default=18.0)
-    p.add_argument("--fringe-unmix-reach", type=int, default=None)
-    p.add_argument("--spill-max-fraction", type=float, default=None)
-    p.add_argument("--decontam", choices=("off", "auto", "palette"), default=None)
-    p.add_argument("--segmentation", choices=("components", "projection"), default=None)
-    p.add_argument("--allow-slot-fallback", action="store_true")
-    p.add_argument("--min-used-pixels", type=int, default=None)
-    p.add_argument("--edge-margin", type=int, default=2)
-    p.add_argument("--edge-pixel-threshold", type=int, default=24)
-    p.add_argument("--chroma-adjacent-threshold", type=float, default=150.0)
-    p.add_argument("--chroma-adjacent-pixel-threshold", type=int, default=120)
-    p.add_argument("--small-outlier-ratio", type=float, default=0.35)
-    p.add_argument("--large-outlier-ratio", type=float, default=2.75)
-
-
-def _add_compose_atlas(p: argparse.ArgumentParser) -> None:
-    p.add_argument("--run-dir", required=True, type=Path)
-    p.add_argument("--atlas", default="sprite-sheet-alpha.png")
-    p.add_argument("--manifest", default="manifest.json")
-    p.add_argument("--report", default="sprite-sheet-alpha.report.json")
-    p.add_argument("--min-used-pixels", type=int, default=None)
-
-
-def _add_preview(p: argparse.ArgumentParser) -> None:
-    p.add_argument("--run-dir", required=True, type=Path)
-    p.add_argument("--delay-ticks", type=int)
-
-
-def _add_compose_cycle(p: argparse.ArgumentParser) -> None:
-    p.add_argument("--run-dir", required=True, type=Path)
-    p.add_argument("--state", required=True)
-    p.add_argument("--frames", type=_parse_frames)
-    p.add_argument("--name", required=True)
-    p.add_argument("--duration-ms", type=int, default=190)
-    p.add_argument("--delay-ticks", type=int)
-    p.add_argument("--note", default="")
-
-
-def _add_compose_gif(p: argparse.ArgumentParser) -> None:
-    p.add_argument("inputs", nargs="*", type=Path)
-    p.add_argument("--frame-dir", type=Path)
-    p.add_argument("--frame-order", type=_parse_frame_order)
-    p.add_argument("--run-dir", type=Path)
-    p.add_argument("--out-dir", type=Path)
-    p.add_argument("--output", type=Path)
-    p.add_argument("--delay-ticks", type=int, default=17)
-    p.add_argument("--loop-count", type=int, default=0)
-    p.add_argument("--contact-output", type=Path)
-    p.add_argument("--manifest-output", type=Path)
-    p.add_argument("--alpha-threshold", type=int, default=8)
-
-
-def _add_unpack_atlas(p: argparse.ArgumentParser) -> None:
-    p.add_argument("--atlas", type=Path)
-    p.add_argument("--manifest", type=Path)
-    p.add_argument("--pngs-dir", type=Path)
-    p.add_argument("--state-name", default="items")
-    p.add_argument("--out-dir", type=Path)
-    p.add_argument("--grid", type=_parse_grid)
-    p.add_argument("--cell", type=_parse_grid)
-    p.add_argument("--direction")
-    p.add_argument("--states")
-    p.add_argument("--auto", action="store_true")
-    p.add_argument("--force", action="store_true")
-
-
-def _add_export_pngs(p: argparse.ArgumentParser) -> None:
-    p.add_argument("--run-dir", required=True, type=Path)
-    p.add_argument("--state")
-    p.add_argument("--out-dir", type=Path)
-    p.add_argument("--selected-only", action="store_true")
-
-
-def _add_slice_sheet(p: argparse.ArgumentParser) -> None:
-    p.add_argument("--sheet", required=True, type=Path)
-    p.add_argument("--out-dir", required=True, type=Path)
-    p.add_argument("--chroma-key", required=True, help=slice_sheet.CHROMA_KEY_HELP)
-    p.add_argument("--grid", type=_parse_grid, default=(3, 2), help="COLSxROWS, default 3x2")
-    p.add_argument("--names", help="comma-separated output names, one per cell in reading order")
-    p.add_argument("--prefix", default="")
-    p.add_argument("--cell-width", type=int, default=512)
-    p.add_argument("--cell-height", type=int, default=768)
-    p.add_argument("--baseline-y", type=float, default=725.0)
-    p.add_argument("--target-height", type=float, default=645.0)
-    p.add_argument("--key-threshold", type=float, default=slice_sheet.DEFAULT_KEY_THRESHOLD)
-    p.add_argument("--fringe-key-threshold", type=float, default=slice_sheet.DEFAULT_FRINGE_KEY_THRESHOLD)
-    p.add_argument("--fringe-delta", type=float, default=slice_sheet.DEFAULT_FRINGE_DELTA)
-    p.add_argument("--fringe-unmix-reach", type=int, default=4)
-    p.add_argument("--spill-max-fraction", type=float, default=0.005)
-    p.add_argument("--noise-min", type=int, default=slice_sheet.DEFAULT_NOISE_MIN)
-    p.add_argument("--debris-fraction", type=float, default=slice_sheet.DEFAULT_DEBRIS_FRACTION)
-    p.add_argument("--alpha-floor", type=int, default=0, help=slice_sheet.ALPHA_FLOOR_HELP)
-    p.add_argument("--alpha-edge", type=int, default=2, help=slice_sheet.ALPHA_EDGE_HELP)
-    p.add_argument("--scale", choices=slice_sheet.SCALES, default="cell", help=slice_sheet.SCALE_HELP)
-    p.add_argument("--fit", choices=slice_sheet.FITS, default="none", help=slice_sheet.FIT_HELP)
-
-
-def _add_inspect(p: argparse.ArgumentParser) -> None:
-    p.add_argument("--run-dir", required=True, type=Path)
-    p.add_argument("--states", default="all")
-    p.add_argument("--report", default="sprite-inspect.report.json")
-    p.add_argument("--histogram-min", type=float, default=inspect.DEFAULT_HISTOGRAM_MIN)
-    p.add_argument("--dhash-min", type=float, default=inspect.DEFAULT_DHASH_MIN)
-    p.add_argument("--motion-min", type=float, default=inspect.DEFAULT_MOTION_MIN)
-    p.add_argument("--key-threshold", type=float, default=96.0)
-    p.add_argument("--fringe-key-threshold", type=float, default=180.0)
-    p.add_argument("--fringe-delta", type=float, default=18.0)
-    p.add_argument("--fringe-unmix-reach", type=int, default=None)
-    p.add_argument("--spill-max-fraction", type=float, default=None)
-    p.add_argument("--chroma-mode", choices=("rgb", "ycbcr"), default=None)
-    p.add_argument("--decontam", choices=("off", "auto", "palette"), default=None)
-    p.add_argument("--no-write", action="store_true")
-
-
-def _add_score(p: argparse.ArgumentParser) -> None:
-    p.add_argument("--inspect-report", required=True, type=Path)
-    p.add_argument("--output", default="sprite-score.report.json")
-    p.add_argument("--no-write", action="store_true")
-
-
-def _add_gen(p: argparse.ArgumentParser) -> None:
-    gen.add_arguments(p)
-
-
-def _add_cutout(p: argparse.ArgumentParser) -> None:
-    cutout.add_arguments(p)
-
-
-def _add_video(p: argparse.ArgumentParser) -> None:
-    video.add_arguments(p)
-
-
-def _add_anchor(p: argparse.ArgumentParser) -> None:
-    anchor.add_arguments(p)
-
-
-def _add_correction_loop(p: argparse.ArgumentParser) -> None:
-    p.add_argument("--run-dir", required=True, type=Path)
-    p.add_argument("--states", default="all")
-    p.add_argument("--out-dir", type=Path)
-    p.add_argument("--max-passes", type=int, default=3)
-    p.add_argument("--pass-score", type=float, default=90.0)
-    p.add_argument("--provider-command")
-    p.add_argument("--dry-run", action="store_true")
-    p.add_argument("--no-preserve-best", action="store_true")
-
-
 COMMANDS: dict[str, tuple[str, Callable[[argparse.ArgumentParser], None], Callable[..., int]]] = {
     "gait-guide": ("Author phase/IK/foot-lock guides without AI generation", gait.add_arguments, gait.run),
     "gait-motion": ("Prepare calibrated GPT inputs from continuous gait/depth guides; no generation", gait_motion.add_arguments, gait_motion.run),
@@ -238,25 +62,25 @@ COMMANDS: dict[str, tuple[str, Callable[[argparse.ArgumentParser], None], Callab
     "version": ("Print the version; --json adds the commit and the outcome contract (exit codes, error codes).", doctor.add_version_arguments, doctor.run_version),
     "doctor": ("Check the runtime, provider logins and tools without calling a provider; --json for a program.", doctor.add_doctor_arguments, doctor.run_doctor),
     "prepare": ("Prepare a sprite-gen component-row run.", prepare.add_arguments, prepare.run),
-    "extract": ("Extract component-row sprite strips into clean RGBA frames.", _add_extract, extract.run),
+    "extract": ("Extract component-row sprite strips into clean RGBA frames.", extract.add_arguments, extract.run),
     "compose-atlas": (
         "Compose component-row frames into a game atlas and runtime manifest.",
-        _add_compose_atlas,
+        compose_atlas.add_arguments,
         compose_atlas.run,
     ),
-    "preview": ("Build motion-QA previews for a sprite-gen run.", _add_preview, preview.run),
+    "preview": ("Build motion-QA previews for a sprite-gen run.", preview.add_arguments, preview.run),
     "compose-cycle": (
         "Compose a QA-approved manual frame subset into a selected cycle.",
-        _add_compose_cycle,
+        compose_cycle.add_arguments,
         compose_cycle.run,
     ),
-    "compose-gif": ("Compose selected sprite frames into a clean transparent GIF.", _add_compose_gif, compose_gif.run),
+    "compose-gif": ("Compose selected sprite frames into a clean transparent GIF.", compose_gif.add_arguments, compose_gif.run),
     "unpack-atlas": (
         "Unpack a composed sprite sheet back into a curator-ready run directory.",
-        _add_unpack_atlas,
+        unpack_atlas.add_arguments,
         unpack_atlas.run,
     ),
-    "export-pngs": ("Export curated frames back to named PNGs.", _add_export_pngs, export_pngs.run),
+    "export-pngs": ("Export curated frames back to named PNGs.", export_pngs.add_arguments, export_pngs.run),
     "export-aseprite": (
         "Export the composed atlas as Aseprite-compatible JSON metadata.",
         export_aseprite.add_arguments,
@@ -264,7 +88,7 @@ COMMANDS: dict[str, tuple[str, Callable[[argparse.ArgumentParser], None], Callab
     ),
     "anchor": (
         "Resolve/bake the direction anchor ref from curated truth (or pin which frame is the anchor).",
-        _add_anchor,
+        anchor.add_arguments,
         anchor.run,
     ),
     "migrate-breathe": (
@@ -282,7 +106,7 @@ COMMANDS: dict[str, tuple[str, Callable[[argparse.ArgumentParser], None], Callab
     ),
     "slice-sheet": (
         "Slice a multi-figure grid sheet into per-cell standing cuts (tachi-e).",
-        _add_slice_sheet,
+        slice_sheet.add_arguments,
         slice_sheet.run,
     ),
     "ui-kit": (
@@ -292,12 +116,12 @@ COMMANDS: dict[str, tuple[str, Callable[[argparse.ArgumentParser], None], Callab
     ),
     "gen": (
         "Generate one image via a provider (codex image_gen / grok Imagine on a subscription login first (an API key only without one, billed per call and said), or openai Images API for servers/SaaS, billed per call) into a verified PNG.",
-        _add_gen,
+        gen.add_arguments,
         gen.run,
     ),
     "cutout": (
         "Cut a uniform (white/ivory/solid) background off an imported image into a clean transparent PNG.",
-        _add_cutout,
+        cutout.add_arguments,
         cutout.run,
     ),
     "gen-motion": (
@@ -324,7 +148,7 @@ COMMANDS: dict[str, tuple[str, Callable[[argparse.ArgumentParser], None], Callab
     ),
     "video": (
         "Animate a still (or pin a last frame / guide with references) into a verified mp4 via Grok Imagine (your own grok login or XAI_API_KEY).",
-        _add_video,
+        video.add_arguments,
         video.run,
     ),
     # Same declaration-once rule: the module owns the argument surface. Extend and edit force
@@ -471,11 +295,11 @@ COMMANDS: dict[str, tuple[str, Callable[[argparse.ArgumentParser], None], Callab
     ),
     "review-decisions": ("Prepare or explicitly run advisory OpenAI Decisions screening; never approves or generates.", decisions.add_arguments, decisions.run),
     "evaluate-decisions": ("Compare saved Decisions reports with independent labels and a baseline, offline.", decision_eval.add_arguments, decision_eval.run),
-    "inspect": ("Inspect sprite rows for frame-count, identity, and motion defects.", _add_inspect, inspect.run),
-    "score": ("Score a sprite inspect report and emit correction hints.", _add_score, score.run),
+    "inspect": ("Inspect sprite rows for frame-count, identity, and motion defects.", inspect.add_arguments, inspect.run),
+    "score": ("Score a sprite inspect report and emit correction hints.", score.add_arguments, score.run),
     "correction-loop": (
         "Run a bounded inspect -> score -> correction-hint loop.",
-        _add_correction_loop,
+        correction_loop.add_arguments,
         correction_loop.run,
     ),
 }

@@ -61,14 +61,18 @@ def contact_sheet(frames: list[Image.Image], gap: int = 4) -> Image.Image:
     return sheet
 
 
-def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=__doc__)
+def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--run-dir", required=True, type=Path)
     parser.add_argument(
         "--delay-ticks",
         type=int,
         help="override every GIF preview delay in 1/100 second ticks",
     )
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    add_arguments(parser)
     return parser
 
 

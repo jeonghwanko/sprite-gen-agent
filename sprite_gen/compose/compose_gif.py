@@ -181,8 +181,7 @@ def _run_dir_mode_guarded(args, run_dir):
     return 0
 
 
-def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=__doc__)
+def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("inputs", nargs="*", type=Path, help="ordered frame PNG files")
     parser.add_argument("--frame-dir", type=Path, help="directory containing frame-0.png, frame-1.png, ...")
     parser.add_argument("--frame-order", type=parse_frame_order, help="1-based order, for example 2,1,5,3")
@@ -198,6 +197,11 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--contact-output", type=Path)
     parser.add_argument("--manifest-output", type=Path)
     parser.add_argument("--alpha-threshold", type=int, default=8)
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    add_arguments(parser)
     return parser
 
 
