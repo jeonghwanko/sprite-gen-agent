@@ -3,9 +3,11 @@
 import json
 import subprocess
 import sys
+import threading
+import time
 
 import pytest
-from PIL import Image
+from PIL import Image, ImageColor
 
 from keyed_figure import colour_outside, figure
 from sprite_gen.compose import game_pack
@@ -173,6 +175,13 @@ def test_multipage_and_repeated_export_are_byte_identical(tmp_path):
     src = request(tmp_path, [{"id": "walk", "source": "walk.strip.json", "display": {"height": 10}}])
     result = game_pack.pack(src, tmp_path / "first", page_size=12)
     assert len(result["textures"]) == 3
+    # The pages are encoded at once: each page's two files still hold that page's frame, and the same pixels.
+    for page, colour in zip(result["textures"], ("red", "green", "blue")):
+        (box,) = (value["frame"] for value in page["frames"].values())
+        with Image.open(tmp_path / "first" / page["image"]) as png, Image.open(tmp_path / "first" / page["webp"]) as webp:
+            assert png.convert("RGBA").tobytes() == webp.convert("RGBA").tobytes(), page["webp"]
+            centre = (box["x"] + box["w"] // 2, box["y"] + box["h"] // 2)
+            assert png.convert("RGBA").getpixel(centre) == ImageColor.getcolor(colour, "RGBA"), (page["image"], colour)
     game_pack.pack(src, tmp_path / "second", page_size=12)
     before = {p.name: p.read_bytes() for p in (tmp_path / "first").iterdir()}
     assert before == {p.name: p.read_bytes() for p in (tmp_path / "second").iterdir()}
@@ -182,6 +191,45 @@ def test_multipage_and_repeated_export_are_byte_identical(tmp_path):
     with pytest.raises(ValueError, match="different|existing|exists"):
         game_pack.pack(src, tmp_path / "first", page_size=24)
     assert before == {p.name: p.read_bytes() for p in (tmp_path / "first").iterdir()}
+
+
+def test_no_atlas_image_is_saved_by_two_encodes(tmp_path, monkeypatch):
+    # Pillow keeps a save's options on the image object until the save ends, so two saves of one object at once can
+    # read each other's (a WebP read without `lossless` is lossy): each atlas file is encoded from an image of its own.
+    strip(tmp_path)
+    src = request(tmp_path, [{"id": "walk", "source": "walk.strip.json", "display": {"height": 10}}])
+    encoded, encode = [], game_pack._encode_image
+    monkeypatch.setattr(game_pack, "_encode_image", lambda image, fmt: (encoded.append(image), encode(image, fmt))[1])
+    game_pack.pack(src, tmp_path / "out", page_size=12)
+    assert len(encoded) == 6
+    assert len({id(image) for image in encoded}) == len(encoded)   # all kept alive above, so ids are distinct objects
+
+
+def test_no_more_pages_are_held_than_are_in_flight(tmp_path, monkeypatch):
+    # A 4096 px page is 64 MB and its lossless WebP encode several times that: the next page is built only once a page
+    # in flight is done, so at most PAGES_IN_FLIGHT WebP encodes run at once however many cores encode.
+    strip(tmp_path)
+    src = request(tmp_path, [{"id": "walk", "source": "walk.strip.json", "display": {"height": 10}}])
+    monkeypatch.setattr(game_pack, "ENCODE_JOBS", 4)
+    monkeypatch.setattr(game_pack, "PAGES_IN_FLIGHT", 2)
+    lock, running, most, encode = threading.Lock(), [0], [0], game_pack._encode_image
+
+    def slow(image, fmt):
+        if fmt == "WEBP":
+            with lock:
+                running[0] += 1
+                most[0] = max(most[0], running[0])
+            time.sleep(0.2)
+        try:
+            return encode(image, fmt)
+        finally:
+            if fmt == "WEBP":
+                with lock:
+                    running[0] -= 1
+
+    monkeypatch.setattr(game_pack, "_encode_image", slow)
+    game_pack.pack(src, tmp_path / "out", page_size=12)   # three pages
+    assert most[0] == 2
 
 
 @pytest.mark.parametrize("change,match", [
@@ -210,6 +258,12 @@ def test_size_limit_counts_both_images_and_manifest_before_publish(tmp_path):
     for kwargs in ({"page_size": 4097}, {"max_bytes": 50_000_001}):
         with pytest.raises(ValueError):
             game_pack.pack(src, tmp_path / "out", **kwargs)
+    # Over the budget on a later page, while that page and the next are encoding: the same error, nothing published.
+    game_pack.pack(src, tmp_path / "whole", page_size=12)
+    first_page = sum((tmp_path / "whole" / f"atlas-000.{ext}").stat().st_size for ext in ("png", "webp"))
+    with pytest.raises(ValueError, match=r"exceeds \d+ bytes \(50 MB maximum\)$"):
+        game_pack.pack(src, tmp_path / "out", page_size=12, max_bytes=first_page + 1)
+    assert not (tmp_path / "out").exists()
 
 
 def test_cli_dispatch_and_real_files(tmp_path):
