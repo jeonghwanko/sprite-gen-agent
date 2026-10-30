@@ -47,6 +47,7 @@ These are the fork's additions on top of 3.4.0, first written for the AI Fighter
   - `extract`: `connected_components` and `component_group_image`, `_edge_histograms` (pixel-grid detection) and `chroma_adjacent_count` (`inspect`) run on arrays; decontamination's `_box_sum` reads its corners as views instead of four full-size copies (2.2x). `cutout`'s transparency check runs on an array.
   - `inspect`'s alpha centroid (219 ms to 4 ms a frame) and the preview checker run on arrays.
   - `video-loop` and motion-auto measure each symmetric frame-distance matrix's upper triangle and mirror it (2x); `local_cycle` measures each window's repeat profile once for the lengths that share it; the masked NCC transforms each channel and the mask once for the correlations that share them.
+- **Removed: `scripts/diagnose_video_loop.py` and five unreferenced `docs/assets/` images (2026-10-30).** Nothing in the repository, its tests or the creator kit named them. The images (`curator-drag-update.gif`, `demo-character.gif`, `demo-furniture.gif`, `curator-iso.png`, `cutout-demo.png`, 6.9 MB) were linked from no document. `SECURITY.md` now names this fork's GitHub test workflow, the `>=3.11` interpreter floor and the moved NumPy gate test.
 
 ## v3.4.0 - Loop part pop retakes, cycle alignment walk beat repair and broken beats, ghost limb faults, and same foot, filmed jump, and seam jump retakes
 
