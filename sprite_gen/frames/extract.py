@@ -1265,48 +1265,43 @@ def connected_components(image: Image.Image) -> list[dict[str, Any]]:
     alpha = image.getchannel("A")
     width, height = image.size
     data = alpha.tobytes()
-    visited = bytearray(width * height)
+    size = len(data)
+    last_col = width - 1
+    visited = bytearray(size)
     components: list[dict[str, Any]] = []
-
     for start, alpha_value in enumerate(data):
         if alpha_value <= 16 or visited[start]:
             continue
         stack = [start]
         visited[start] = 1
         pixels: list[int] = []
-        min_x = width
-        min_y = height
-        max_x = 0
-        max_y = 0
-
+        append, push, pop = pixels.append, stack.append, stack.pop
         while stack:
-            current = stack.pop()
-            pixels.append(current)
+            current = pop()
+            append(current)
             x = current % width
-            y = current // width
-            min_x = min(min_x, x)
-            min_y = min(min_y, y)
-            max_x = max(max_x, x)
-            max_y = max(max_y, y)
-
-            for neighbor in (current - 1, current + 1, current - width, current + width):
-                if neighbor < 0 or neighbor >= len(data) or visited[neighbor]:
-                    continue
-                nx = neighbor % width
-                if abs(nx - x) > 1:
-                    continue
-                if data[neighbor] > 16:
-                    visited[neighbor] = 1
-                    stack.append(neighbor)
-
-        components.append(
-            {
-                "pixels": pixels,
-                "area": len(pixels),
-                "bbox": (min_x, min_y, max_x + 1, max_y + 1),
-                "center_x": (min_x + max_x + 1) / 2,
-            }
-        )
+            if x > 0:
+                n = current - 1
+                if not visited[n] and data[n] > 16:
+                    visited[n] = 1
+                    push(n)
+            if x < last_col:
+                n = current + 1
+                if not visited[n] and data[n] > 16:
+                    visited[n] = 1
+                    push(n)
+            n = current - width
+            if n >= 0 and not visited[n] and data[n] > 16:
+                visited[n] = 1
+                push(n)
+            n = current + width
+            if n < size and not visited[n] and data[n] > 16:
+                visited[n] = 1
+                push(n)
+        ys, xs = np.divmod(np.fromiter(pixels, dtype=np.int64, count=len(pixels)), width)
+        min_x, max_x, min_y, max_y = int(xs.min()), int(xs.max()), int(ys.min()), int(ys.max())
+        components.append({"pixels": pixels, "area": len(pixels), "bbox": (min_x, min_y, max_x + 1, max_y + 1),
+                           "center_x": (min_x + max_x + 1) / 2})
     return components
 
 
@@ -1318,15 +1313,13 @@ def component_group_image(source: Image.Image, components: list[dict[str, Any]],
     max_y = min(height, max(component["bbox"][3] for component in components) + padding)
     if preserve_y:
         min_y, max_y = 0, height
-    output = Image.new("RGBA", (max_x - min_x, max_y - min_y), (0, 0, 0, 0))
-    source_pixels = source.load()
-    output_pixels = output.load()
+    src = np.asarray(source.convert("RGBA"))
+    mask = np.zeros(width * height, dtype=bool)
     for component in components:
-        for pixel_index in component["pixels"]:
-            x = pixel_index % width
-            y = pixel_index // width
-            output_pixels[x - min_x, y - min_y] = source_pixels[x, y]
-    return output
+        mask[np.asarray(component["pixels"], dtype=np.int64)] = True
+    window = mask.reshape(height, width)[min_y:max_y, min_x:max_x]
+    out = np.where(window[..., None], src[min_y:max_y, min_x:max_x], 0).astype(np.uint8)
+    return Image.fromarray(out, "RGBA")
 
 
 def cell_geometry(cell: dict[str, Any]) -> tuple[int, int, int, int]:
@@ -1521,24 +1514,16 @@ def fit_to_cell(
 def _edge_histograms(image: Image.Image) -> tuple[list[int], list[int], int, int]:
     """Color-transition edge counts indexed by x (vertical edges) and y
     (horizontal edges). AA ramps register near the true block boundary, so the
-    boundary position signal survives anti-aliasing."""
-    pixels = image.convert("RGBA").load()
-    width, height = image.size
-    col_edges = [0] * width
-    row_edges = [0] * height
-    for y in range(0, height, 2):
-        for x in range(1, width):
-            a = pixels[x, y]
-            b = pixels[x - 1, y]
-            if abs(a[0] - b[0]) + abs(a[1] - b[1]) + abs(a[2] - b[2]) + abs(a[3] - b[3]) > 96:
-                col_edges[x] += 1
-    for x in range(0, width, 2):
-        for y in range(1, height):
-            a = pixels[x, y]
-            b = pixels[x, y - 1]
-            if abs(a[0] - b[0]) + abs(a[1] - b[1]) + abs(a[2] - b[2]) + abs(a[3] - b[3]) > 96:
-                row_edges[y] += 1
-    return col_edges, row_edges, width, height
+    boundary position signal survives anti-aliasing. Every other row (column) is
+    scanned, as the per-pixel loop this replaced did; index 0 never has a left
+    (upper) neighbour and stays 0."""
+    pixels = np.asarray(image.convert("RGBA")).astype(np.int16)
+    height, width = pixels.shape[:2]
+    rows = pixels[0::2]
+    col = (np.abs(rows[:, 1:] - rows[:, :-1]).sum(-1) > 96).sum(0)
+    cols = pixels[:, 0::2]
+    row = (np.abs(cols[1:] - cols[:-1]).sum(-1) > 96).sum(1)
+    return [0] + col.tolist(), [0] + row.tolist(), width, height
 
 
 def detect_pixel_pitch(strip: Image.Image, max_pitch: int = 48) -> int:
@@ -2829,13 +2814,9 @@ def extract_slot_frames(strip: Image.Image, frame_count: int, cell_width: int, c
 
 
 def chroma_adjacent_count(image: Image.Image, chroma_key: tuple[int, int, int], threshold: float) -> int:
-    count = 0
-    data = image.convert("RGBA").tobytes()
-    for index in range(0, len(data), 4):
-        red, green, blue, alpha = data[index : index + 4]
-        if alpha > 16 and color_distance((red, green, blue), chroma_key) <= threshold:
-            count += 1
-    return count
+    data = np.asarray(image.convert("RGBA"))
+    distance = _key_distance_field(data[..., :3].astype(np.int32), chroma_key)
+    return int(np.count_nonzero((data[..., 3] > 16) & (distance <= threshold)))
 
 
 def inspect_frames(frames: list[Image.Image], chroma_key: tuple[int, int, int], args: argparse.Namespace) -> tuple[list[str], list[str], list[dict[str, Any]]]:
