@@ -397,17 +397,6 @@ def analyze_reference(path: Path | None) -> tuple[list[tuple[int, int, int]], di
     return pixels, background
 
 
-def sampled_reference_pixels(path: Path | None) -> list[tuple[int, int, int]]:
-    """Subject pixels of the base, with its chroma background excluded.
-
-    A base in this pipeline always carries a chroma background. Counting those
-    pixels as subject pins every candidate that matches the current background to
-    ``min_subject_distance ~= 0``, so ``auto`` could never re-select the key the
-    base was drawn against.
-    """
-    return analyze_reference(path)[0]
-
-
 def choose_chroma_key(reference: Path | None, requested: str) -> dict[str, Any]:
     if requested.lower() != "auto":
         rgb = parse_hex_color(requested)

@@ -2527,35 +2527,6 @@ def enforce_outline(image: Image.Image, strength: float = 0.62) -> Image.Image:
     return image
 
 
-def fit_pixel_unfake(logical: Image.Image, cell_width: int, cell_height: int, safe_margin_x: int, safe_margin_y: int, scale: int, fit: dict[str, Any]) -> Image.Image:
-    target = Image.new("RGBA", (cell_width, cell_height), (0, 0, 0, 0))
-    bbox = logical.getbbox()
-    if bbox is None:
-        return target
-    # 콘텐츠 bbox 로 먼저 크롭 — 로지컬 셀의 투명 패딩째 바닥에 붙이면 패딩만큼
-    # 프레임마다 발이 떠서 바닥선("무게감")이 흔들린다 (maintainer 2026-07-04).
-    logical = logical.crop(bbox)
-    sprite = logical.resize((logical.width * scale, logical.height * scale), Image.Resampling.NEAREST)
-    align_x = str(fit.get("align_x", "foot-centroid")).lower()
-    align_y = str(fit.get("align_y", "bottom")).lower()
-    if align_x == "foot-centroid":
-        left = round(cell_width / 2.0 - _alpha_centroid_x(sprite, 0.2))
-    elif align_x == "centroid":
-        left = round(cell_width / 2.0 - _alpha_centroid_x(sprite))
-    elif align_x == "alpha-centroid":
-        left = round(cell_width / 2.0 - _alpha_centroid_x(sprite, 1.0, ALPHA_CENTROID_MIN_ALPHA))
-    else:
-        left = (cell_width - sprite.width) // 2
-    left = max(0, min(cell_width - sprite.width, left))
-    left -= left % scale  # 논리 픽셀 격자에 스냅(짝수 배치로 flip 대칭 보존)
-    if align_y == "bottom":
-        top = max(0, cell_height - safe_margin_y - sprite.height)
-    else:
-        top = (cell_height - sprite.height) // 2
-    target.alpha_composite(sprite, (left, top))
-    return target
-
-
 def fit_component_to_bbox(component: Image.Image, cell_width: int, cell_height: int,
                           bbox: tuple[int, int, int, int], scale: int = 1,
                           ) -> tuple[Image.Image, dict[str, float] | None]:

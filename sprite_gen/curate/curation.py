@@ -489,14 +489,6 @@ def frame_variant(curation: dict[str, Any] | None, state: str | None = None) -> 
     return "pixel"
 
 
-def frame_filename(index: int, variant: str = "pixel") -> str:
-    """Frame file name for a variant. 'pixel' = canonical frame-N.png; 'plain'
-    = the pre-unfake twin saved by extraction when fit.pixel_unfake."""
-    if variant == "plain":
-        return f"frame-{index}.plain.png"
-    return f"frame-{index}.png"
-
-
 def pixel_snap_scale(request: dict[str, Any]) -> int | None:
     """Logical-grid scale (cell px per logical px) for a `fit.pixel_unfake` run, or None
     for a legacy run. Mirrors extract's pp_scale so a curation transform baked onto the

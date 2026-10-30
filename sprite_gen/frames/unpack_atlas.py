@@ -268,11 +268,6 @@ def write_run(
     return {"layout_source": layout_source, "states": [s["name"] for s in states], "cell": [cell_w, cell_h]}
 
 
-def import_pngs(out_dir: Path, png_paths: list[Path], state_name: str, labels: list[str], iso: dict[str, Any] | None = None) -> dict[str, Any]:
-    """단일 그룹 임포트 (하위호환 래퍼) — 그룹 지원 본체는 import_png_groups."""
-    return import_png_groups(out_dir, [{"name": state_name, "paths": png_paths, "labels": labels}], iso)
-
-
 def import_png_groups(out_dir: Path, groups: list[dict[str, Any]], iso: dict[str, Any] | None = None,
                       base_src: Path | None = None, run_dir: Path | None = None) -> dict[str, Any]:
     """Import separate PNGs as one or more curator rows (states).

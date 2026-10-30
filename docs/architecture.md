@@ -114,8 +114,8 @@ The canonical stage → script → input → output table is owned by
 and locking behavior *behind* that table.
 
 The scripts are explicit pipeline commands, not hidden imports. The shared
-imports are `curation.py` (schema + transform math + the `frame_variant`/
-`frame_filename` resolver, kept single-source so the webview server and the
+imports are `curation.py` (schema + transform math + the `frame_variant`
+resolver; the frame path itself is `spec/layout.row_frame_rel`), kept single-source so the webview server and the
 compose scripts cannot drift) and `runio.py` (safe run-dir IO: a single-writer
 lock file `.sprite-gen.lock` taken by the extract/compose/export/unpack
 writers, plus atomic temp+`os.replace` writes for frames, atlas, manifests, and
@@ -348,8 +348,8 @@ the code realizes it. The path is unfake.js/pixeldetector-style and contains
    run-wide median-cut palette (`palette_size`) kills frame-to-frame color
    flicker.
 7. **Outline** — `enforce_outline()` draws a uniform 1px silhouette outline.
-8. **Integer placement** — `fit_pixel_unfake()` / `row_placement()` upscale by
-   the integer factor `cell_height // logical_height` (NEAREST) and place with
+8. **Integer placement** — `row_placement()` upscales by
+   the integer factor `cell_height // logical_height` (NEAREST) and places with
    offsets honoring `align_x`/`align_y`. `align_x: "alpha-centroid"` computes
    the fringe-insensitive alpha-weighted centroid per frame (alpha ≤ 10 is
    ignored), cancelling residual horizontal registration jitter without
