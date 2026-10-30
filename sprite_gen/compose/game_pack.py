@@ -9,6 +9,8 @@ and icons. A version 1 request is packed exactly as before.
 from __future__ import annotations
 
 import argparse
+from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
 import json
 import math
@@ -34,6 +36,18 @@ from sprite_gen.util.console import utf8_streams
 
 MAX_PAGE_SIZE = 4096
 MAX_BYTES = 50_000_000
+# Both copies are lossless, so their pixels are the source's (measured 2026-10-31; CHANGELOG has the numbers). WebP at
+# method 4, not 6: about the same size (atlases -4 to +1.4 %, single images -8 to +6 %) in 40 to 75 % of the time.
+# Method 0 was ten times faster still on hosted fighters' packs but up to eight times larger on other art. PNG stays at
+# level 9: level 6 cost 1 to 5 % on atlases and up to half on flat art, and encoded beside the page's WebP a level 9 PNG
+# finished first on every page measured.
+ENCODINGS = {"PNG": {"compress_level": 9}, "WEBP": {"lossless": True, "exact": True, "method": 4}}
+# Pillow lets go of the GIL while it encodes, so a page's PNG and WebP and the pages in flight encode at once. At most
+# PAGES_IN_FLIGHT pages are held (two at four threads, so two WebP encodes at about 0.3-0.45 GB each on a 4096 px page).
+# Pillow keeps a save's options on the image object until the save ends, so two saves of one object at once can read
+# each other's (a WebP read without `lossless` is lossy): the WebP is encoded from its own copy of the page.
+ENCODE_JOBS = min(4, len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else os.cpu_count() or 1)
+PAGES_IN_FLIGHT = max(1, ENCODE_JOBS // 2)
 SCENE_SECTIONS = ("images", "tiles", "ui")
 SIDES = ("left", "right", "top", "bottom")
 # A "base" footprint counts pixels at least this opaque (docs/game-pack.md "Version 2 request").
@@ -407,10 +421,7 @@ def _ui_kit(path, scale, page_size):
 
 def _encode_image(image, fmt):
     buffer = BytesIO()
-    if fmt == "PNG":
-        image.save(buffer, format="PNG", compress_level=9)
-    else:
-        image.save(buffer, format="WEBP", lossless=True, exact=True, method=6)
+    image.save(buffer, format=fmt, **ENCODINGS[fmt])
     return buffer.getvalue()
 
 
@@ -508,26 +519,41 @@ def _encode(pages, animations, max_bytes, sections=None, files=None):
     """Pages, then any version 2 files, then the manifest; ``sections`` makes it a version 2 manifest."""
     payloads, textures = {}, []
     total = 0
-    for index, (width, height, placed) in enumerate(pages):
-        sheet = Image.new("RGBA", (width, height))
-        records = {}
-        for name, image, anchor, x, y in placed:
-            _paste_extruded(sheet, image, x, y)
-            size = {"w": image.width, "h": image.height}
-            records[name] = {"frame": {"x": x, "y": y, **size}, "rotated": False, "trimmed": False,
-                             "spriteSourceSize": {"x": 0, "y": 0, **size}, "sourceSize": size,
-                             "pivot": {"x": anchor[0]/image.width, "y": anchor[1]/image.height}}
-        png_name, webp_name = f"atlas-{index:03d}.png", f"atlas-{index:03d}.webp"
-        for name, fmt, options in ((png_name, "PNG", {"compress_level": 9}),
-                                   (webp_name, "WEBP", {"lossless": True, "exact": True, "method": 6})):
-            buffer = BytesIO()
-            sheet.save(buffer, format=fmt, **options)
-            payloads[name] = buffer.getvalue()
+    encoding = deque()   # each page's (file name, future) pairs, oldest first
+
+    def collect():
+        # In page order, so the budget fails on the same file as an encode one at a time would.
+        nonlocal total
+        for name, future in encoding.popleft():
+            payloads[name] = future.result()
             total += len(payloads[name])
             if total > max_bytes:
                 raise ValueError(f"game pack exceeds {max_bytes} bytes (50 MB maximum)")
-        textures.append({"image": png_name, "webp": webp_name, "frames": records,
-                         "meta": {"image": png_name, "format": "RGBA8888", "size": {"w": width, "h": height}, "scale": "1"}})
+
+    pool = ThreadPoolExecutor(max_workers=ENCODE_JOBS)
+    try:
+        for index, (width, height, placed) in enumerate(pages):
+            if len(encoding) >= PAGES_IN_FLIGHT:
+                collect()   # before the next page is built, so no more than PAGES_IN_FLIGHT pages are held
+            sheet = Image.new("RGBA", (width, height))
+            records = {}
+            for name, image, anchor, x, y in placed:
+                _paste_extruded(sheet, image, x, y)
+                size = {"w": image.width, "h": image.height}
+                records[name] = {"frame": {"x": x, "y": y, **size}, "rotated": False, "trimmed": False,
+                                 "spriteSourceSize": {"x": 0, "y": 0, **size}, "sourceSize": size,
+                                 "pivot": {"x": anchor[0]/image.width, "y": anchor[1]/image.height}}
+            png_name, webp_name = f"atlas-{index:03d}.png", f"atlas-{index:03d}.webp"
+            # Nothing touches a page once its saves are submitted; the WebP gets its own copy (ENCODE_JOBS above).
+            webp_sheet = sheet.copy()
+            encoding.append([(png_name, pool.submit(_encode_image, sheet, "PNG")),
+                             (webp_name, pool.submit(_encode_image, webp_sheet, "WEBP"))])
+            textures.append({"image": png_name, "webp": webp_name, "frames": records,
+                             "meta": {"image": png_name, "format": "RGBA8888", "size": {"w": width, "h": height}, "scale": "1"}})
+        while encoding:
+            collect()
+    finally:
+        pool.shutdown(cancel_futures=True)   # a page over the budget stops the pages not yet started
     for name, data in (files or {}).items():
         payloads[name] = data
         total += len(data)
