@@ -3,7 +3,7 @@
 
 8-connected growth (`grow_chebyshev`, `grow_into`), Chebyshev ring depth (`ring_depth`) and summed-area
 window sums (`box_sum`, `box_sum_at`). Exact: growth is boolean, and the sums of integer-valued input stay
-integers in float64.
+integers, in float64 or (boolean and narrow unsigned input) in an integer table.
 """
 
 from __future__ import annotations
@@ -50,15 +50,32 @@ def ring_depth(seed: np.ndarray, rings: int) -> np.ndarray:
     return depth
 
 
+def _table(values: np.ndarray) -> np.ndarray:
+    """Summed-area table of `values` (H, W, ...), a zero row and column ahead.
+
+    Boolean and narrow unsigned input (8 or 16 bit) is summed in integers, int32 where the whole image's
+    sum fits it: the same sums as float64 holds them, exact either way, at half the memory traffic. Any
+    other input is summed in float64, as before."""
+    height, width = values.shape[:2]
+    dtype = np.dtype(np.float64)
+    if values.dtype == np.bool_ or (values.dtype.kind == "u" and values.dtype.itemsize <= 2):
+        top = 1 if values.dtype == np.bool_ else int(np.iinfo(values.dtype).max)
+        dtype = np.dtype(np.int32 if top * height * width <= np.iinfo(np.int32).max else np.int64)
+    table = np.zeros((height + 1, width + 1) + values.shape[2:], dtype=dtype)
+    np.cumsum(values, 0, dtype=dtype, out=table[1:, 1:])
+    np.cumsum(table[1:, 1:], 1, out=table[1:, 1:])
+    return table
+
+
 def box_sum(values: np.ndarray, radius: int) -> np.ndarray:
-    """Sum over a (2r+1)^2 window, clipped at the image edge. Integer-valued input stays exact.
+    """Sum over a (2r+1)^2 window, clipped at the image edge. Integer-valued input stays exact; boolean and
+    narrow unsigned input comes back as integers (`_table`).
 
     The edge-padded table stands in for clipping each window's corners: padding by r repeats the
     first and last table rows and columns, so a slice of it reads the same corner values the clipped
     indices did, in the same `((a - b) - c) + d` order, as views instead of four full-size copies."""
     height, width = values.shape[:2]
-    table = np.zeros((height + 1, width + 1) + values.shape[2:], dtype=np.float64)
-    table[1:, 1:] = values.cumsum(0).cumsum(1)
+    table = _table(values)
     r = radius
     p = np.pad(table, ((r, r), (r, r)) + ((0, 0),) * (values.ndim - 2), mode="edge")
     hi_y, lo_y = slice(2 * r + 1, 2 * r + 1 + height), slice(0, height)
@@ -70,10 +87,10 @@ def box_sum(values: np.ndarray, radius: int) -> np.ndarray:
 
 
 def box_sum_at(values: np.ndarray, radius: int, rows: np.ndarray, cols: np.ndarray) -> np.ndarray:
-    """`box_sum` of a 2-D array, at the given pixels only: one summed-area table, no full-size result."""
-    height, width = values.shape
-    table = np.zeros((height + 1, width + 1), dtype=np.float64)
-    table[1:, 1:] = values.cumsum(0).cumsum(1)
+    """`box_sum` at the given pixels only: one summed-area table, no full-size result. A (H, W, C) array gives
+    (N, C)."""
+    height, width = values.shape[:2]
+    table = _table(values)
     y0 = np.clip(rows - radius, 0, height)
     y1 = np.clip(rows + radius + 1, 0, height)
     x0 = np.clip(cols - radius, 0, width)

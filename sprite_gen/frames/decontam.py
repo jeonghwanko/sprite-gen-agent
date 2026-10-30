@@ -187,16 +187,31 @@ def validate(mode: str, fit: str = "still") -> None:
         raise SystemExit(f"decontam: unknown fit {fit!r}; expected one of {', '.join(DECONTAM_FITS)}")
 
 
+def _counted(rgb: np.ndarray, mask: np.ndarray) -> np.ndarray:
+    """(H, W, 4) uint8: `mask` as a count, then `rgb` (0-255 integers) where `mask` holds and 0 elsewhere, for one
+    integer window sum of both (`box_sum`, `box_sum_at`)."""
+    stacked = np.zeros(mask.shape + (4,), dtype=np.uint8)
+    stacked[..., 0] = mask
+    np.copyto(stacked[..., 1:], rgb, casting="unsafe", where=mask[..., None])
+    return stacked
+
+
 def local_background(rgb: np.ndarray, preferred: np.ndarray, fallback: np.ndarray, radius: int) -> np.ndarray:
-    """Mean keyed colour within `radius`, from `preferred` pixels where any, else from `fallback`."""
-    out = np.zeros(rgb.shape, dtype=np.float64)
-    found = np.zeros(rgb.shape[:2], dtype=bool)
-    for mask in (preferred, fallback):
-        weight = box_sum(mask.astype(np.float64), radius)
-        total = box_sum(rgb * mask[..., None], radius)
-        fill = (weight > 0) & ~found
-        out[fill] = total[fill] / weight[fill][:, None]
-        found |= fill
+    """Mean keyed colour within `radius`, from `preferred` pixels where any, else from `fallback`.
+
+    `rgb` holds 0-255 integers (any dtype): the window sums are integers, so summing them in an integer table
+    gives the same means. `fallback` is summed only at the pixels `preferred` left without one."""
+    out = np.zeros(rgb.shape[:2] + (3,), dtype=np.float64)
+    sums = box_sum(_counted(rgb, preferred), radius)
+    weight = sums[..., 0]
+    fill = weight > 0
+    out[fill] = sums[..., 1:][fill] / weight[fill][:, None]
+    rows, cols = np.nonzero(~fill)
+    if len(rows):
+        sums = box_sum_at(_counted(rgb, fallback), radius, rows, cols)
+        weight = sums[:, 0]
+        fill = weight > 0
+        out[rows[fill], cols[fill]] = sums[fill, 1:] / weight[fill][:, None]
     return out
 
 
@@ -538,9 +553,9 @@ def decontaminate(source_rgb: np.ndarray, keyed: np.ndarray, keyed_mask: np.ndar
         # *Material behind*: a decoded frame's edge carries the key's blurred hue, so no hue test
         behind = subject & (depth > edge)
         reach = VIDEO_BEHIND_PX
-    behind_weight = box_sum_at(behind.astype(np.float64), reach, rows, cols)
-    behind_mean = np.stack([box_sum_at(rgb[..., channel] * behind, reach, rows, cols) for channel in range(3)],
-                           axis=-1) / np.maximum(behind_weight, 1.0)[:, None]
+    behind_sums = box_sum_at(_counted(rgb, behind), reach, rows, cols)
+    behind_weight = behind_sums[:, 0].astype(np.float64)
+    behind_mean = behind_sums[:, 1:] / np.maximum(behind_weight, 1.0)[:, None]
     guarded = np.zeros(len(rows), dtype=bool)
     if fit == "video" and keyfree:
         # *Key-coloured parts*: the palette left them out, so no colour of it explains their edge
