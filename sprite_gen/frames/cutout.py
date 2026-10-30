@@ -271,12 +271,50 @@ def _matte_route(
     }
 
 
+def _spill_args(spill_max_fraction: float | None, spill_min_tint: float | None,
+                spill_require_hue: bool) -> dict[str, Any]:
+    """The chroma engine's spill arguments a caller overrides (None keeps the engine default)."""
+    extra: dict[str, Any] = {}
+    if spill_max_fraction is not None:
+        extra["spill_max_fraction"] = spill_max_fraction
+    if spill_min_tint is not None:
+        extra["spill_min_tint"] = spill_min_tint
+    if spill_require_hue:
+        extra["spill_require_hue"] = True
+    return extra
+
+
+def prepare_cutout(input_path: Path, *, key: str = "auto", spill_max_fraction: float | None = None,
+                   spill_min_tint: float | None = None, spill_require_hue: bool = False, decontam: str = "off",
+                   decontam_fit: str = "still", decontam_edge_band: int = 0) -> dict[str, Any] | None:
+    """What `cutout` computes from the frame alone, before a clip's palette or history: the route, the
+    painted key, the chroma matte and decontamination's preparation. None where the frame takes the white
+    matte. A clip's frames can be prepared in any order, in worker processes (`cutout`'s `prepared`)."""
+    from sprite_gen.frames import decontam as decontam_module
+    from sprite_gen.frames.extract import chroma_matte, detect_background_key_rgb
+
+    image = Image.open(input_path).convert("RGBA")
+    route = detect_key_kind(corner_average(image)) if key == "auto" else key
+    if route not in ("magenta", "green"):
+        return None
+    target = KEY_TARGETS[route]
+    painted = detect_background_key_rgb(image, target, EXTRACT_KEY_THRESHOLD)
+    matte = chroma_matte(image, target, EXTRACT_KEY_THRESHOLD, _EXTRACT_FRINGE_THRESHOLD, _EXTRACT_FRINGE_DELTA,
+                         background_key=painted, **_spill_args(spill_max_fraction, spill_min_tint, spill_require_hue))
+    if decontam != "off":
+        matte["decontam"] = decontam_module.prepare(matte["source_rgb"], matte["data"], matte["keyed_mask"], target,
+                                                    fit=decontam_fit, edge_band=decontam_edge_band)
+    del matte["source_rgb"]  # the frame itself: `remove_chroma_background` reads it again rather than receive it
+    return {"route": route, "painted": painted, "matte": matte}
+
+
 def extract_route(image: Image.Image, kind: str, *, spill_max_fraction: float | None = None,
                   spill_min_tint: float | None = None,
                   spill_require_hue: bool = False, decontam: str = "off", decontam_fit: str = "still",
                   decontam_palette: dict[str, Any] | None = None, decontam_edge_band: int = 0,
                   background_key: tuple[int, int, int] | None = None,
-                  decontam_history: dict[str, Any] | None = None) -> tuple[Image.Image, dict[str, Any]]:
+                  decontam_history: dict[str, Any] | None = None,
+                  matte: dict[str, Any] | None = None) -> tuple[Image.Image, dict[str, Any]]:
     """Magenta/green key background → reuse the verified `extract` chroma engine (no drift).
 
     The engine keys from the background colour it detects on the borders
@@ -290,7 +328,8 @@ def extract_route(image: Image.Image, kind: str, *, spill_max_fraction: float | 
     exact matte, so the canvas and `video-frames` agree by construction.
     `decontam` is the engine's edge decontamination pass (`extract.remove_chroma_background`);
     what it did comes back under `decontam` in the stats. `decontam_history` is a clip's record of
-    its last frame for the video fit, handed on to the pass.
+    its last frame for the video fit, handed on to the pass. `matte` is `prepare_cutout`'s for this
+    image, with `background_key` its painted colour.
     """
     from sprite_gen.frames.extract import detect_background_key_rgb, remove_chroma_background
 
@@ -299,13 +338,7 @@ def extract_route(image: Image.Image, kind: str, *, spill_max_fraction: float | 
         painted = detect_background_key_rgb(image, target, EXTRACT_KEY_THRESHOLD)
     else:
         painted = (int(background_key[0]), int(background_key[1]), int(background_key[2]))
-    extra: dict[str, Any] = {}
-    if spill_max_fraction is not None:
-        extra["spill_max_fraction"] = spill_max_fraction
-    if spill_min_tint is not None:
-        extra["spill_min_tint"] = spill_min_tint
-    if spill_require_hue:
-        extra["spill_require_hue"] = True
+    extra = _spill_args(spill_max_fraction, spill_min_tint, spill_require_hue)
     decontam_stats: dict[str, Any] = {}
     if decontam != "off":
         extra.update(decontam=decontam, decontam_fit=decontam_fit, decontam_palette=decontam_palette,
@@ -314,7 +347,7 @@ def extract_route(image: Image.Image, kind: str, *, spill_max_fraction: float | 
     # the colour detected above, not a second detection of the same borders
     result = remove_chroma_background(
         image, target, EXTRACT_KEY_THRESHOLD, _EXTRACT_FRINGE_THRESHOLD, _EXTRACT_FRINGE_DELTA,
-        background_key=painted, **extra
+        background_key=painted, matte=matte, **extra
     )
     stats: dict[str, Any] = {
         "route": f"extract:{kind}",
@@ -344,6 +377,7 @@ def cutout(
     decontam_palette: dict[str, Any] | None = None,
     decontam_edge_band: int = 0,
     decontam_history: dict[str, Any] | None = None,
+    prepared: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Cut a uniform-background imported image to a clean transparent RGBA PNG.
 
@@ -356,7 +390,8 @@ def cutout(
     it cannot run (the white matte has no key colour to remove). `decontam_edge_band`
     keeps what the matte left transparent along the top, left and right edges
     transparent (`video-frames` passes its edge band), and `decontam_history` carries a
-    clip's last frame to the next (`video-frames` keeps one per clip). Returns a stats dict. Raises SystemExit if the key is unknown, the background cannot be
+    clip's last frame to the next (`video-frames` keeps one per clip). `prepared` is `prepare_cutout`'s
+    result for the same input and arguments, computed ahead (None on the white matte route). Returns a stats dict. Raises SystemExit if the key is unknown, the background cannot be
     located, or any transparent pixel keeps non-zero RGB (No Silent Fallback).
     """
     if key not in ("auto", "white", "magenta", "green"):
@@ -367,13 +402,18 @@ def cutout(
     image = Image.open(input_path).convert("RGBA")
     width, height = image.size
 
-    route = detect_key_kind(corner_average(image)) if key == "auto" else key
+    if prepared is not None:
+        route = prepared["route"]
+        ahead = {"background_key": prepared["painted"], "matte": prepared["matte"]}
+    else:
+        route = detect_key_kind(corner_average(image)) if key == "auto" else key
+        ahead = {}
     if route in ("magenta", "green"):
         result, route_stats = extract_route(image, route, spill_max_fraction=spill_max_fraction,
                                             spill_min_tint=spill_min_tint, spill_require_hue=spill_require_hue,
                                             decontam=decontam, decontam_fit=decontam_fit,
                                             decontam_palette=decontam_palette, decontam_edge_band=decontam_edge_band,
-                                            decontam_history=decontam_history)
+                                            decontam_history=decontam_history, **ahead)
     else:
         if decontam == "palette":
             raise SystemExit(f"cutout: --decontam {decontam} needs a chroma key background (magenta/green); "
@@ -388,11 +428,12 @@ def cutout(
 
     # No Silent Fallback verification.
     from sprite_gen._deps import np
-    check = np.asarray(result)
-    zero = check[..., 3] == 0
+    # each RGBA pixel as one little-endian word, alpha its top byte: transparent is below 2**24, and a
+    # transparent pixel with any colour left is a non-zero word there
+    packed = np.ascontiguousarray(np.asarray(result)).view("<u4")[..., 0]
     total = width * height
-    alpha_zero = int(np.count_nonzero(zero))
-    stale_rgb = int(np.count_nonzero(zero & check[..., :3].any(axis=-1)))
+    alpha_zero = int(np.count_nonzero(packed < 1 << 24))
+    stale_rgb = alpha_zero - int(np.count_nonzero(packed == 0))
     if stale_rgb:
         raise SystemExit(
             f"cutout: transparent pixels still contain non-zero RGB ({stale_rgb} px) in {out_path}"

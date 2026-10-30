@@ -58,16 +58,20 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import shutil
 import subprocess
 import sys
+from collections import deque
+from collections.abc import Iterator
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 from typing import Any
 
 from PIL import Image
 
 from sprite_gen._deps import np
-from sprite_gen.frames.cutout import cutout
+from sprite_gen.frames.cutout import cutout, prepare_cutout
 from sprite_gen.frames.decontam import palette_from_stats
 from sprite_gen.frames.extract import border_key_candidate_field, painted_key_leans, DEFAULT_UNMIX_REACH
 from sprite_gen.frames.keyfield import SPILL_FULL_MIN_TINT, key_channel_split
@@ -77,6 +81,10 @@ from sprite_gen.util.console import utf8_streams
 from sprite_gen import local_tool
 
 EDGE_ROWS = 4  # rows/cols inspected at each edge
+# Keying workers: each frame's matte and decontamination preparation read that frame alone, so worker
+# processes compute them ahead while the clip's own pass (which carries one frame's calls to the next)
+# runs in order. 1 keys every frame in this process.
+KEY_WORKERS = int(os.environ.get("SPRITE_GEN_KEY_WORKERS", str(min(4, os.cpu_count() or 1))))
 # Spill (key colour the video model painted INTO the subject — a reflection on
 # metal, a tint on skin near the edge). The chroma engine treats a large key-tinted
 # cluster as the subject's own key-coloured material and leaves it alone; a video
@@ -546,11 +554,15 @@ def _key_chroma(raw_files: list[Path], keyed_dir: Path, *, key: str, check_edges
                 report["decontam"]["reason"] = decontam_skipped[0]
         return report
 
-    for k, src in enumerate(raw_files):
+    ahead = _prepared(raw_files, key=key, spill_max_fraction=spill_max, spill_min_tint=spill_tint,
+                      spill_require_hue=spill == "full", decontam=decontam, decontam_fit=DECONTAM_FIT,
+                      decontam_edge_band=EDGE_ROWS)
+    for k, (src, prepared) in enumerate(zip(raw_files, ahead)):
         dst = keyed_dir / src.name
         stats = cutout(src, dst, key=key, spill_max_fraction=spill_max, spill_min_tint=spill_tint,
                        spill_require_hue=spill == "full", decontam=decontam, decontam_fit=DECONTAM_FIT,
-                       decontam_palette=clip_palette, decontam_edge_band=EDGE_ROWS, decontam_history=clip_history)
+                       decontam_palette=clip_palette, decontam_edge_band=EDGE_ROWS, decontam_history=clip_history,
+                       prepared=prepared)
         image = Image.open(dst).convert("RGBA")
         # The specks go before anything reads the frame: the edge band, the coverage, the loop.
         image, specks = drop_specks(image)
@@ -619,6 +631,27 @@ def _key_chroma(raw_files: list[Path], keyed_dir: Path, *, key: str, check_edges
         if residual_only:
             raise KeyingRefused(_residual_message(residual_only), report)
     return report
+
+
+def _prepared(raw_files: list[Path], **arguments: Any) -> Iterator[dict[str, Any] | None]:
+    """`prepare_cutout` for each frame in order, computed up to two frames per worker ahead (KEY_WORKERS);
+    None for every frame when there is one worker, and `cutout` prepares the frame itself."""
+    workers = min(KEY_WORKERS, len(raw_files))
+    if workers <= 1:
+        yield from (None for _ in raw_files)
+        return
+    pool = ProcessPoolExecutor(workers)
+    try:
+        queue = iter(raw_files)
+        pending = deque(pool.submit(prepare_cutout, src, **arguments) for _, src in zip(range(2 * workers), queue))
+        while pending:
+            done = pending.popleft()
+            src = next(queue, None)
+            if src is not None:
+                pending.append(pool.submit(prepare_cutout, src, **arguments))
+            yield done.result()
+    finally:
+        pool.shutdown(wait=True, cancel_futures=True)
 
 
 def _sides(sides: list[str]) -> str:

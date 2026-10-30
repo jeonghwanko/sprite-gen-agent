@@ -570,6 +570,7 @@ def remove_chroma_background(
     decontam_stats: dict[str, Any] | None = None,
     decontam_edge_band: int = 0,
     decontam_history: dict[str, Any] | None = None,
+    matte: dict[str, Any] | None = None,
 ) -> Image.Image:
     """Key `chroma_key` out of `image` (hard cut + soft-alpha fringe unmix + trapped-spill despill).
 
@@ -585,14 +586,54 @@ def remove_chroma_background(
     that pass did; `decontam_palette` reuses a palette learned elsewhere,
     `decontam_edge_band` keeps the frame edge as the matte left it (`decontaminate`'s `edge_band`),
     and `decontam_history` is a clip's record of its last frame for the video fit (`decontaminate`'s `history`).
+    `matte` is `chroma_matte`'s result for this same image and these same arguments, computed
+    elsewhere (a worker process): the passes before decontamination are then not run again.
     """
     if decontam != "off":
         decontam_module.validate(decontam, decontam_fit)
     rgba = image.convert("RGBA")
+    if matte is None:
+        matte = chroma_matte(rgba, chroma_key, threshold, fringe_threshold, fringe_delta, unmix_reach=unmix_reach,
+                             spill_max_fraction=spill_max_fraction, spill_min_tint=spill_min_tint,
+                             spill_require_hue=spill_require_hue, background_key=background_key)
+    data = matte["data"]
+    if decontam != "off":
+        # a matte from a worker leaves the source out: it is this image's, and cheaper to read again than to send
+        source_rgb = matte["source_rgb"] if "source_rgb" in matte else np.asarray(rgba)[..., :3].astype(np.int32)
+        data, stats = decontam_module.decontaminate(source_rgb, data, matte["keyed_mask"], chroma_key,
+                                                    fit=decontam_fit, alpha_depth=unmix_reach,
+                                                    palette=decontam_palette, mode=decontam,
+                                                    source_alpha=matte["source_alpha"], edge_band=decontam_edge_band,
+                                                    history=decontam_history, prepared=matte.get("decontam"))
+        if decontam_stats is not None:
+            decontam_stats.update(stats)
+    # Back into the converted copy rather than a fresh Image.fromarray, so the
+    # returned image keeps the mode, size and `info` (icc profile, dpi) that
+    # `convert` carried over from the caller's image.
+    rgba.frombytes(data.tobytes())
+    return rgba
+
+
+def chroma_matte(
+    rgba: Image.Image,
+    chroma_key: tuple[int, int, int],
+    threshold: float,
+    fringe_threshold: float,
+    fringe_delta: float,
+    *,
+    unmix_reach: int = DEFAULT_UNMIX_REACH,
+    spill_max_fraction: float = 0.005,
+    spill_min_tint: float = _SPILL_MIN_TINT,
+    spill_require_hue: bool = False,
+    background_key: tuple[int, int, int] | None = None,
+) -> dict[str, Any]:
+    """`remove_chroma_background`'s passes before decontamination, on an RGBA image: `data` (H, W, 4)
+    the keyed frame, `source_rgb` and `source_alpha` the frame as given, `keyed_mask` the hard cut.
+    They read nothing but the image and the arguments, so a clip's frames can be matted in any order."""
     width, height = rgba.size
-    data = np.array(rgba, dtype=np.uint8)  # (H, W, 4); written back at the end
+    data = np.array(rgba, dtype=np.uint8)  # (H, W, 4)
     source_rgb = data[..., :3].astype(np.int32)
-    source_alpha = data[..., 3].copy() if decontam != "off" else None  # coverage decontam may give back
+    source_alpha = data[..., 3].copy()  # coverage decontam may give back
     keyed_channels, unkeyed_channels = key_channel_split(chroma_key)
     unseen = 255
 
@@ -747,18 +788,7 @@ def remove_chroma_background(
                 )
                 if coverage > 0:
                     data[y, x] = (*despilled, alpha)
-    if decontam != "off":
-        data, stats = decontam_module.decontaminate(source_rgb, data, keyed_mask, chroma_key, fit=decontam_fit,
-                                                    alpha_depth=unmix_reach, palette=decontam_palette, mode=decontam,
-                                                    source_alpha=source_alpha, edge_band=decontam_edge_band,
-                                                    history=decontam_history)
-        if decontam_stats is not None:
-            decontam_stats.update(stats)
-    # Back into the converted copy rather than a fresh Image.fromarray, so the
-    # returned image keeps the mode, size and `info` (icc profile, dpi) that
-    # `convert` carried over from the caller's image.
-    rgba.frombytes(data.tobytes())
-    return rgba
+    return {"data": data, "source_rgb": source_rgb, "source_alpha": source_alpha, "keyed_mask": keyed_mask}
 
 
 # --- YCbCr chrominance matting (opt-in) --------------------------------------
