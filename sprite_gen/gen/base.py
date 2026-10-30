@@ -11,6 +11,8 @@ path or a "done" string (No Silent Fallback).
 
 from __future__ import annotations
 
+import base64
+import binascii
 import copy
 import io
 import json
@@ -353,6 +355,43 @@ def publish_png(data: bytes, path: Path, *, label: str) -> None:
         os.replace(temp, path)
     finally:
         temp.unlink(missing_ok=True)
+
+
+# The reference images the image APIs take, and the extension a multipart part is named with.
+REFERENCE_MIMES = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp"}
+
+
+def read_reference(path: Path, *, label: str) -> tuple[str, bytes]:
+    """A reference image's (mime, bytes): read whole and decoded once, so a file that is not a PNG, JPEG or WebP,
+    or cannot be read, is refused naming it (`label`: the provider's prefix) before any request is sent."""
+    try:
+        data = path.read_bytes()
+        with Image.open(io.BytesIO(data)) as source:
+            source.load()
+            mime = Image.MIME.get(source.format)
+        if mime not in REFERENCE_MIMES:
+            raise ValueError("reference must be PNG, JPEG or WebP")
+    except (OSError, ValueError, UnidentifiedImageError) as exc:
+        raise SystemExit(f"{label}: invalid reference image {path}") from exc
+    return mime, data
+
+
+def publish_b64_image(reply: Any, path: Path, *, label: str) -> None:
+    """The one image an Images API reply carries (`data[0].b64_json`), published as a verified PNG (`publish_png`).
+
+    The image comes inline — no signed download URL to follow and no bearer token to forward. A reply with no image,
+    more than one, or bytes that are not base64 publishes nothing, and says so under `label`."""
+    items = reply.get("data") if isinstance(reply, dict) else None
+    if not isinstance(items, list) or len(items) != 1 or not isinstance(items[0], dict):
+        raise SystemExit(f"{label}: expected exactly one image in the response; nothing published")
+    encoded = items[0].get("b64_json")
+    if not isinstance(encoded, str) or not encoded:
+        raise SystemExit(f"{label}: response has no b64_json image; nothing published")
+    try:
+        data = base64.b64decode(encoded, validate=True)
+    except (ValueError, binascii.Error) as exc:
+        raise SystemExit(f"{label}: response image is invalid; nothing published") from exc
+    publish_png(data, path, label=label)
 
 
 @dataclass

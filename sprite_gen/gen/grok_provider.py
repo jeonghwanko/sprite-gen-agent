@@ -10,12 +10,8 @@ neither stays exactly what it was.
 from __future__ import annotations
 
 import base64
-import binascii
-import io
 import time
 from pathlib import Path
-
-from PIL import Image, UnidentifiedImageError
 
 from . import refusal, retry, xai
 from .base import (
@@ -25,7 +21,8 @@ from .base import (
     GenRequest,
     ProviderRun,
     announce_api_billing,
-    publish_png,
+    publish_b64_image,
+    read_reference,
 )
 
 DEFAULT_MODEL = "grok-imagine-image-2.0"
@@ -52,15 +49,7 @@ ASPECT_RATIOS = ("auto", "1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3",
 
 
 def _reference(path: Path) -> dict:
-    try:
-        data = path.read_bytes()
-        with Image.open(io.BytesIO(data)) as source:
-            source.load()
-            mime = Image.MIME.get(source.format)
-        if mime not in ("image/png", "image/jpeg", "image/webp"):
-            raise ValueError("reference must be PNG, JPEG or WebP")
-    except (OSError, ValueError, UnidentifiedImageError) as exc:
-        raise SystemExit(f"grok-gen: invalid reference image {path}") from exc
+    mime, data = read_reference(path, label="grok-gen")
     return {"type": "image_url", "url": f"data:{mime};base64," + base64.b64encode(data).decode("ascii")}
 
 
@@ -102,19 +91,6 @@ def _request_body(request: GenRequest) -> tuple[str, dict]:
             body["images"] = images
         return "/images/edits", body
     return "/images/generations", body
-
-
-def _publish_image(item: dict, path: Path) -> None:
-    # Inline bytes avoid signed download URLs and bearer forwarding. Imagine may
-    # answer with JPEG; `publish_png` re-encodes it without resizing.
-    encoded = item.get("b64_json")
-    if not isinstance(encoded, str) or not encoded:
-        raise SystemExit("grok-gen: response has no b64_json image; nothing published")
-    try:
-        data = base64.b64decode(encoded, validate=True)
-    except (ValueError, binascii.Error) as exc:
-        raise SystemExit("grok-gen: response image is invalid; nothing published") from exc
-    publish_png(data, path, label="grok-gen")
 
 
 class GrokProvider:
@@ -167,10 +143,8 @@ class GrokProvider:
             scoped = f" (sent with {priced}, documented for {DEFAULT_MODEL})" if priced and body["model"] != DEFAULT_MODEL else ""
             raise SystemExit(f"grok-gen: {refused.reason('image request failed')} (HTTP {status}){refused.suffix()}; "
                              f"{retry.tail(sends)}{scoped}{refusal.said(reply, credential.token)}")
-        items = reply.get("data") if isinstance(reply, dict) else None
-        if not isinstance(items, list) or len(items) != 1 or not isinstance(items[0], dict):
-            raise SystemExit("grok-gen: expected exactly one image in the response; nothing published")
-        _publish_image(items[0], request.raw)
+        # Imagine may answer with JPEG; `publish_png` re-encodes it without resizing.
+        publish_b64_image(reply, request.raw, label="grok-gen")
         return ProviderRun(provider=self.name, elapsed_seconds=time.monotonic() - started,
                            model=body["model"], extra={"auth_source": credential.source,
                            "transport": "xai-api", "endpoint": endpoint,
