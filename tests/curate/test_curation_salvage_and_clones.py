@@ -214,3 +214,36 @@ def test_clone_instances_plan_and_bake(fixture_run_dir: Path) -> None:
         clone_cell = rgba.crop((cw, row_y, cw * 2, row_y + ch))
     from PIL import ImageOps
     assert list(clone_cell.getdata()) == list(ImageOps.mirror(source_cell).getdata())
+
+
+def test_compose_cycle_bakes_a_linked_clone_with_its_sources_edits(fixture_run_dir: Path) -> None:
+    """A linked clone (no edits of its own) plays its source frame's transform, in compose-cycle as in
+    the atlas, GIF and PNG export (`edit_index`). compose-cycle once looked the clone's own index up
+    and baked it unflipped."""
+    run = fixture_run_dir
+    _extract(run)
+    # idle 물리 4프레임(0..3) + 링크 복제 7→0 (자기 변형 없음), 원본 0 에 flipX
+    _write_stamped(run, {
+        "idle": {
+            "selected": [0, 7],
+            "clones": {"7": 0},
+            "transforms": {"0": {"flipX": 1}},
+        },
+    })
+    result = run_script("compose_selected_cycle.py", "--run-dir", str(run), "--state", "idle", "--name", "cyc")
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    manifest = json.loads((run / "qa" / "cyc.json").read_text(encoding="utf-8"))
+    assert manifest["selected_user_frames"] == [1, 8]
+    applied = manifest["transforms_applied"]
+    assert applied["0"]["flipX"] and applied["7"] == applied["0"]
+
+    # 접촉 시트의 두 칸(라벨 아래)이 같아야 한다 — 복제가 원본의 반전을 받았다는 증명
+    cell = json.loads((run / "sprite-request.json").read_text(encoding="utf-8"))["cell"]
+    cw, ch = int(cell["width"]), int(cell["height"])
+    gap, label = 4, 24
+    with Image.open(run / "qa" / "cyc-contact.png") as sheet:
+        top = gap + label
+        first = sheet.crop((gap, top, gap + cw, top + ch))
+        second = sheet.crop((gap + cw + gap, top, gap + 2 * cw + gap, top + ch))
+        assert first.tobytes() == second.tobytes()
