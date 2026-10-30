@@ -15,7 +15,7 @@ from sprite_gen.frames.extract import (
     detect_pixel_grid,
     detect_pixel_pitch,
     grid_snap_downscale,
-    _grid_edges,
+    grid_edges,
     _grid_phase,
 )
 
@@ -115,7 +115,7 @@ def test_integer_pitch_still_snaps_exactly():
 def test_non_integer_bbox_does_not_stretch_the_grid(fringe):
     """bbox 가 블록의 정수배가 아니어도 셀 폭은 참 피치를 지켜야 한다.
 
-    v1.56.2 회귀: `_grid_edges` 가 length 를 셀 개수로 등분했다. AA 프린지 때문에 bbox 가
+    v1.56.2 회귀: `grid_edges` 가 length 를 셀 개수로 등분했다. AA 프린지 때문에 bbox 가
     27.46 블록이면 셀이 31.44px 로 늘어나(참 블록 30.92px) 칸마다 0.52px 씩 어긋났고,
     오른쪽 끝에서 반 블록이 밀려 스냅 결과의 얼굴이 부서졌다 (주인공 chibi-8).
     """
@@ -127,7 +127,7 @@ def test_non_integer_bbox_does_not_stretch_the_grid(fringe):
     padded.paste(upscaled, (0, 0))
 
     pitch, phase = detect_pixel_grid(padded)
-    edges = _grid_edges(padded.width, pitch[0], phase[0])
+    edges = grid_edges(padded.width, pitch[0], phase[0])
     widths = [edges[i + 1] - edges[i] for i in range(len(edges) - 1)]
 
     # 마지막 셀만 자투리를 흡수한다. 나머지는 전부 참 피치 ±1px.

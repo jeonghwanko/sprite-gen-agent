@@ -26,6 +26,10 @@ from sprite_gen.spec.layout import frames_dir_rel, raw_rel, take_raw_rel
 from sprite_gen.spec.runio import (REQUEST_FILENAME, acquire_run_dir_lock, atomic_save_image,
                               atomic_write_text, load_request, publish_guard, relative_posix,
                               release_run_dir_lock)
+from sprite_gen.frames import decontam as decontam_module
+from sprite_gen.frames.keyfield import (IN_BAND_UNMIX_KEY_DEPTH, KEY_CHANNEL_DARK, key_channel_split, key_distance_field,
+                                        key_excess_field, key_tint_field)
+from sprite_gen.frames.morph import grow_chebyshev, grow_into
 from sprite_gen.frames.segment import separate_fused_poses
 from sprite_gen.spec.subject import SUBJECT_DEFAULT, default_min_used_pixels, sparse_frame_error, subject_kind
 from sprite_gen.util.resample import resize_cell
@@ -73,27 +77,8 @@ def own_border(subject: np.ndarray) -> tuple[list[str], dict[str, int]]:
     return [s for s in FRAME_SIDES if outer[s] and outer[s] >= BORDER_MIN_FRACTION * length[s]], outer
 
 
-_KEY_CHANNEL_LIT = 192  # a channel the key saturates
-_KEY_CHANNEL_DARK = 64  # a channel the key leaves dark — the one bar `is_key_family` / `is_border_key_candidate` reuse
-
-
-def _key_channel_split(chroma_key: tuple[int, int, int]) -> tuple[list[int], list[int]]:
-    """Which channels the key saturates, and which it leaves dark.
-
-    Depends only on the key, so the whole-image path resolves it once instead of
-    per pixel. Degenerate keys — no saturated channel, or no dark one — have no
-    tint axis at all and come back as two empty lists; that emptiness is the one
-    switch both callers read, and it turns off the unmix and spill passes.
-    """
-    keyed_channels = [index for index, value in enumerate(chroma_key) if value >= _KEY_CHANNEL_LIT]
-    unkeyed_channels = [index for index, value in enumerate(chroma_key) if value < _KEY_CHANNEL_DARK]
-    if not keyed_channels or not unkeyed_channels:
-        return [], []
-    return keyed_channels, unkeyed_channels
-
-
 def key_tint_score(color: tuple[int, int, int], chroma_key: tuple[int, int, int]) -> float:
-    keyed_channels, unkeyed_channels = _key_channel_split(chroma_key)
+    keyed_channels, unkeyed_channels = key_channel_split(chroma_key)
     if not keyed_channels:
         return 0.0
     keyed_average = sum(color[index] for index in keyed_channels) / len(keyed_channels)
@@ -156,81 +141,6 @@ def unmix_key_blend(
     return (*despilled, out_alpha)
 
 
-# --- whole-image forms of the two primitives above ---------------------------
-# remove_chroma_background asks `color_distance` and `key_tint_score` the same
-# question of every pixel, which at 1.5 Mpx a row is where the extraction time
-# went. These compute the identical float64 values one array at a time.
-#
-# "Identical" is the contract, not an aspiration: both quantities start as exact
-# integer arithmetic on uint8 channels, and the one float operation in each
-# (`math.sqrt`, `int / int`) is IEEE-754 correctly rounded, so the array form
-# reproduces the scalar form bit for bit. tests/test_chroma_rcb_byte_identity.py
-# holds the scalar side against a frozen pre-vectorization copy.
-
-
-def _key_distance_field(rgb: np.ndarray, chroma_key: tuple[int, int, int]) -> np.ndarray:
-    """`color_distance` for an (H, W, 3) integer array of colors.
-
-    The squared differences accumulate in int64 on purpose. 255**2 * 3 = 195_075
-    overflows uint16 as well as uint8, and a wrapped square does not raise — it
-    returns a plausible distance for the wrong pixel.
-    """
-    diff = rgb - np.asarray(chroma_key, dtype=np.int32)
-    return np.sqrt((diff * diff).sum(axis=-1, dtype=np.int64).astype(np.float64))
-
-
-def _key_tint_field(rgb: np.ndarray, keyed_channels: list[int],
-                    unkeyed_channels: list[int]) -> np.ndarray:
-    """`key_tint_score` for an (H, W, 3) integer array of colors.
-
-    Takes the channel split rather than the key, so the degenerate-key decision
-    stays where `_key_channel_split` made it — one answer, read the same way here
-    as in the scalar primitive.
-    """
-    if not keyed_channels:
-        return np.zeros(rgb.shape[:2], dtype=np.float64)
-    keyed_sum = rgb[..., keyed_channels].sum(axis=-1, dtype=np.int64)
-    unkeyed_sum = rgb[..., unkeyed_channels].sum(axis=-1, dtype=np.int64)
-    return keyed_sum / len(keyed_channels) - unkeyed_sum / len(unkeyed_channels)
-
-
-def _key_excess_field(rgb: np.ndarray, keyed_channels: list[int],
-                      unkeyed_channels: list[int]) -> np.ndarray:
-    """Key hue requires every keyed channel to exceed every other channel.
-
-    Green uses G-max(R,B); magenta uses min(R,B)-G. Unlike the averaged
-    tint axis this does not call yellow/cyan green or red/blue magenta.
-    """
-    return rgb[..., keyed_channels].min(axis=-1) - rgb[..., unkeyed_channels].max(axis=-1)
-
-
-def _grow_into(seed: np.ndarray, allowed: np.ndarray) -> np.ndarray:
-    """Every `allowed` pixel 8-connected to `seed` through `allowed` pixels (seed included)."""
-    reached = seed & allowed
-    while True:
-        grown = _grow_chebyshev(reached) & allowed
-        if not (grown & ~reached).any():
-            return reached
-        reached = grown
-
-
-def _grow_chebyshev(mask: np.ndarray) -> np.ndarray:
-    """One step of 8-connected growth: the 3x3 neighborhood of every set pixel.
-
-    Shifts are explicit slices, not `np.roll`, because roll wraps the far edge
-    into the near one and would hand a bottom-row pixel the depth of the top
-    row. The two axes are applied in sequence — a 3x3 dilation is separable, and
-    Chebyshev distance is exactly what repeating this step counts.
-    """
-    grown = mask.copy()
-    grown[:, 1:] |= mask[:, :-1]
-    grown[:, :-1] |= mask[:, 1:]
-    spread = grown.copy()
-    spread[1:, :] |= grown[:-1, :]
-    spread[:-1, :] |= grown[1:, :]
-    return spread
-
-
 # --- background key detection (RGB path) -------------------------------------
 # Image models asked for #00FF00 / #FF00FF hand back a slightly different flat
 # colour every run (measured 2026-09-11: Grok painted (8, 162, 24) for green).
@@ -240,7 +150,7 @@ def _grow_chebyshev(mask: np.ndarray) -> np.ndarray:
 # when that colour is the declared key's hue family, measures the hard cut from
 # it as well. Raising the radius instead would only move the cliff to the next
 # darker green; this removes the cliff for any brightness the model picks.
-_KEY_FAMILY_MIN_KEYED = _KEY_CHANNEL_DARK  # a keyed channel must at least read as lit (the key split's dark bar)
+_KEY_FAMILY_MIN_KEYED = KEY_CHANNEL_DARK  # a keyed channel must at least read as lit (the key split's dark bar)
 _KEY_FAMILY_MAX_UNKEYED_RATIO = 0.35  # unkeyed channels stay below this fraction of the dimmest keyed one
 _KEY_FAMILY_KEYED_BALANCE = 0.8  # for two-channel keys (magenta) the dimmer keyed channel keeps this share of the brighter
 # Border candidate (2026-09-12): Grok paints #FF00FF as (216, 46, 147) / (225, 52, 155) /
@@ -264,7 +174,7 @@ _KEY_FAMILY_KEYED_BALANCE = 0.8  # for two-channel keys (magenta) the dimmer key
 # channel is unchanged — its darker and leaning channel are the same one, under the bar —
 # so hot pink's lit green still refuses it. The lean is evidence about the background that
 # leans, so inside the frame it widens only the ball of a painted colour that leans itself
-# (`_painted_key_leans`): on a background the rule took before, a leaning-green patch in
+# (`painted_key_leans`): on a background the rule took before, a leaning-green patch in
 # the subject is not the painted colour's and stays. On the border it is read only where
 # the rule before it finds no background and the declared key's own cut would leave one
 # (`detect_background_key_rgb`): a border that rule took keeps the colour it found there,
@@ -291,7 +201,7 @@ def is_key_family(color: tuple[int, int, int], chroma_key: tuple[int, int, int])
     are family; hot pink (250, 77, 150), purple (213, 112, 246) and cyan are
     subject colours, not keys. Degenerate keys have no family.
     """
-    keyed_channels, unkeyed_channels = _key_channel_split(chroma_key)
+    keyed_channels, unkeyed_channels = key_channel_split(chroma_key)
     if not keyed_channels:
         return False
     keyed_min = min(color[index] for index in keyed_channels)
@@ -321,7 +231,7 @@ def is_border_key_candidate(color: tuple[int, int, int], chroma_key: tuple[int, 
     one, is lit), nor are ivory and cyan. The interior rule stays
     `is_key_family` — a pixel *inside* the frame has no border evidence.
     """
-    keyed_channels, unkeyed_channels = _key_channel_split(chroma_key)
+    keyed_channels, unkeyed_channels = key_channel_split(chroma_key)
     if not keyed_channels:
         return False
     keyed_min = min(color[index] for index in keyed_channels)
@@ -330,7 +240,7 @@ def is_border_key_candidate(color: tuple[int, int, int], chroma_key: tuple[int, 
     unkeyed_max = max(color[index] for index in unkeyed_channels)
     return is_key_family(color, chroma_key) or (
         keyed_min >= _KEY_FAMILY_MIN_KEYED
-        and unkeyed_min < _KEY_CHANNEL_DARK
+        and unkeyed_min < KEY_CHANNEL_DARK
         and unkeyed_min <= keyed_max * _BORDER_KEY_MAX_UNKEYED_RATIO
         and unkeyed_max < keyed_max * _BORDER_KEY_MAX_LEAN_RATIO
     )
@@ -348,13 +258,13 @@ def _key_family_field(rgb: np.ndarray, keyed_channels: list[int], unkeyed_channe
     )
 
 
-def _border_key_candidate_field(rgb: np.ndarray, keyed_channels: list[int], unkeyed_channels: list[int], *,
+def border_key_candidate_field(rgb: np.ndarray, keyed_channels: list[int], unkeyed_channels: list[int], *,
                                 lean: bool = True) -> np.ndarray:
     """Vector form of `is_border_key_candidate` — same inequalities, same constants.
 
     `lean=False` holds the brightest unkeyed channel to the darkest one's bars as well (every
     unkeyed channel dark): the signature as a painted colour that does not lean carries it
-    (`_painted_key_leans`), which is the border rule as it was before the lean.
+    (`painted_key_leans`), which is the border rule as it was before the lean.
     """
     keyed_min = rgb[..., keyed_channels].min(axis=-1)
     keyed_max = rgb[..., keyed_channels].max(axis=-1)
@@ -362,16 +272,16 @@ def _border_key_candidate_field(rgb: np.ndarray, keyed_channels: list[int], unke
     unkeyed_max = rgb[..., unkeyed_channels].max(axis=-1)
     signature = (
         (keyed_min >= _KEY_FAMILY_MIN_KEYED)
-        & (unkeyed_min < _KEY_CHANNEL_DARK)
+        & (unkeyed_min < KEY_CHANNEL_DARK)
         & (unkeyed_min <= keyed_max * _BORDER_KEY_MAX_UNKEYED_RATIO)
         & (unkeyed_max < keyed_max * _BORDER_KEY_MAX_LEAN_RATIO)
     )
     if not lean:
-        signature &= (unkeyed_max < _KEY_CHANNEL_DARK) & (unkeyed_max <= keyed_max * _BORDER_KEY_MAX_UNKEYED_RATIO)
+        signature &= (unkeyed_max < KEY_CHANNEL_DARK) & (unkeyed_max <= keyed_max * _BORDER_KEY_MAX_UNKEYED_RATIO)
     return _key_family_field(rgb, keyed_channels, unkeyed_channels) | signature
 
 
-def _painted_key_leans(painted_key: tuple[int, int, int], keyed_channels: list[int], unkeyed_channels: list[int]) -> bool:
+def painted_key_leans(painted_key: tuple[int, int, int], keyed_channels: list[int], unkeyed_channels: list[int]) -> bool:
     """Whether the painted colour is the key only through the lean: a green screen leaning toward cyan or yellow.
 
     The lean is border evidence about *that* background. What its ball claims inside the frame
@@ -388,8 +298,8 @@ def _painted_key_leans(painted_key: tuple[int, int, int], keyed_channels: list[i
     reader of the painted colour reads it as it did.
     """
     rgb = np.asarray([painted_key], dtype=np.int32)
-    return bool(_border_key_candidate_field(rgb, keyed_channels, unkeyed_channels)[0]
-                and not _border_key_candidate_field(rgb, keyed_channels, unkeyed_channels, lean=False)[0])
+    return bool(border_key_candidate_field(rgb, keyed_channels, unkeyed_channels)[0]
+                and not border_key_candidate_field(rgb, keyed_channels, unkeyed_channels, lean=False)[0])
 
 
 def _key_detect_sample_mask(height: int, width: int, top: int = 0, bottom: int | None = None) -> np.ndarray:
@@ -445,7 +355,7 @@ def detect_background_key_rgb(
     byte-identical to its pre-detection behaviour on exact-key backgrounds.
 
     The lean (`_BORDER_KEY_MAX_LEAN_RATIO`) is read second, and only where it is the
-    difference. The candidates the rule admitted before it (`_border_key_candidate_field(...,
+    difference. The candidates the rule admitted before it (`border_key_candidate_field(...,
     lean=False)`) are counted on their own: when they make up 12% of the samples, the answer
     is their mode bin's mean, byte for byte what the detector returned before the lean (a
     leaning sample in the bin of a background found before would move its mean, and the edge
@@ -468,7 +378,7 @@ def detect_background_key_rgb(
     on its own) into a count and a channel sum per bin, so the corners of a large
     still cost a histogram, not an array of samples.
     """
-    keyed_channels, unkeyed_channels = _key_channel_split(chroma_key)
+    keyed_channels, unkeyed_channels = key_channel_split(chroma_key)
     if not keyed_channels:
         return tuple(chroma_key)  # type: ignore[return-value]
     width, height = image.size
@@ -485,9 +395,9 @@ def detect_background_key_rgb(
         sample = _key_detect_sample_mask(height, width, top, bottom) & (band[..., 3] != 0)
         rgb = band[sample][:, :3].astype(np.int32)
         sampled += len(rgb)
-        before = _border_key_candidate_field(rgb, keyed_channels, unkeyed_channels, lean=False)
-        lean = _border_key_candidate_field(rgb, keyed_channels, unkeyed_channels) & ~before
-        left = lean & (_key_distance_field(rgb, chroma_key) > threshold)
+        before = border_key_candidate_field(rgb, keyed_channels, unkeyed_channels, lean=False)
+        lean = border_key_candidate_field(rgb, keyed_channels, unkeyed_channels) & ~before
+        left = lean & (key_distance_field(rgb, chroma_key) > threshold)
         for row, family in enumerate((before, lean, left)):
             colors = rgb[family]
             bins = colors >> _KEY_DETECT_BIN_SHIFT
@@ -520,16 +430,12 @@ _KEYED = 0  # erased: transparent input or hard key cut
 _SUBJECT = 1  # not key-tinted — never touched
 _BLEND_IN_BAND = 2  # key-tinted, within fringe_threshold of the key
 _BLEND_OUT_OF_BAND = 3  # key-tinted, farther than fringe_threshold
-_IN_BAND_UNMIX_KEY_DEPTH = 2
 
 # A trapped-spill cluster must contain at least one strongly key-tinted pixel
 # to be treated. This is the plan's visible-residue detector (every keyed
 # channel clears every unkeyed channel by >40): warm subject colors (skin)
 # score a marginal tint just above fringe_delta and must not be "corrected".
 _SPILL_MIN_TINT = 40.0
-# Full correction also admits faint key tints. Auto mode must inspect the
-# reference at this same threshold before choosing full correction.
-_SPILL_FULL_MIN_TINT = 8.0
 DEFAULT_UNMIX_REACH = 4
 
 
@@ -542,8 +448,8 @@ def hard_key_mask(source_rgb: np.ndarray, alpha: np.ndarray, chroma_key: tuple[i
     input plus everything within `threshold` of it. One definition for the RGB matte and
     for the decontam pass that runs after either matte.
     """
-    keyed_channels, unkeyed_channels = _key_channel_split(chroma_key)
-    key_distance = _key_distance_field(source_rgb, chroma_key)
+    keyed_channels, unkeyed_channels = key_channel_split(chroma_key)
+    key_distance = key_distance_field(source_rgb, chroma_key)
     if painted_key != tuple(chroma_key):
         # The painted colour's authority is border evidence, and a pixel deep
         # inside the frame has none. So its ball erases the *background*: the
@@ -555,14 +461,14 @@ def hard_key_mask(source_rgb: np.ndarray, alpha: np.ndarray, chroma_key: tuple[i
         # hot pink (250, 77, 150) sits 46 from Grok's (216, 46, 147) magenta
         # and would otherwise be cut out of the subject. The signature is the
         # one the painted colour carries: the leaning greens only when it leans
-        # itself (`_painted_key_leans`). The declared key's ball stays what it
+        # itself (`painted_key_leans`). The declared key's ball stays what it
         # always was — a colour ball, position-blind.
-        painted_distance = _key_distance_field(source_rgb, painted_key)
+        painted_distance = key_distance_field(source_rgb, painted_key)
         in_ball = painted_distance <= threshold
-        lean = _painted_key_leans(painted_key, keyed_channels, unkeyed_channels)
-        painted_keyed = in_ball & _border_key_candidate_field(source_rgb, keyed_channels, unkeyed_channels, lean=lean)
+        lean = painted_key_leans(painted_key, keyed_channels, unkeyed_channels)
+        painted_keyed = in_ball & border_key_candidate_field(source_rgb, keyed_channels, unkeyed_channels, lean=lean)
         painted_keyed |= in_ball & (key_distance <= threshold)
-        painted_keyed = _grow_into(painted_keyed, in_ball)
+        painted_keyed = grow_into(painted_keyed, in_ball)
         key_distance = np.where(painted_keyed, np.minimum(key_distance, painted_distance), key_distance)
     return (alpha == 0) | (key_distance <= threshold), key_distance
 
@@ -577,7 +483,7 @@ def subject_window(image: Image.Image, chroma_key: tuple[int, int, int], thresho
     `hard_key_mask` keys, whatever their alpha, every pixel within `threshold` of the
     declared key and, when the painted colour differs, every pixel within `threshold` of
     the painted colour that carries the key's border signature (`is_border_key_candidate`,
-    leaning only when the painted colour leans: `_painted_key_leans`).
+    leaning only when the painted colour leans: `painted_key_leans`).
     Only the other pixels can stay opaque. Returns their bounding box grown by `margin`
     and clipped to the image, as (left, top, right, bottom), or None when there are none
     (the whole image keys out). Pass the painted colour the engine will use.
@@ -594,18 +500,18 @@ def subject_window(image: Image.Image, chroma_key: tuple[int, int, int], thresho
     Scanned in bands of rows, each converted to RGBA on its own, so a large image is never
     converted or widened to int32 as a whole.
     """
-    keyed_channels, unkeyed_channels = _key_channel_split(chroma_key)
+    keyed_channels, unkeyed_channels = key_channel_split(chroma_key)
     ball = painted_key is not None and tuple(painted_key) != tuple(chroma_key) and bool(keyed_channels)
-    lean = ball and _painted_key_leans(painted_key, keyed_channels, unkeyed_channels)  # type: ignore[arg-type]
+    lean = ball and painted_key_leans(painted_key, keyed_channels, unkeyed_channels)  # type: ignore[arg-type]
     width, height = image.size
     rows = np.zeros(height, dtype=bool)
     cols = np.zeros(width, dtype=bool)
     for top in range(0, height, _WINDOW_BAND_ROWS):
         rgb = _rgba_rows(image, top, min(height, top + _WINDOW_BAND_ROWS))[..., :3].astype(np.int32)
-        erased = _key_distance_field(rgb, chroma_key) <= threshold
+        erased = key_distance_field(rgb, chroma_key) <= threshold
         if ball:
-            erased |= ((_key_distance_field(rgb, painted_key) <= threshold)
-                       & _border_key_candidate_field(rgb, keyed_channels, unkeyed_channels, lean=lean))
+            erased |= ((key_distance_field(rgb, painted_key) <= threshold)
+                       & border_key_candidate_field(rgb, keyed_channels, unkeyed_channels, lean=lean))
         rows[top:top + len(rgb)] = ~erased.all(axis=1)
         cols |= ~erased.all(axis=0)
     if not rows.any():
@@ -630,19 +536,19 @@ def key_material_pixels(image: Image.Image, chroma_key: tuple[int, int, int],
     `ignore_fringe` discounts dark pixels in that band beside transparency;
     bright key-coloured accents remain material evidence. The denominator stays
     total subject area."""
-    keyed_channels, unkeyed_channels = _key_channel_split(chroma_key)
+    keyed_channels, unkeyed_channels = key_channel_split(chroma_key)
     data = np.asarray(image.convert("RGBA")).astype(np.int32)
     opaque = data[..., 3] > 0
     if not keyed_channels:
         return 0, int(opaque.sum())
-    field = _key_excess_field if require_hue else _key_tint_field
+    field = key_excess_field if require_hue else key_tint_field
     tint = field(data[..., :3], keyed_channels, unkeyed_channels)
     # Discount only dark outline contamination in the matte's unmix band.
     # A bright green/magenta accent is material even when it is thin or on an edge.
     fringe = ~opaque
     for _ in range(ignore_fringe):
-        fringe = _grow_chebyshev(fringe)
-    dark_fringe = fringe & (data[..., :3].max(axis=-1) < _KEY_CHANNEL_DARK)
+        fringe = grow_chebyshev(fringe)
+    dark_fringe = fringe & (data[..., :3].max(axis=-1) < KEY_CHANNEL_DARK)
     return int((opaque & ~dark_fringe & (tint > min_tint)).sum()), int(opaque.sum())
 
 
@@ -681,14 +587,13 @@ def remove_chroma_background(
     and `decontam_history` is a clip's record of its last frame for the video fit (`decontaminate`'s `history`).
     """
     if decontam != "off":
-        from sprite_gen.frames import decontam as decontam_module
         decontam_module.validate(decontam, decontam_fit)
     rgba = image.convert("RGBA")
     width, height = rgba.size
     data = np.array(rgba, dtype=np.uint8)  # (H, W, 4); written back at the end
     source_rgb = data[..., :3].astype(np.int32)
     source_alpha = data[..., 3].copy() if decontam != "off" else None  # coverage decontam may give back
-    keyed_channels, unkeyed_channels = _key_channel_split(chroma_key)
+    keyed_channels, unkeyed_channels = key_channel_split(chroma_key)
     unseen = 255
 
     # The background as painted. Distances are taken to the declared key *and*
@@ -710,7 +615,7 @@ def remove_chroma_background(
     # changes the output wherever both hold at once (a wide --fringe-key-threshold
     # makes that reachable, and the gate has a case for it).
     keyed_mask, key_distance = hard_key_mask(source_rgb, data[..., 3], chroma_key, painted_key, threshold)
-    source_tint = _key_tint_field(source_rgb, keyed_channels, unkeyed_channels)
+    source_tint = key_tint_field(source_rgb, keyed_channels, unkeyed_channels)
     classes = np.select(
         [keyed_mask, source_tint < fringe_delta, key_distance <= fringe_threshold],
         [_KEYED, _SUBJECT, _BLEND_IN_BAND],
@@ -734,7 +639,7 @@ def remove_chroma_background(
     depth = 0
     while frontier.any() and depth < max_reach:
         depth += 1
-        frontier = _grow_chebyshev(frontier) & ~reached
+        frontier = grow_chebyshev(frontier) & ~reached
         depths[frontier] = depth
         reached = reached | frontier
 
@@ -750,7 +655,7 @@ def remove_chroma_background(
     if key_tint > 0 and unmix_reach > 0:
         in_reach = (depths > 0) & (depths <= min(unmix_reach, unseen))
         unmixable = in_reach & (
-            ((classes == _BLEND_IN_BAND) & (depths <= _IN_BAND_UNMIX_KEY_DEPTH))
+            ((classes == _BLEND_IN_BAND) & (depths <= IN_BAND_UNMIX_KEY_DEPTH))
             | (classes == _BLEND_OUT_OF_BAND)
         )
         rows, cols = np.nonzero(unmixable)
@@ -789,7 +694,7 @@ def remove_chroma_background(
         spill_limit = max(32, round(subject_count * spill_max_fraction))
         # Re-scored on the *current* colors: the unmix pass above rewrote part of
         # the image, and a pixel it despilled is no longer a spill candidate.
-        spill_field = _key_excess_field if spill_require_hue else _key_tint_field
+        spill_field = key_excess_field if spill_require_hue else key_tint_field
         current_tint = spill_field(data[..., :3].astype(np.int32), keyed_channels, unkeyed_channels)
         # Candidacy and acceptance read the same bar: a cluster can never be accepted
         # below `spill_min_tint`, so admitting only pixels at or above `fringe_delta`
@@ -1202,7 +1107,6 @@ def remove_chroma_background_ycbcr(
     default `--key-threshold`, so both mattes share one definition of the edge.
     """
     if decontam != "off":
-        from sprite_gen.frames import decontam as decontam_module
         decontam_module.validate(decontam, decontam_fit)
 
     def note(message: str) -> None:
@@ -1892,8 +1796,8 @@ def _grid_uniformity(component: Image.Image, pitch: tuple[float, float],
     """
     w, h = component.width, component.height
     rows = _grid_rows(component)
-    xs = _grid_edges(w, pitch[0], phase[0])
-    ys = _grid_edges(h, pitch[1], phase[1])
+    xs = grid_edges(w, pitch[0], phase[0])
+    ys = grid_edges(h, pitch[1], phase[1])
     return _grid_score_edges(rows, w, h, xs, ys)
 
 
@@ -1940,7 +1844,7 @@ def _grid_score_edges(rows: tuple[list[list[int]], list[bytes]], w: int, h: int,
     `C_lo`/`S_lo` 는 `bytes.translate` + `sum` 으로 C 레벨에서 뽑는다 — 임계값별 변환표는
     256개뿐이라 모듈 상수로 굽는다.
 
-    `_best_phase` 가 이 코어를 (xs, ys) 로 메모이즈한다: 8단계 위상 스캔은 `_grid_edges`
+    `_best_phase` 가 이 코어를 (xs, ys) 로 메모이즈한다: 8단계 위상 스캔은 `grid_edges`
     의 정수 스냅 때문에 서로 다른 위상이 **같은 정수 경계**로 자주 붕괴한다 (offset 이
     피치의 1/4 미만이면 lead=0 등). 같은 경계 → 같은 계산 → 같은 값이므로 캐시는
     정확하며, 64회 격자 순회가 고유 경계 수(실측 36)만큼으로 줄어든다.
@@ -1992,8 +1896,8 @@ def _best_phase(component: Image.Image, pitch: tuple[float, float]) -> tuple[flo
     for i in range(steps):
         for j in range(steps):
             phase = (pitch[0] * i / steps, pitch[1] * j / steps)
-            xs = tuple(_grid_edges(w, pitch[0], phase[0]))
-            ys = tuple(_grid_edges(h, pitch[1], phase[1]))
+            xs = tuple(grid_edges(w, pitch[0], phase[0]))
+            ys = tuple(grid_edges(h, pitch[1], phase[1]))
             key = (xs, ys)
             score = cache.get(key)
             if score is None:
@@ -2082,7 +1986,7 @@ def resolve_frame_pitch(own: tuple[float, float], consensus: tuple[float, float]
     return own, False
 
 
-def _grid_edges(length: int, pitch: float, offset: float) -> list[int]:
+def grid_edges(length: int, pitch: float, offset: float) -> list[int]:
     """소수 피치를 정수 픽셀 경계로 확정한다.
 
     두 경우를 가른다. 판정 기준은 body 가 피치의 정수배에 얼마나 가까운가다.
@@ -2200,7 +2104,7 @@ def solid_alpha_bbox(image: Image.Image, threshold: int = 128) -> tuple[int, int
 
     픽셀 언페이크 경로의 불투명 판정(α>=128: `grid_snap_downscale`/`binarize_alpha`/
     `apply_palette`)과 같은 기준이어야 한다. any-alpha `getbbox()` 로 격자를 치면
-    프린지가 bbox 를 부풀려 `_grid_edges` 의 셀 개수 반올림이 한 칸 늘고, 내용이
+    프린지가 bbox 를 부풀려 `grid_edges` 의 셀 개수 반올림이 한 칸 늘고, 내용이
     프린지뿐인 가장자리 셀이 50% 규칙을 통과해 실루엣 밖 부스러기 픽셀로 굳는다
     (회귀 2026-07-17: synthetic_fixture_a 150 프레임 중 141 프레임 폭 +1~4px, maintainer 발견 —
     회귀 테스트 test_pixel_snap.py::test_fringe_does_not_inflate_grid)."""
@@ -2210,7 +2114,7 @@ def solid_alpha_bbox(image: Image.Image, threshold: int = 128) -> tuple[int, int
 def tighten_components(images: list[Image.Image]) -> list[Image.Image]:
     """픽셀 언페이크 스냅 전에 컴포넌트를 실 콘텐츠(solid alpha) bbox 로 타이트하게 조인다.
 
-    `_grid_edges` 의 lead-스냅(위상 < 피치의 1/4 이면 0 으로)은 컴포넌트가 bbox 로
+    `grid_edges` 의 lead-스냅(위상 < 피치의 1/4 이면 0 으로)은 컴포넌트가 bbox 로
     잘려 블록 경계에서 시작한다는 전제다. `component_group_image` 는 사방 4px
     패딩을 두르므로, 패딩째 격자를 치면 위상 추정 노이즈가 lead-스냅 문턱 아래로
     떨어지는 순간 격자 전체가 패딩만큼 위로 밀린다 — 꼬리에 자투리 셀이 생기고,
@@ -2325,7 +2229,7 @@ def grid_snap_downscale(
     detail_bias: bool = False,
     phase: tuple[float, float] | None = None,
 ) -> Image.Image:
-    """pitch/phase 는 소수를 받는다 — 격자선만 정수 픽셀로 확정한다 (`_grid_edges`).
+    """pitch/phase 는 소수를 받는다 — 격자선만 정수 픽셀로 확정한다 (`grid_edges`).
 
     pitch 는 스칼라 또는 (가로, 세로) 쌍. 축마다 블록 크기가 다른 생성물이 있어서
     `detect_pixel_grid` 가 축별 피치를 낸다. 정수 pitch + 정수 phase 를 주면 예전과 같은
@@ -2338,8 +2242,8 @@ def grid_snap_downscale(
         offset_x, offset_y = _grid_phase(source, max(2, int(round(pitch_x))))
     else:
         offset_x, offset_y = phase
-    x_edges = _grid_edges(width, pitch_x, offset_x)
-    y_edges = _grid_edges(height, pitch_y, offset_y)
+    x_edges = grid_edges(width, pitch_x, offset_x)
+    y_edges = grid_edges(height, pitch_y, offset_y)
     pixels = source.load()
     output = Image.new("RGBA", (len(x_edges) - 1, len(y_edges) - 1), (0, 0, 0, 0))
     out = output.load()
@@ -2815,7 +2719,7 @@ def extract_slot_frames(strip: Image.Image, frame_count: int, cell_width: int, c
 
 def chroma_adjacent_count(image: Image.Image, chroma_key: tuple[int, int, int], threshold: float) -> int:
     data = np.asarray(image.convert("RGBA"))
-    distance = _key_distance_field(data[..., :3].astype(np.int32), chroma_key)
+    distance = key_distance_field(data[..., :3].astype(np.int32), chroma_key)
     return int(np.count_nonzero((data[..., 3] > 16) & (distance <= threshold)))
 
 
@@ -3474,7 +3378,7 @@ def _run_locked(args: argparse.Namespace, run_dir: Path):
         # 피치는 소수이고 축마다 다를 수 있다 — AI 가 그린 블록은 정수 픽셀로 떨어지지
         # 않고(예: 17.24), 비균등 리스케일된 생성물은 가로/세로 블록 크기가 어긋난다.
         # 정수로 반올림하면 그 오차가 폭 전체에 누적돼 셀 경계가 블록 한가운데를 지난다.
-        # 측정은 소수·축별로 하고, 격자선은 `_grid_edges` 가 정수로 확정한다.
+        # 측정은 소수·축별로 하고, 격자선은 `grid_edges` 가 정수로 확정한다.
         hint = int(fit_config.get("pitch_hint", 0))
         grids = [detect_pixel_grid(component) for component in images]
 
@@ -3570,8 +3474,8 @@ def _run_locked(args: argparse.Namespace, run_dir: Path):
             # 복구되지 않고, 눈 4행이 3행으로 병합됐다. 피치가 고정된 상태에서 위상만
             # 비교하므로 균일도 지표의 '거친 격자 편애' 편향은 개입하지 않는다.
             frame_phase = _best_phase(component, (use_x, use_y))
-            xs = _grid_edges(component.width, use_x, frame_phase[0])
-            ys = _grid_edges(component.height, use_y, frame_phase[1])
+            xs = grid_edges(component.width, use_x, frame_phase[0])
+            ys = grid_edges(component.height, use_y, frame_phase[1])
             xs, ys = refine_edges_to_boundaries(component, xs, ys, (use_x, use_y))
             snapped.append(snap_by_edges(component, xs, ys, pp_detail_bias))
             cut_edges.append((xs, ys))
@@ -3841,10 +3745,13 @@ def engine_revision() -> str:
     global _ENGINE_REVISION, _ENGINE_REVISION_KEY
     # The engine revision hashes this module plus layout.py. They no longer sit in
     # the same folder (extract=frames/, layout=spec/), so resolve layout by its
-    # module file, not as a sibling of __file__.
+    # module file, not as a sibling of __file__. The modules whose code the extraction runs
+    # are hashed with it: decontam, and the key fields and mask morphology it shares with
+    # decontam (keyfield, morph) — a change in either re-derives the frames like one here.
     import sprite_gen.spec.layout as _layout_module
-    import sprite_gen.frames.decontam as _decontam_module
-    sources = (Path(__file__), Path(_layout_module.__file__), Path(_decontam_module.__file__))
+    from sprite_gen.frames import keyfield as _keyfield_module, morph as _morph_module
+    sources = (Path(__file__), Path(_layout_module.__file__), Path(decontam_module.__file__),
+               Path(_keyfield_module.__file__), Path(_morph_module.__file__))
     key = tuple(source.stat().st_mtime_ns for source in sources)
     if _ENGINE_REVISION is None or _ENGINE_REVISION_KEY != key:
         digest = hashlib.sha256()

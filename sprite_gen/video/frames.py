@@ -69,8 +69,8 @@ from PIL import Image
 from sprite_gen._deps import np
 from sprite_gen.frames.cutout import cutout
 from sprite_gen.frames.decontam import palette_from_stats
-from sprite_gen.frames.extract import _border_key_candidate_field, _key_channel_split, _painted_key_leans
-from sprite_gen.frames.extract import _SPILL_FULL_MIN_TINT, DEFAULT_UNMIX_REACH
+from sprite_gen.frames.extract import border_key_candidate_field, painted_key_leans, DEFAULT_UNMIX_REACH
+from sprite_gen.frames.keyfield import SPILL_FULL_MIN_TINT, key_channel_split
 from sprite_gen.frames.extract import BORDER_MIN_FRACTION, FRAME_SIDES, own_border
 from sprite_gen.spec.runio import atomic_write_text, new_stage, refuse_overlap
 from sprite_gen.util.console import utf8_streams
@@ -85,7 +85,7 @@ EDGE_ROWS = 4  # rows/cols inspected at each edge
 # key tint in the clip was painted by the model and is spill.
 SPILL_MODES = ("auto", "small", "full")
 SPILL_FULL_FRACTION = 1.0  # every tinted cluster is spill, whatever its size
-SPILL_FULL_MIN_TINT = _SPILL_FULL_MIN_TINT  # ... and whatever its strength (see extract.py)
+# SPILL_FULL_MIN_TINT (frames/keyfield.py): ... and whatever its strength
 SPILL_REFERENCE_MAX = 0.005  # the still's own key material ≤ the engine's small-cluster share → full
 # The reference is keyed on its subject window only (`extract.subject_window`). A canvas padded
 # for motion room is mostly key, and the matte's memory grows with every pixel it keys, so keying
@@ -291,11 +291,11 @@ def _edge_pixels(raw: Image.Image, keyed: Image.Image, chroma_key: tuple[int, in
     contact = (bands["top"] | bands["left"] | bands["right"]) & opaque
     none = np.zeros((h, w), dtype=bool)
     out = {"bands": bands, "contact": contact, "residual": none, "rim": none}
-    keyed_channels, unkeyed_channels = _key_channel_split(chroma_key) if chroma_key is not None else ([], [])
+    keyed_channels, unkeyed_channels = key_channel_split(chroma_key) if chroma_key is not None else ([], [])
     if not contact.any() or not keyed_channels:
         return out
-    lean = painted_key is not None and _painted_key_leans(painted_key, keyed_channels, unkeyed_channels)
-    keyish = _border_key_candidate_field(np.asarray(raw.convert("RGB"), dtype=np.int32), keyed_channels, unkeyed_channels,
+    lean = painted_key is not None and painted_key_leans(painted_key, keyed_channels, unkeyed_channels)
+    keyish = border_key_candidate_field(np.asarray(raw.convert("RGB"), dtype=np.int32), keyed_channels, unkeyed_channels,
                                          lean=lean)
     suspect = contact & keyish
     if not suspect.any():
@@ -323,7 +323,7 @@ def classify_edge_contact(raw: Image.Image, keyed: Image.Image, chroma_key: tupl
 
     A contact pixel whose *raw* colour carries the declared key's hue signature
     (`is_border_key_candidate`; the leaning greens only when `painted_key`, the background the
-    frame was keyed from, leans itself: `extract._painted_key_leans`) is either background the
+    frame was keyed from, leans itself: `extract.painted_key_leans`) is either background the
     matte failed to erase or the subject's own rim: a body reaching the band brings its
     antialiased edge, the key blended into it, there first. It is residual only when the opaque piece of the keyed frame it belongs to — its opaque
     pixels, corners joining them, the pieces `drop_specks` reads — holds no pixel off the key's
@@ -370,17 +370,17 @@ def _reference_window(reference: Path, key: str) -> tuple[str, Image.Image | Non
     still is kept in the mode it was decoded in and read a band of rows at a time; only the
     window is converted to RGBA, and the full-size image is released before it is keyed.
     """
-    from sprite_gen.frames.cutout import KEY_TARGETS, _EXTRACT_KEY_THRESHOLD, _corner_average, _detect_key_kind
+    from sprite_gen.frames.cutout import KEY_TARGETS, EXTRACT_KEY_THRESHOLD, corner_average, detect_key_kind
     from sprite_gen.frames.extract import detect_background_key_rgb, subject_window
 
     image = Image.open(reference)
     image.load()
-    kind = _detect_key_kind(_corner_average(image)) if key == "auto" else key
+    kind = detect_key_kind(corner_average(image)) if key == "auto" else key
     if kind not in ("green", "magenta"):
         return kind, None, None, {}
     target = KEY_TARGETS[kind]
-    painted = detect_background_key_rgb(image, target, _EXTRACT_KEY_THRESHOLD)
-    box = subject_window(image, target, _EXTRACT_KEY_THRESHOLD, SPILL_REFERENCE_MARGIN, painted)
+    painted = detect_background_key_rgb(image, target, EXTRACT_KEY_THRESHOLD)
+    box = subject_window(image, target, EXTRACT_KEY_THRESHOLD, SPILL_REFERENCE_MARGIN, painted)
     facts: dict[str, Any] = {"reference_size": list(image.size), "reference_window": list(box) if box else None,
                              "reference_stride": 1}
     if box is None:  # every pixel is within the hard cut of the key: nothing of the still survives

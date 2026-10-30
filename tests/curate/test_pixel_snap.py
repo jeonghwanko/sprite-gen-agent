@@ -191,7 +191,7 @@ def test_padded_component_no_ghost_bottom_row() -> None:
     """회귀 2026-07-14 회귀 (down_idle blink 발밑 1px 돌출, maintainer 발견).
 
     component_group_image 의 4px 투명 패딩 + 위상 추정 노이즈(참 lead 4 를 2.8 로
-    측정 → _grid_edges 가 0 으로 스냅) 조합이 격자를 패딩만큼 위로 밀었다. 꼬리에
+    측정 → grid_edges 가 0 으로 스냅) 조합이 격자를 패딩만큼 위로 밀었다. 꼬리에
     자투리 셀이 생기고, 발바닥 블록의 쪼개진 하단 + 문턱 근처 알파(~134) 프린지가
     유령 픽셀로 응고해 최종 프레임 발밑에 1px 이 돌출했다. 스냅 전 알파 bbox 로
     조이면(tighten_components) 콘텐츠가 블록 정수배가 되어 격자가 등분으로 떨어진다.
@@ -225,7 +225,7 @@ def test_fringe_does_not_inflate_grid() -> None:
     """회귀 2026-07-17 회귀 (synthetic_fixture_a pp 부스러기/디테일 뭉개짐, maintainer 발견).
 
     크로마 제거가 남긴 sub-128 AA 프린지가 any-alpha `getbbox()` 크롭에 포함되면
-    격자 원점이 프린지 폭만큼 밀리고 `_grid_edges` 셀 개수 반올림이 한 칸 는다 —
+    격자 원점이 프린지 폭만큼 밀리고 `grid_edges` 셀 개수 반올림이 한 칸 는다 —
     모든 셀이 참 블록을 빗겨 샘플링해 색이 섞이고, 실루엣 밖 부스러기 열이 응고한다.
     tighten_components 는 solid alpha bbox(α>=128) 로 조여 프린지를 격자 계산
     밖으로 밀어낸다 (grid_snap_downscale/binarize_alpha 와 동일 불투명 기준).

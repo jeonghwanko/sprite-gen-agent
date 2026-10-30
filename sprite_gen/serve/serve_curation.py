@@ -185,7 +185,7 @@ def _base_grid_response(run_dir: Path, base_path: Path) -> dict:
         return cached
     request = load_request(run_dir)
     chroma = tuple(request.get("chroma_key", {}).get("rgb") or (255, 0, 255))
-    from sprite_gen.frames.extract import (_grid_edges, detect_pixel_grid,
+    from sprite_gen.frames.extract import (grid_edges, detect_pixel_grid,
                                     remove_chroma_background_ycbcr, solid_alpha_bbox)
     with Image.open(base_path) as opened:
         cleaned = remove_chroma_background_ycbcr(opened.convert("RGBA"), chroma)
@@ -206,8 +206,8 @@ def _base_grid_response(run_dir: Path, base_path: Path) -> dict:
         if min(pitch_x, pitch_y) < 2.0:
             result = {"grid": None, "note": "no confident pixel grid detected"}
         else:
-            x_edges = [box[0] + e for e in _grid_edges(tight.width, pitch_x, phase_x)]
-            y_edges = [box[1] + e for e in _grid_edges(tight.height, pitch_y, phase_y)]
+            x_edges = [box[0] + e for e in grid_edges(tight.width, pitch_x, phase_x)]
+            y_edges = [box[1] + e for e in grid_edges(tight.height, pitch_y, phase_y)]
             result = {"grid": {"xEdges": x_edges, "yEdges": y_edges,
                                "pitch": [round(pitch_x, 2), round(pitch_y, 2)]}}
     _BASE_GRID_CACHE.clear()  # 베이스는 런당 1개 — 이전 세대 항목만 치움

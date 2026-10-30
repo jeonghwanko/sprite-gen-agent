@@ -64,8 +64,8 @@ from typing import Any
 from PIL import Image
 
 from sprite_gen._deps import np
-from sprite_gen.frames.decontam import _box_sum, _ring_depth, learn_palette
-from sprite_gen.frames.extract import _grow_into
+from sprite_gen.frames.decontam import learn_palette
+from sprite_gen.frames.morph import box_sum, grow_into, ring_depth
 
 KEYS: dict[str, tuple[int, int, int]] = {"magenta": (255, 0, 255), "green": (0, 255, 0)}
 KEY_FAMILY_DIST = 64.0  # CbCr distance from the declared key that a background sample may sit at
@@ -124,7 +124,7 @@ def _cbcr(rgb: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
 
 
 def key_excess(rgb: np.ndarray, key: str) -> np.ndarray:
-    """How much of the key's hue a colour carries (`extract._key_excess_field`)."""
+    """How much of the key's hue a colour carries (`keyfield.key_excess_field`)."""
     if key == "magenta":
         return np.minimum(rgb[..., 0], rgb[..., 2]) - rgb[..., 1]
     return rgb[..., 1] - np.maximum(rgb[..., 0], rgb[..., 2])
@@ -295,8 +295,8 @@ def refine_edges(material: np.ndarray, rgb: np.ndarray, field: np.ndarray, offse
     pixels inside the material (whose 3x3 window is all material) within RIM_REACH px explains as such a mix,
     short of full, is a blend."""
     height, width = material.shape
-    inner = _box_sum(material.astype(np.float64), DEEP_RADIUS) >= (2 * DEEP_RADIUS + 1) ** 2
-    near_inner = _box_sum(inner.astype(np.float64), RIM_REACH) > 0
+    inner = box_sum(material.astype(np.float64), DEEP_RADIUS) >= (2 * DEEP_RADIUS + 1) ** 2
+    near_inner = box_sum(inner.astype(np.float64), RIM_REACH) > 0
     rows, cols = np.nonzero(material & ~inner & near_inner)
     if not len(rows):
         return material
@@ -373,7 +373,7 @@ def matte(image: Image.Image, *, key: str) -> tuple[Image.Image, dict[str, Any]]
     material = (chroma >= SOLID_CHROMA) & ~key_hued(rgb, key)
     solid = refine_edges(material, rgb, field, offset, distance, sigma_norm)
     edge_solid = solid & steep_edge(offset, distance, off_background)
-    near_solid = _box_sum(solid.astype(np.float64), PALETTE_REACH) > 0
+    near_solid = box_sum(solid.astype(np.float64), PALETTE_REACH) > 0
     # a letter's own colour is the one it shows where it meets the key; colours seen only inside the
     # lettering may be a glow's dense part, and a palette of those would read the whole glow as denser
     palette = (learn_palette(np.round(rgb[edge_solid]).astype(np.int64), PALETTE_SIZE)
@@ -387,8 +387,8 @@ def matte(image: Image.Image, *, key: str) -> tuple[Image.Image, dict[str, Any]]
     # strong mixes on their own pixel; faint ones on the mean of their faint neighbours
     strong = off_background & ~solid & (distance >= FAINT_SIGMAS * sigma_norm)
     faint_zone = ~solid & ~strong
-    count = _box_sum(faint_zone.astype(np.float64), FAINT_RADIUS)
-    mean = _box_sum(offset * faint_zone[..., None], FAINT_RADIUS) / np.maximum(count, 1.0)[..., None]
+    count = box_sum(faint_zone.astype(np.float64), FAINT_RADIUS)
+    mean = box_sum(offset * faint_zone[..., None], FAINT_RADIUS) / np.maximum(count, 1.0)[..., None]
     faint_noise = np.maximum(sigma_norm / np.sqrt(np.maximum(count, 1.0)), FAINT_FLOOR / NOISE_SIGMAS)
     faint = faint_zone & (np.linalg.norm(mean, axis=-1) > NOISE_SIGMAS * faint_noise)
     for mask, obs_field, scale in ((strong, offset, None), (faint, mean, faint_noise)):
@@ -415,7 +415,7 @@ def matte(image: Image.Image, *, key: str) -> tuple[Image.Image, dict[str, Any]]
     alpha8 = np.round(alpha * source_alpha * 255).astype(np.int64)
     alpha8[alpha8 < MIN_ALPHA8] = 0
     visible = alpha8 > 0
-    neighbours = _box_sum(visible.astype(np.float64), SPECK_RADIUS)
+    neighbours = box_sum(visible.astype(np.float64), SPECK_RADIUS)
     specks = visible & (neighbours < SPECK_MIN_NEIGHBOURS) & (alpha8 < SPECK_MAX_ALPHA8)
     alpha8[specks] = 0
     # the outermost rows and columns of a generated picture often carry a seam a few levels off the key
@@ -502,12 +502,12 @@ def _way_out(alpha: np.ndarray) -> np.ndarray:
     transparent = alpha == 0
     not_opaque = alpha < 255
     r = INSIDE_CHANNEL_PX // 2  # a pixel of a wider channel has its whole (2r+1)^2 window in the channel
-    wide = not_opaque & (_box_sum(not_opaque.astype(np.float64), r) >= (2 * r + 1) ** 2)
+    wide = not_opaque & (box_sum(not_opaque.astype(np.float64), r) >= (2 * r + 1) ** 2)
     edge = np.zeros(alpha.shape, dtype=bool)
     edge[0] = edge[-1] = True
     edge[:, 0] = edge[:, -1] = True
-    way_out = _grow_into(transparent & edge, wide | transparent)
-    return way_out | (not_opaque & (_box_sum(way_out.astype(np.float64), INSIDE_CHANNEL_PX) > 0))
+    way_out = grow_into(transparent & edge, wide | transparent)
+    return way_out | (not_opaque & (box_sum(way_out.astype(np.float64), INSIDE_CHANNEL_PX) > 0))
 
 
 def see_through_inside(image: Image.Image) -> dict[str, Any]:
@@ -522,7 +522,7 @@ def see_through_inside(image: Image.Image) -> dict[str, Any]:
     transparent = alpha == 0
     see = ~transparent & (alpha < INSIDE_ALPHA8)
     way_out = _way_out(alpha)
-    depth = _ring_depth(alpha == 255, INSIDE_MAX_REACH_PX)
+    depth = ring_depth(alpha == 255, INSIDE_MAX_REACH_PX)
     beside = depth[see & way_out]
     reach = max(INSIDE_EDGE_PX, int(np.quantile(beside, INSIDE_REACH_QUANTILE)) if len(beside) else 0)
     inside = see & ~way_out & (depth > reach)

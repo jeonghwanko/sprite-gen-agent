@@ -14,9 +14,9 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from sprite_gen.frames.cutout import _corner_average
+from sprite_gen.frames.cutout import corner_average
 from sprite_gen.frames.extract import (_KEY_DETECT_BAND_ROWS, _KEY_DETECT_BIN_SHIFT, _KEY_DETECT_CORNER_DIV,
-                                       _KEY_DETECT_MIN_FRACTION, _border_key_candidate_field, _key_channel_split,
+                                       _KEY_DETECT_MIN_FRACTION, border_key_candidate_field, key_channel_split,
                                        detect_background_key_rgb)
 
 GREEN = (0, 255, 0)
@@ -48,7 +48,7 @@ def _whole_image_detect(image: Image.Image, chroma_key: tuple[int, int, int],
                                            _KEY_DETECT_NEIGHBOUR_BINS)
 
     threshold = DEFAULT_KEY_THRESHOLD if threshold is None else threshold
-    keyed_channels, unkeyed_channels = _key_channel_split(chroma_key)
+    keyed_channels, unkeyed_channels = key_channel_split(chroma_key)
     if not keyed_channels:
         return tuple(chroma_key)
     data = np.array(image.convert("RGBA"), dtype=np.uint8)
@@ -58,8 +58,8 @@ def _whole_image_detect(image: Image.Image, chroma_key: tuple[int, int, int],
         return tuple(chroma_key)
     total = int(np.count_nonzero(sample))
     rgb = data[..., :3].astype(np.int32)
-    before = sample & _border_key_candidate_field(rgb, keyed_channels, unkeyed_channels, lean=False)
-    family = sample & _border_key_candidate_field(rgb, keyed_channels, unkeyed_channels)
+    before = sample & border_key_candidate_field(rgb, keyed_channels, unkeyed_channels, lean=False)
+    family = sample & border_key_candidate_field(rgb, keyed_channels, unkeyed_channels)
     if int(np.count_nonzero(before)) >= total * _KEY_DETECT_MIN_FRACTION:
         return _mode_mean(rgb[before])[1]
     if int(np.count_nonzero(family)) < total * _KEY_DETECT_MIN_FRACTION:
@@ -144,4 +144,4 @@ def test_the_detected_colour_is_the_painted_one() -> None:
 
 def test_corner_average_reads_any_mode_as_rgba() -> None:
     for _, image in _images():
-        assert _corner_average(image) == _corner_average(image.convert("RGBA"))
+        assert corner_average(image) == corner_average(image.convert("RGBA"))

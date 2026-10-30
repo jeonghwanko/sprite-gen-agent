@@ -32,7 +32,7 @@ from PIL import Image
 from sprite_gen.frames.cutout import (
     _EXTRACT_FRINGE_DELTA,
     _EXTRACT_FRINGE_THRESHOLD,
-    _EXTRACT_KEY_THRESHOLD,
+    EXTRACT_KEY_THRESHOLD,
     cutout,
 )
 from sprite_gen.frames.extract import remove_chroma_background
@@ -113,7 +113,7 @@ def test_remove_chroma_background_keys_out_dark_flat_key(
     """Engine level: the extract CLI defaults (as cutout passes them) must clear the flat bg."""
     source = make_flat_key_still(background)
     result = remove_chroma_background(
-        source, key_rgb, _EXTRACT_KEY_THRESHOLD, _EXTRACT_FRINGE_THRESHOLD, _EXTRACT_FRINGE_DELTA
+        source, key_rgb, EXTRACT_KEY_THRESHOLD, _EXTRACT_FRINGE_THRESHOLD, _EXTRACT_FRINGE_DELTA
     )
     residual, subject_changed = audit(result, source)
     assert residual == 0, f"{background} on key {key}: {residual} background px survived"
@@ -222,7 +222,7 @@ def test_background_key_opt_out_reproduces_single_key_behaviour() -> None:
     """`background_key=<declared>` pins the pre-detection result (the byte-identity gate relies on it)."""
     source = make_flat_key_still((8, 162, 24))
     pinned = remove_chroma_background(
-        source, GREEN, _EXTRACT_KEY_THRESHOLD, _EXTRACT_FRINGE_THRESHOLD, _EXTRACT_FRINGE_DELTA,
+        source, GREEN, EXTRACT_KEY_THRESHOLD, _EXTRACT_FRINGE_THRESHOLD, _EXTRACT_FRINGE_DELTA,
         background_key=GREEN,
     )
     assert audit(pinned, source)[0] == SIZE * SIZE - 64 * 64  # every background pixel survives
@@ -241,13 +241,13 @@ def test_cutout_auto_routes_dark_green_corners_to_extract(tmp_path: Path) -> Non
 
 def test_cutout_auto_route_uses_the_engine_family_rule() -> None:
     """Route detection and the engine share one family rule: key variants → extract, subject colours → matte."""
-    from sprite_gen.frames.cutout import _detect_key_kind
+    from sprite_gen.frames.cutout import detect_key_kind
 
-    assert _detect_key_kind((8, 162, 24)) == "green"
-    assert _detect_key_kind((170, 8, 180)) == "magenta"
-    assert _detect_key_kind((0, 200, 90)) == "green"  # a green screen leaning toward cyan
-    assert _detect_key_kind(HOT_PINK) == "white"
-    assert _detect_key_kind((248, 247, 242)) == "white"
+    assert detect_key_kind((8, 162, 24)) == "green"
+    assert detect_key_kind((170, 8, 180)) == "magenta"
+    assert detect_key_kind((0, 200, 90)) == "green"  # a green screen leaning toward cyan
+    assert detect_key_kind(HOT_PINK) == "white"
+    assert detect_key_kind((248, 247, 242)) == "white"
 
 
 # --- border key candidate: a flat border is already evidence of "background" --------------
@@ -264,9 +264,9 @@ def test_cutout_auto_routes_grok_magenta_corners_to_extract(
     tmp_path: Path, key: str, key_rgb: tuple[int, int, int], background: tuple[int, int, int]
 ) -> None:
     """`cutout --key auto` on the Grok magenta: extract route, painted key recorded, bg fully cleared."""
-    from sprite_gen.frames.cutout import _detect_key_kind
+    from sprite_gen.frames.cutout import detect_key_kind
 
-    assert _detect_key_kind(background) == key
+    assert detect_key_kind(background) == key
     source = make_flat_key_still(background)
     src_path = tmp_path / "grok-magenta.png"
     source.save(src_path)
@@ -292,26 +292,26 @@ def test_the_lean_green_widens_only_the_green_key_and_only_toward_green() -> Non
     one unkeyed channel keeps that channel dark — hot pink's 77 included), none dropped for either key,
     and for green only hues nearer green (120 degrees) than yellow or cyan (90 and 180, past 150)."""
     from sprite_gen._deps import np
-    from sprite_gen.frames.extract import (_BORDER_KEY_MAX_UNKEYED_RATIO, _KEY_CHANNEL_DARK, _border_key_candidate_field,
-                                           _key_channel_split, _key_family_field)
+    from sprite_gen.frames.extract import _BORDER_KEY_MAX_UNKEYED_RATIO, border_key_candidate_field, _key_family_field
+    from sprite_gen.frames.keyfield import KEY_CHANNEL_DARK, key_channel_split
 
     values = np.arange(256, dtype=np.int32)
     lean = {GREEN: 0, MAGENTA: 0}
     for key in (GREEN, MAGENTA):
-        keyed_channels, unkeyed_channels = _key_channel_split(key)
+        keyed_channels, unkeyed_channels = key_channel_split(key)
         for red in range(256):
             rgb = np.stack(np.meshgrid([red], values, values, indexing="ij"), axis=-1).reshape(-1, 3)
-            border = _border_key_candidate_field(rgb, keyed_channels, unkeyed_channels)
+            border = border_key_candidate_field(rgb, keyed_channels, unkeyed_channels)
             keyed_min = rgb[:, keyed_channels].min(axis=-1)
             keyed_max = rgb[:, keyed_channels].max(axis=-1)
             unkeyed_max = rgb[:, unkeyed_channels].max(axis=-1)
             # every unkeyed channel dark: the signature before the lean
-            dark = ((keyed_min >= _KEY_CHANNEL_DARK) & (unkeyed_max < _KEY_CHANNEL_DARK)
+            dark = ((keyed_min >= KEY_CHANNEL_DARK) & (unkeyed_max < KEY_CHANNEL_DARK)
                     & (unkeyed_max <= keyed_max * _BORDER_KEY_MAX_UNKEYED_RATIO))
             before = dark | _key_family_field(rgb, keyed_channels, unkeyed_channels)
             assert not (before & ~border).any(), (key, rgb[before & ~border][:4])
             # without the lean the field is the rule as it was, colour for colour
-            strict = _border_key_candidate_field(rgb, keyed_channels, unkeyed_channels, lean=False)
+            strict = border_key_candidate_field(rgb, keyed_channels, unkeyed_channels, lean=False)
             assert (strict == before).all(), (key, rgb[strict != before][:4])
             added = rgb[border & ~before]
             lean[key] += len(added)
@@ -332,7 +332,7 @@ def test_hot_pink_block_inside_the_subject_survives_a_grok_magenta_key() -> None
         for x in range(40, 52):
             px[x, y] = HOT_PINK + (255,)
     result = remove_chroma_background(
-        source, MAGENTA, _EXTRACT_KEY_THRESHOLD, _EXTRACT_FRINGE_THRESHOLD, _EXTRACT_FRINGE_DELTA
+        source, MAGENTA, EXTRACT_KEY_THRESHOLD, _EXTRACT_FRINGE_THRESHOLD, _EXTRACT_FRINGE_DELTA
     )
     residual, subject_changed = audit(result, source)
     assert residual == 0, f"{residual} background px survived"
@@ -372,12 +372,12 @@ def test_border_rule_is_a_superset_of_the_interior_rule_and_matches_its_vector_f
     import itertools
 
     from sprite_gen._deps import np
-    from sprite_gen.frames.extract import _border_key_candidate_field, _key_channel_split
+    from sprite_gen.frames.extract import border_key_candidate_field, key_channel_split
 
     grid = list(itertools.product(range(0, 256, 17), repeat=3))
     for key in (GREEN, MAGENTA):
         scalar = [is_border_key_candidate(color, key) for color in grid]
-        vector = _border_key_candidate_field(np.array(grid, dtype=np.int32), *_key_channel_split(key))
+        vector = border_key_candidate_field(np.array(grid, dtype=np.int32), *key_channel_split(key))
         assert vector.tolist() == scalar
         for color, border in zip(grid, scalar):
             if is_key_family(color, key):
@@ -406,7 +406,7 @@ def test_painted_key_ball_is_bounded_by_connectivity_to_the_background(
     """
     blend = tuple((b + s) // 2 for b, s in zip(background, partner))  # e.g. (223, 128, 168): G lit, ~90 from bg
     assert not is_border_key_candidate(blend, key_rgb)
-    assert color_dist(blend, background) <= _EXTRACT_KEY_THRESHOLD < color_dist(blend, key_rgb)
+    assert color_dist(blend, background) <= EXTRACT_KEY_THRESHOLD < color_dist(blend, key_rgb)
     source = make_flat_key_still(background)
     px = source.load()
     x0, y0, x1, y1 = SUBJECT_BOX
@@ -417,7 +417,7 @@ def test_painted_key_ball_is_bounded_by_connectivity_to_the_background(
         for x in range(76, 88):
             px[x, y] = blend + (255,)
     result = remove_chroma_background(
-        source, key_rgb, _EXTRACT_KEY_THRESHOLD, _EXTRACT_FRINGE_THRESHOLD, _EXTRACT_FRINGE_DELTA
+        source, key_rgb, EXTRACT_KEY_THRESHOLD, _EXTRACT_FRINGE_THRESHOLD, _EXTRACT_FRINGE_DELTA
     )
     out = result.load()
     assert all(out[x, y][3] == 0 for y in range(y0, y0 + 4) for x in range(x0 + 8, x0 + 24)), "rim residue must be cut"
@@ -434,14 +434,14 @@ def test_a_leaning_green_patch_in_the_subject_is_the_painted_colours_only_when_t
     byte, as it was before the lean; on a background that leans, the same patch carries the painted colour's
     signature and is keyed with it, as any signature colour inside the painted ball is."""
     for background, kept in (((8, 162, 24), True), ((0, 200, 90), False)):
-        assert color_dist(patch, background) <= _EXTRACT_KEY_THRESHOLD < color_dist(patch, GREEN)
+        assert color_dist(patch, background) <= EXTRACT_KEY_THRESHOLD < color_dist(patch, GREEN)
         source = make_flat_key_still(background)
         px = source.load()
         for y in range(76, 88):  # buried in the brown, away from the highlight
             for x in range(76, 88):
                 px[x, y] = patch + (255,)
         result = remove_chroma_background(
-            source, GREEN, _EXTRACT_KEY_THRESHOLD, _EXTRACT_FRINGE_THRESHOLD, _EXTRACT_FRINGE_DELTA
+            source, GREEN, EXTRACT_KEY_THRESHOLD, _EXTRACT_FRINGE_THRESHOLD, _EXTRACT_FRINGE_DELTA
         )
         out = result.load()
         assert audit(result, source)[0] == 0, background
@@ -500,7 +500,7 @@ def test_lean_samples_leave_the_background_the_rule_before_the_lean_finds(
     from sprite_gen.frames.extract import _KEY_DETECT_MIN_FRACTION, _key_detect_sample_mask
 
     assert is_border_key_candidate(lean, GREEN) and not is_key_family(lean, GREEN)  # admitted through the lean only
-    assert color_dist(LEAN_MIX_SUBJECT, (0, 200, 65)) <= _EXTRACT_KEY_THRESHOLD < color_dist(LEAN_MIX_SUBJECT, LEAN_MIX_BACKGROUND)
+    assert color_dist(LEAN_MIX_SUBJECT, (0, 200, 65)) <= EXTRACT_KEY_THRESHOLD < color_dist(LEAN_MIX_SUBJECT, LEAN_MIX_BACKGROUND)
     source = make_lean_mix_still(lean, spread)
     samples = _key_detect_sample_mask(SIZE, SIZE)
     found_before = samples & (np.asarray(source)[..., :3] == LEAN_MIX_BACKGROUND).all(axis=-1)
@@ -508,10 +508,10 @@ def test_lean_samples_leave_the_background_the_rule_before_the_lean_finds(
 
     assert detect_background_key_rgb(source, GREEN) == LEAN_MIX_BACKGROUND
     result = remove_chroma_background(
-        source, GREEN, _EXTRACT_KEY_THRESHOLD, _EXTRACT_FRINGE_THRESHOLD, _EXTRACT_FRINGE_DELTA
+        source, GREEN, EXTRACT_KEY_THRESHOLD, _EXTRACT_FRINGE_THRESHOLD, _EXTRACT_FRINGE_DELTA
     )
     pinned = remove_chroma_background(
-        source, GREEN, _EXTRACT_KEY_THRESHOLD, _EXTRACT_FRINGE_THRESHOLD, _EXTRACT_FRINGE_DELTA,
+        source, GREEN, EXTRACT_KEY_THRESHOLD, _EXTRACT_FRINGE_THRESHOLD, _EXTRACT_FRINGE_DELTA,
         background_key=LEAN_MIX_BACKGROUND,
     )
     assert result.tobytes() == pinned.tobytes()
@@ -536,14 +536,14 @@ def test_lean_samples_find_the_background_the_rule_before_the_lean_does_not(bloc
             px[x, y] = LEAN_MIX_BACKGROUND + (255,)
     assert detect_background_key_rgb(source, GREEN) == lean
     result = remove_chroma_background(
-        source, GREEN, _EXTRACT_KEY_THRESHOLD, _EXTRACT_FRINGE_THRESHOLD, _EXTRACT_FRINGE_DELTA
+        source, GREEN, EXTRACT_KEY_THRESHOLD, _EXTRACT_FRINGE_THRESHOLD, _EXTRACT_FRINGE_DELTA
     )
     assert audit(result, source) == (0, 0)
 
 
 def test_the_colour_found_before_the_lean_never_leans_itself() -> None:
     """The cut reads a painted colour as it did before the lean unless the colour leans itself
-    (`_painted_key_leans`), so a border the rule before the lean takes keys as before only if the colour found
+    (`painted_key_leans`), so a border the rule before the lean takes keys as before only if the colour found
     there does not lean. It is the floor of the mean of one 8-wide bin of colours that rule admits, and a floor
     can cross the rule's line (an unkeyed channel at most 35% of green). Checked exactly for green over every
     bin of green and one unkeyed channel, the other at 0 where the bin leaves the most room (the rule reads both
@@ -552,13 +552,13 @@ def test_the_colour_found_before_the_lean_never_leans_itself() -> None:
     from fractions import Fraction
 
     from sprite_gen._deps import np
-    from sprite_gen.frames.extract import _KEY_DETECT_BIN_SHIFT, _border_key_candidate_field, _key_channel_split
+    from sprite_gen.frames.extract import _KEY_DETECT_BIN_SHIFT, border_key_candidate_field, key_channel_split
 
     width = 1 << _KEY_DETECT_BIN_SHIFT
     values = np.arange(256, dtype=np.int32)
     green, unkeyed = np.meshgrid(values, values, indexing="ij")
     rgb = np.stack([unkeyed, green, np.zeros_like(green)], axis=-1)
-    admitted = _border_key_candidate_field(rgb, *_key_channel_split(GREEN), lean=False)  # [green, unkeyed]
+    admitted = border_key_candidate_field(rgb, *key_channel_split(GREEN), lean=False)  # [green, unkeyed]
     for g0 in range(0, 256, width):
         for u0 in range(0, 256, width):
             block = admitted[g0:g0 + width, u0:u0 + width]
@@ -613,8 +613,8 @@ def make_leaning_frame(background: tuple[int, int, int]):
 def key_both_ways(data) -> tuple[Image.Image, Image.Image]:
     """(the engine with its own detection, the engine with the declared key pinned) on the frame `data`."""
     source = Image.fromarray(data, "RGBA")
-    result = remove_chroma_background(source, GREEN, _EXTRACT_KEY_THRESHOLD, _EXTRACT_FRINGE_THRESHOLD, _EXTRACT_FRINGE_DELTA)
-    pinned = remove_chroma_background(source, GREEN, _EXTRACT_KEY_THRESHOLD, _EXTRACT_FRINGE_THRESHOLD, _EXTRACT_FRINGE_DELTA,
+    result = remove_chroma_background(source, GREEN, EXTRACT_KEY_THRESHOLD, _EXTRACT_FRINGE_THRESHOLD, _EXTRACT_FRINGE_DELTA)
+    pinned = remove_chroma_background(source, GREEN, EXTRACT_KEY_THRESHOLD, _EXTRACT_FRINGE_THRESHOLD, _EXTRACT_FRINGE_DELTA,
                                       background_key=GREEN)
     return result, pinned
 
@@ -627,8 +627,8 @@ def test_a_leaning_border_the_declared_key_clears_keeps_the_declared_key(share: 
     from sprite_gen._deps import np
     from sprite_gen.frames.extract import _key_detect_sample_mask
 
-    assert color_dist(LEFT_INSIDE_THE_CUT, GREEN) <= _EXTRACT_KEY_THRESHOLD  # the key's cut clears it
-    assert color_dist(LEAN_MIX_SUBJECT, LEFT_INSIDE_THE_CUT) <= _EXTRACT_KEY_THRESHOLD < color_dist(LEAN_MIX_SUBJECT, GREEN)
+    assert color_dist(LEFT_INSIDE_THE_CUT, GREEN) <= EXTRACT_KEY_THRESHOLD  # the key's cut clears it
+    assert color_dist(LEAN_MIX_SUBJECT, LEFT_INSIDE_THE_CUT) <= EXTRACT_KEY_THRESHOLD < color_dist(LEAN_MIX_SUBJECT, GREEN)
     data = make_leaning_frame(LEFT_INSIDE_THE_CUT)
     coords = np.argwhere(_key_detect_sample_mask(SIZE, SIZE))
     count = round(len(coords) * share / 100)
@@ -653,8 +653,8 @@ def test_a_leaning_leaf_of_the_subject_on_the_border_is_not_read_as_the_backgrou
     from sprite_gen._deps import np
 
     background, leaf = (0, 215, 80), (20, 140, 60)
-    assert color_dist(background, GREEN) <= _EXTRACT_KEY_THRESHOLD < color_dist(leaf, GREEN)
-    assert color_dist(leaf, background) <= _EXTRACT_KEY_THRESHOLD
+    assert color_dist(background, GREEN) <= EXTRACT_KEY_THRESHOLD < color_dist(leaf, GREEN)
+    assert color_dist(leaf, background) <= EXTRACT_KEY_THRESHOLD
     assert is_border_key_candidate(leaf, GREEN) and not is_key_family(leaf, GREEN)  # admitted through the lean only
     data = make_leaning_frame(background)
     x0, y0, x1, y1 = SUBJECT_BOX
@@ -678,9 +678,9 @@ def test_a_second_key_coloured_cluster_on_the_border_keeps_the_declared_key() ->
     from sprite_gen._deps import np
 
     dominant, other = (0, 215, 80), (0, 120, 55)
-    assert color_dist(dominant, GREEN) <= _EXTRACT_KEY_THRESHOLD < color_dist(other, GREEN)
-    assert color_dist(other, dominant) > _EXTRACT_KEY_THRESHOLD  # the dominant colour's ball does not reach it
-    assert color_dist(LEAN_MIX_SUBJECT, dominant) <= _EXTRACT_KEY_THRESHOLD
+    assert color_dist(dominant, GREEN) <= EXTRACT_KEY_THRESHOLD < color_dist(other, GREEN)
+    assert color_dist(other, dominant) > EXTRACT_KEY_THRESHOLD  # the dominant colour's ball does not reach it
+    assert color_dist(LEAN_MIX_SUBJECT, dominant) <= EXTRACT_KEY_THRESHOLD
     assert all(is_border_key_candidate(c, GREEN) and not is_key_family(c, GREEN) for c in (dominant, other))
     data = make_leaning_frame(dominant)
     data[:SIZE // 5, :SIZE // 5, :3] = other
@@ -701,14 +701,14 @@ def test_a_soft_rim_crossing_the_cut_on_the_border_is_not_read_as_the_background
     from sprite_gen._deps import np
 
     background, top = (0, 212, 84), 84  # the subject from row 84 down
-    assert color_dist(background, GREEN) <= _EXTRACT_KEY_THRESHOLD
-    assert color_dist(LEAN_MIX_SUBJECT, background) <= _EXTRACT_KEY_THRESHOLD < color_dist(LEAN_MIX_SUBJECT, GREEN)
+    assert color_dist(background, GREEN) <= EXTRACT_KEY_THRESHOLD
+    assert color_dist(LEAN_MIX_SUBJECT, background) <= EXTRACT_KEY_THRESHOLD < color_dist(LEAN_MIX_SUBJECT, GREEN)
     data = make_leaning_frame(background)
     for step in range(1, 7):  # rows 78..83 blend the background into the subject
         blend = tuple(round(b + (s - b) * step / 7) for b, s in zip(background, LEAN_MIX_SUBJECT))
         data[top - 7 + step, :, :3] = blend
     first = tuple(int(v) for v in data[top - 6, 0, :3])
-    assert is_border_key_candidate(first, GREEN) and color_dist(first, GREEN) > _EXTRACT_KEY_THRESHOLD  # it crosses
+    assert is_border_key_candidate(first, GREEN) and color_dist(first, GREEN) > EXTRACT_KEY_THRESHOLD  # it crosses
     data[top:, :, :3] = LEAN_MIX_SUBJECT
 
     assert detect_background_key_rgb(Image.fromarray(data, "RGBA"), GREEN) == GREEN
@@ -730,7 +730,7 @@ def test_the_leaning_colour_is_read_once_the_key_leaves_2pct_of_the_border(
     from sprite_gen.frames.extract import _key_detect_sample_mask
 
     background, past = (0, 212, 84), (0, 210, 88)
-    assert color_dist(background, GREEN) <= _EXTRACT_KEY_THRESHOLD < color_dist(past, GREEN)
+    assert color_dist(background, GREEN) <= EXTRACT_KEY_THRESHOLD < color_dist(past, GREEN)
     assert is_border_key_candidate(past, GREEN) and not is_key_family(past, GREEN)
     data = make_leaning_frame(background)
     x0, y0, x1, y1 = SUBJECT_BOX
@@ -746,7 +746,7 @@ def test_the_lean_is_read_against_the_cut_the_caller_keys_with() -> None:
     """(0, 200, 90) sits 105.5 from pure green: past the default cut, so the leaning colour is read, and inside a cut
     of 110, which clears it by itself, so the key stays. The engine hands the detector the cut it keys with."""
     source = make_flat_key_still((0, 200, 90))
-    assert detect_background_key_rgb(source, GREEN, threshold=_EXTRACT_KEY_THRESHOLD) == (0, 200, 90)
+    assert detect_background_key_rgb(source, GREEN, threshold=EXTRACT_KEY_THRESHOLD) == (0, 200, 90)
     assert detect_background_key_rgb(source, GREEN, threshold=110) == GREEN
     wide = remove_chroma_background(source, GREEN, 110, _EXTRACT_FRINGE_THRESHOLD, _EXTRACT_FRINGE_DELTA)
     pinned = remove_chroma_background(source, GREEN, 110, _EXTRACT_FRINGE_THRESHOLD, _EXTRACT_FRINGE_DELTA,
@@ -760,10 +760,10 @@ def test_every_answer_is_the_one_before_the_lean_or_the_one_reading_it() -> None
     lean does (its candidates' mode bin, or the key), or as that rule does with the lean's samples read together. Both
     answers occur, and so do borders where the two differ and the key is kept."""
     from sprite_gen._deps import np
-    from sprite_gen.frames.extract import (_KEY_DETECT_BIN_SHIFT, _KEY_DETECT_MIN_FRACTION, _border_key_candidate_field,
-                                           _key_channel_split, _key_detect_sample_mask)
+    from sprite_gen.frames.extract import (_KEY_DETECT_BIN_SHIFT, _KEY_DETECT_MIN_FRACTION, border_key_candidate_field,
+                                           key_channel_split, _key_detect_sample_mask)
 
-    keyed_channels, unkeyed_channels = _key_channel_split(GREEN)
+    keyed_channels, unkeyed_channels = key_channel_split(GREEN)
     side = 64
     sample = _key_detect_sample_mask(side, side)
 
@@ -789,8 +789,8 @@ def test_every_answer_is_the_one_before_the_lean_or_the_one_reading_it() -> None
         frame[top:bottom, 16:48] = rng.integers(0, 256, 3)
         data = np.dstack([np.rint(frame).astype(np.uint8), np.full((side, side), 255, np.uint8)])
         rgb = data[..., :3].astype(np.int32)
-        before_field = sample & _border_key_candidate_field(rgb, keyed_channels, unkeyed_channels, lean=False)
-        together_field = sample & _border_key_candidate_field(rgb, keyed_channels, unkeyed_channels)
+        before_field = sample & border_key_candidate_field(rgb, keyed_channels, unkeyed_channels, lean=False)
+        together_field = sample & border_key_candidate_field(rgb, keyed_channels, unkeyed_channels)
         bar = sample.sum() * _KEY_DETECT_MIN_FRACTION
         before = mode_mean(rgb[before_field]) if before_field.sum() >= bar else GREEN
         together = before if before_field.sum() >= bar else (mode_mean(rgb[together_field]) if together_field.sum() >= bar else GREEN)
@@ -868,7 +868,7 @@ def _real_stills() -> list[pytest.ParameterSet]:
 def test_real_still_keys_out_its_painted_border(tmp_path: Path, key: str, still: Path) -> None:
     """`cutout --key <key>` on a model still: the flat border colour is gone, untinted subject untouched."""
     from sprite_gen._deps import np
-    from sprite_gen.frames.extract import _key_channel_split, _key_tint_field
+    from sprite_gen.frames.keyfield import key_channel_split, key_tint_field
     from sprite_gen.frames.cutout import KEY_TARGETS
 
     source = Image.open(still).convert("RGBA")
@@ -879,7 +879,7 @@ def test_real_still_keys_out_its_painted_border(tmp_path: Path, key: str, still:
     dist = np.sqrt(((rgb - painted) ** 2).sum(axis=-1))
     background = (alpha != 0) & (dist <= 48)  # the painted key and its near-flat neighbours
     # The engine's own `_SUBJECT` class: not key-tinted (below fringe_delta) — never touched.
-    tint = _key_tint_field(rgb, *_key_channel_split(KEY_TARGETS[key]))
+    tint = key_tint_field(rgb, *key_channel_split(KEY_TARGETS[key]))
     subject = (alpha != 0) & (dist > 140) & (tint < _EXTRACT_FRINGE_DELTA)
 
     stats = cutout(still, tmp_path / "out.png", key=key)

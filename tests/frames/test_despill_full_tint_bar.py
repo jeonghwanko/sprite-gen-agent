@@ -8,7 +8,8 @@ from PIL import Image
 
 from sprite_gen._deps import np
 from sprite_gen.frames.cutout import KEY_TARGETS, extract_route
-from sprite_gen.frames.extract import _SPILL_FULL_MIN_TINT, _SPILL_MIN_TINT, key_material_pixels
+from sprite_gen.frames.extract import _SPILL_MIN_TINT, key_material_pixels
+from sprite_gen.frames.keyfield import SPILL_FULL_MIN_TINT
 from sprite_gen.video import frames as frames_mod
 
 
@@ -46,9 +47,9 @@ def test_the_full_bar_reaches_a_tint_the_default_bar_leaves_alone(tmp_path: Path
 
     default_keyed, _ = extract_route(image, "green", spill_max_fraction=1.0)
     full_keyed, _ = extract_route(image, "green", spill_max_fraction=1.0,
-                                  spill_min_tint=_SPILL_FULL_MIN_TINT)
+                                  spill_min_tint=SPILL_FULL_MIN_TINT)
 
-    assert _SPILL_FULL_MIN_TINT < 20 < _SPILL_MIN_TINT
+    assert SPILL_FULL_MIN_TINT < 20 < _SPILL_MIN_TINT
     assert _residual_tint(default_keyed).max() > 15, "the default bar is above this tint"
     assert _residual_tint(full_keyed).max() < 15, "the full bar has to reach it"
 
@@ -68,6 +69,6 @@ def test_key_material_is_measured_at_the_bar_it_is_given(tmp_path: Path) -> None
     src = _green_canvas_with_tinted_subject(tmp_path / "in.png", tint=20)
     keyed, _ = extract_route(Image.open(src).convert("RGBA"), "green")
     at_default, subject = key_material_pixels(keyed, KEY_TARGETS["green"])
-    at_full, subject_again = key_material_pixels(keyed, KEY_TARGETS["green"], _SPILL_FULL_MIN_TINT)
+    at_full, subject_again = key_material_pixels(keyed, KEY_TARGETS["green"], SPILL_FULL_MIN_TINT)
     assert subject == subject_again
     assert at_default < at_full, "a lower bar must see at least as much key material"

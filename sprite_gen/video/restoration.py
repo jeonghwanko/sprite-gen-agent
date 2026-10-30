@@ -36,8 +36,7 @@ from PIL import Image
 
 from sprite_gen._deps import np
 from sprite_gen.frames.cutout import KEY_TARGETS
-from sprite_gen.frames.decontam import _cap_key_hue
-from sprite_gen.frames.extract import _key_channel_split, _key_excess_field, _SPILL_FULL_MIN_TINT
+from sprite_gen.frames.keyfield import SPILL_FULL_MIN_TINT, cap_key_hue, key_channel_split, key_excess_field
 from sprite_gen.spec.runio import atomic_write_text, refuse_overlap
 from sprite_gen.util import resample
 from sprite_gen.video import evidence, playback, repair, rife, source
@@ -56,8 +55,8 @@ ARTIFACTS = ("strip", "meta", "report", "gif", "webp")
 LISTED = 256  # capped or protected pixels a report spells out; the masks always hold all of them
 
 # The guard in whole numbers is the same formula only while the bar is a whole number.
-_BAR = int(_SPILL_FULL_MIN_TINT)
-assert _BAR == _SPILL_FULL_MIN_TINT
+_BAR = int(SPILL_FULL_MIN_TINT)
+assert _BAR == SPILL_FULL_MIN_TINT
 # The only excess that is capped: one step over the bar, the least a whole-number channel can
 # change. It bounds the change; it is not a promise about how any deeper cap would look.
 CAP_DEPTH = 1
@@ -84,8 +83,8 @@ def filmed_screen(projection: source.Projection) -> dict[str, Any]:
 
 
 def _key_hue(rgba: Any, key: str) -> Any:
-    channels, others = _key_channel_split(KEY_TARGETS[key])
-    return _key_excess_field(rgba[..., :3].astype(np.int64), channels, others)
+    channels, others = key_channel_split(KEY_TARGETS[key])
+    return key_excess_field(rgba[..., :3].astype(np.int64), channels, others)
 
 
 def key_weight(rgba: Any, key: str) -> Any:
@@ -131,9 +130,9 @@ def made_excess(reference: Image.Image, cropped: Image.Image, key: str) -> Any:
 
 def _capped(rgba: Any, key: str) -> Any:
     """The engine's key-hue cap to the bar on whole pixels: the keyed channels come down, nothing else moves."""
-    channels, others = _key_channel_split(KEY_TARGETS[key])
+    channels, others = key_channel_split(KEY_TARGETS[key])
     out = rgba.copy()
-    out[..., :3] = _cap_key_hue(rgba[..., :3], channels, others, _BAR).astype(np.uint8)
+    out[..., :3] = cap_key_hue(rgba[..., :3], channels, others, _BAR).astype(np.uint8)
     return out
 
 
