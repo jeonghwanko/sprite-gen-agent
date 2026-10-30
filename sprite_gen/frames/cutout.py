@@ -304,6 +304,7 @@ def prepare_cutout(input_path: Path, *, key: str = "auto", spill_max_fraction: f
     if decontam != "off":
         matte["decontam"] = decontam_module.prepare(matte["source_rgb"], matte["data"], matte["keyed_mask"], target,
                                                     fit=decontam_fit, edge_band=decontam_edge_band)
+    del matte["source_rgb"]  # the frame itself: `remove_chroma_background` reads it again rather than receive it
     return {"route": route, "painted": painted, "matte": matte}
 
 
@@ -427,11 +428,12 @@ def cutout(
 
     # No Silent Fallback verification.
     from sprite_gen._deps import np
-    check = np.asarray(result)
-    zero = check[..., 3] == 0
+    # each RGBA pixel as one little-endian word, alpha its top byte: transparent is below 2**24, and a
+    # transparent pixel with any colour left is a non-zero word there
+    packed = np.ascontiguousarray(np.asarray(result)).view("<u4")[..., 0]
     total = width * height
-    alpha_zero = int(np.count_nonzero(zero))
-    stale_rgb = int(np.count_nonzero(zero & check[..., :3].any(axis=-1)))
+    alpha_zero = int(np.count_nonzero(packed < 1 << 24))
+    stale_rgb = alpha_zero - int(np.count_nonzero(packed == 0))
     if stale_rgb:
         raise SystemExit(
             f"cutout: transparent pixels still contain non-zero RGB ({stale_rgb} px) in {out_path}"

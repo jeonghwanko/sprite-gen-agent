@@ -598,7 +598,9 @@ def remove_chroma_background(
                              spill_require_hue=spill_require_hue, background_key=background_key)
     data = matte["data"]
     if decontam != "off":
-        data, stats = decontam_module.decontaminate(matte["source_rgb"], data, matte["keyed_mask"], chroma_key,
+        # a matte from a worker leaves the source out: it is this image's, and cheaper to read again than to send
+        source_rgb = matte["source_rgb"] if "source_rgb" in matte else np.asarray(rgba)[..., :3].astype(np.int32)
+        data, stats = decontam_module.decontaminate(source_rgb, data, matte["keyed_mask"], chroma_key,
                                                     fit=decontam_fit, alpha_depth=unmix_reach,
                                                     palette=decontam_palette, mode=decontam,
                                                     source_alpha=matte["source_alpha"], edge_band=decontam_edge_band,

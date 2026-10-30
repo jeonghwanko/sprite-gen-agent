@@ -481,8 +481,9 @@ def palette_from_stats(stats: dict[str, Any]) -> dict[str, Any]:
 def prepare(source_rgb: np.ndarray, keyed: np.ndarray, keyed_mask: np.ndarray, chroma_key: tuple[int, int, int], *,
             fit: str = "still", edge_band: int = 0) -> dict[str, Any]:
     """What `decontaminate` reads from the frame alone, before any palette or clip history: the band and
-    flank, the local background and its noise, the pixels examined and the material behind each. A clip's
-    frames can be prepared in any order (`decontaminate`'s `prepared`)."""
+    flank, the local background's noise, the pixels examined with their colour and local background (and
+    the 3x3 means of both, which the video fit chooses by) and the material behind each. A clip's frames
+    can be prepared in any order (`decontaminate`'s `prepared`)."""
     keyed_channels, unkeyed_channels = key_channel_split(chroma_key)
     rgb = np.asarray(source_rgb, dtype=np.float64)[..., :3]
     subject = ~keyed_mask
@@ -518,8 +519,11 @@ def prepare(source_rgb: np.ndarray, keyed: np.ndarray, keyed_mask: np.ndarray, c
         # *Material behind*: a decoded frame's edge carries the key's blurred hue, so no hue test
         behind = subject & (depth > edge)
         reach = VIDEO_BEHIND_PX
-    return {"depth": depth, "band": band, "flank": flank, "frame_edge": frame_edge, "background": background,
+    video = fit == "video"
+    return {"depth": depth, "band": band, "flank": flank, "frame_edge": frame_edge,
             "sigma_luma": sigma_luma, "sigma_rgb": sigma_rgb, "rows": rows, "cols": cols,
+            "obs": rgb[rows, cols], "bg": background[rows, cols],
+            "obs_box3": _box3(rgb, rows, cols) if video else None, "bg_box3": _box3(background, rows, cols) if video else None,
             "behind_sums": box_sum_at(_counted(rgb, behind), reach, rows, cols)}
 
 
@@ -559,11 +563,10 @@ def decontaminate(source_rgb: np.ndarray, keyed: np.ndarray, keyed_mask: np.ndar
     keyed_channels, unkeyed_channels = key_channel_split(chroma_key)
     if prepared is None:
         prepared = prepare(source_rgb, keyed, keyed_mask, chroma_key, fit=fit, edge_band=edge_band)
-    rgb = np.asarray(source_rgb, dtype=np.float64)[..., :3]
     out = np.array(keyed, dtype=np.uint8, copy=True)
     subject = ~keyed_mask
     depth, band, flank, frame_edge = prepared["depth"], prepared["band"], prepared["flank"], prepared["frame_edge"]
-    background, sigma_luma, sigma_rgb = prepared["background"], prepared["sigma_luma"], prepared["sigma_rgb"]
+    sigma_luma, sigma_rgb = prepared["sigma_luma"], prepared["sigma_rgb"]
     rows, cols, behind_sums = prepared["rows"], prepared["cols"], prepared["behind_sums"]
     learned = subject_palette(out, keyed_mask, chroma_key) if palette is None else palette
     palette_rgb = np.asarray(learned["palette"], dtype=np.float64)
@@ -599,11 +602,11 @@ def decontaminate(source_rgb: np.ndarray, keyed: np.ndarray, keyed_mask: np.ndar
     for start in range(0, len(rows), _CHUNK):
         r = rows[start:start + _CHUNK]
         c = cols[start:start + _CHUNK]
-        obs = rgb[r, c]
-        bg = background[r, c]
+        obs = prepared["obs"][start:start + _CHUNK]
+        bg = prepared["bg"][start:start + _CHUNK]
         if fit == "video":
-            choose_obs = _box3(rgb, r, c)
-            choose_bg = _box3(background, r, c)
+            choose_obs = prepared["obs_box3"][start:start + _CHUNK]
+            choose_bg = prepared["bg_box3"][start:start + _CHUNK]
         else:
             choose_obs, choose_bg = obs, bg
         towards = choose_obs - choose_bg
@@ -736,7 +739,7 @@ def decontaminate(source_rgb: np.ndarray, keyed: np.ndarray, keyed_mask: np.ndar
                                                             unkeyed_channels, KEY_HUE_TINT)), 0, 255)
         shown, blended = _blend_calls(last, rows, cols, motion[rows, cols].astype(np.float64), written=blend,
                                       refits=refits, picks=picks, matte=matte, fit_alpha=fit_alpha, colour=colour_new,
-                                      palette_rgb=palette_rgb, obs=rgb[rows, cols], bg=background[rows, cols])
+                                      palette_rgb=palette_rgb, obs=prepared["obs"], bg=prepared["bg"])
         out[rows, cols] = np.clip(np.round(shown), 0, 255).astype(np.uint8)
     # recovered background coverage must chain to the subject
     visible = out[..., 3] > 0

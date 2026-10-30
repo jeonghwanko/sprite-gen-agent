@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 from PIL import Image, ImageFilter
 
+from sprite_gen.frames.cutout import prepare_cutout
 from sprite_gen.video import frames as frames_mod
 
 W, H = 160, 200
@@ -54,5 +55,6 @@ def test_prepared_frames_come_back_in_clip_order(tmp_path: Path, monkeypatch) ->
     ahead = list(frames_mod._prepared(files, key="green", decontam="off"))
     assert len(ahead) == len(files)
     for src, prepared in zip(files, ahead):
-        source = np.asarray(Image.open(src).convert("RGB")).astype(np.int32)
-        assert np.array_equal(prepared["matte"]["source_rgb"], source)
+        here = prepare_cutout(src, key="green", decontam="off")
+        assert np.array_equal(prepared["matte"]["data"], here["matte"]["data"])
+        assert "source_rgb" not in prepared["matte"]  # the main process reads the frame again rather than receive it
