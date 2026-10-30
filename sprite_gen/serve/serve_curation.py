@@ -62,6 +62,7 @@ from sprite_gen.curate.curation import (CURATION_FILENAME, SCHEMA_VERSION, effec
 from sprite_gen.frames.extract import heal_run, load_consistent_frames_manifest
 from sprite_gen.spec.layout import frames_dir_rel, raw_rel, row_frame_rel, row_orig_rel, state_frame_total
 from sprite_gen.spec.runio import load_request, publish_guard, read_guard, write_request
+from sprite_gen.serve.origin import cross_origin
 from sprite_gen.util.hexcolor import parse_hex
 from sprite_gen._modules import qualified
 from sprite_gen.util.console import utf8_streams
@@ -1221,6 +1222,9 @@ class CurationHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         path = urlparse(self.path).path
+        if cross_origin(self.headers):
+            self._send_json({"error": "cross-origin POST refused", "path": path}, 403)
+            return
         try:
             if path == "/api/curation":
                 payload = self._read_body()
@@ -1532,7 +1536,9 @@ class CurationHandler(BaseHTTPRequestHandler):
                 result = run_export_gif(self.run_dir)
                 self._send_json(result, 200 if result["ok"] else 500)
                 return
-        except Exception as exc:
+        # SystemExit too, as every GET route catches it: a refusal raised as SystemExit (a bad curation
+        # payload, a fail-loud manifest read) must answer, not drop the connection with no response.
+        except (Exception, SystemExit) as exc:
             self._send_json({"error": str(exc)}, 500)
             return
         self._send_json({"error": "not found", "path": path}, 404)

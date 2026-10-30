@@ -47,6 +47,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 from sprite_gen.frames.unpack_atlas import import_png_groups
+from sprite_gen.serve.origin import cross_origin
 from sprite_gen.util.console import utf8_streams
 
 # The SPA assets are package data (declared in pyproject's `package-data`), so the one
@@ -295,6 +296,9 @@ class ComposeHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         path = urlparse(self.path).path
+        if cross_origin(self.headers):
+            self._send_json({"error": "cross-origin POST refused", "path": path}, 403)
+            return
         if path == "/api/mount":
             length = int(self.headers.get("Content-Length", 0))
             try:
