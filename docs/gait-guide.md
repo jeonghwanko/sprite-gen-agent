@@ -1,5 +1,7 @@
 # Deterministic gait guides (phase + IK + world foot locking)
 
+> Owns: `gait-guide`: authored gait phase, IK and foot locking as a deterministic proxy preview without AI — not generated character approval · Index: [docs/README.md](README.md)
+
 `gait-guide` renders authored kinematic proxies without generation, credentials,
 new models, or editing reference artwork. It is a motion-design utility. Its
 outputs are not sprite-gen assets, approved character art or measured evidence

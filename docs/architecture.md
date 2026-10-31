@@ -138,6 +138,13 @@ turns only that report into scores and correction hints, and
 explicit provider command. In dry-run mode it never generates new pixels; it
 only proves the defect → score → hint path.
 
+On the hosted path, local tools that send no provider request (ffprobe, ffmpeg frame extraction and
+encoding, img2webp, face-bake's node, `extract`'s heal child, scene render, the curation webview's
+export) run through `sprite_gen/local_tool.py`, bounded in time: one still running at its bound is
+stopped and the step fails naming it. Calls that may start a provider keep their own limits, and other
+local calls (the audio encoders, the webview's `compose_atlas` / `export_pngs` / `compose_gif`
+children) still run outside it.
+
 ## 3. The numeric SSoT: `sprite-request.json`
 
 Every run starts here. It owns the recipe consumed by both prompts and scripts:
@@ -297,6 +304,11 @@ flowchart TD
 
 This is intentionally closer to hatch-pet's cleanup than to a plain
 `magick -transparent`.
+
+The key's own measures (`frames/keyfield.py`: channel split, distance, tint and hue fields, the
+shared depths and bars) and mask morphology with window sums (`frames/morph.py`) are shared by the
+keying engines: `frames.extract`, `frames.decontam`, `frames.logo_matte`, `video.frames` and
+`video.restoration` take these names from those two modules, not through one another.
 
 ### 6.1 Pixel-unfake path (`fit.pixel_unfake`, deterministic)
 

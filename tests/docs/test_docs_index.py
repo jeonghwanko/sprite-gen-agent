@@ -1,8 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (every leaf doc opens with its Owns line; AGENTS.md links checked; see NOTICE).
 """docs/README.md is the documentation index: every leaf doc appears there exactly once,
-grouped under the taxonomy, and no markdown link in the repo's docs points at a file that
-does not exist. A doc added without an index line — or a link left behind by a rename —
-fails here instead of surfacing as a dead link for a reader."""
+grouped under the taxonomy, opens with the `> Owns:` line that says what it decides, and no
+markdown link in the repo's docs points at a file that does not exist. A doc added without an
+index line or an Owns line — or a link left behind by a rename — fails here instead of
+surfacing as a dead link for a reader."""
 
 from __future__ import annotations
 
@@ -34,8 +36,18 @@ def test_docs_index_lists_every_leaf_doc_exactly_once() -> None:
     assert not dupes, f"docs indexed more than once: {dupes}"
 
 
+def test_every_leaf_doc_opens_with_its_owns_line() -> None:
+    # a reader (or an agent) decides from the first lines whether a doc is the one to read
+    missing = []
+    for name in sorted(_leaf_docs()):
+        head = (DOCS / name).read_text(encoding="utf-8").splitlines()[:12]
+        if not any(line.startswith("> Owns:") for line in head):
+            missing.append(name)
+    assert not missing, f"docs without a `> Owns:` line under the title: {missing}"
+
+
 def _markdown_files() -> list[Path]:
-    files = [ROOT / "README.md", ROOT / "SKILL.md", ROOT / "CHANGELOG.md", *DOCS.glob("*.md"), ROOT / "scripts" / "dev" / "README.md"]
+    files = [ROOT / "README.md", ROOT / "SKILL.md", ROOT / "AGENTS.md", ROOT / "CHANGELOG.md", *DOCS.glob("*.md"), ROOT / "scripts" / "dev" / "README.md"]
     return [f for f in files if f.is_file()]
 
 

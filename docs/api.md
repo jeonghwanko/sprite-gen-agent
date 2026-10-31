@@ -1,6 +1,6 @@
 # Python API for embedding programs
 
-> Owns: `sprite_gen.api`, the names a program that embeds sprite-gen may import. Index: [docs/README.md](README.md)
+> Owns: `sprite_gen.api`, the names a program that embeds sprite-gen may import · Index: [docs/README.md](README.md)
 
 Most callers run the `sprite-gen` command and read its JSON. A program that runs sprite-gen's Python in its own
 process imports only from `sprite_gen.api`; every other module is internal and may be renamed or moved. The AI

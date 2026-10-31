@@ -84,6 +84,7 @@ The chosen layout source is always reported (`manifest` / `grid-explicit` / `aut
 - One curator webview per run dir. Two webviews on the same run dir are last-write-wins on `curation.json`; if one is already serving that run dir, reuse its URL instead of launching another.
 - Pipeline writes are guarded by a run-dir lock (`.sprite-gen.lock`): extract/compose/export/unpack fail loudly when another sprite-gen process is writing the same run dir. Treat that error as "wait or pick another run dir", not as a retry-until-success loop.
 - In a headless/remote session add `--no-open` and give the user the URL; on the user's own machine the default auto-opens their browser.
+- Both webviews (this one and the composition canvas) refuse, with 403 before any route runs, a POST a browser sent from another page: its `Origin` must be the server's own address, and the server must be addressed as `localhost`, `*.localhost` or an IP literal (a DNS-rebound name is refused). A POST with no `Origin` (curl, a script) is unchanged (`sprite_gen/serve/origin.py`).
 
 ## Curation Sidecar (`curation.json`)
 

@@ -79,6 +79,12 @@ engine's reports name what made their frames: `interpolator.kind` is `rife-ncnn-
 `rife-torch`, and the overlapped wrap counts the binary's calls (`binary_calls`) or the torch backend's
 runs (`runs`).
 
+Torch runs on one GPU take turns. A run on `cuda` holds the GPU turn (`rife.gpu_turn`, a lock file
+in the temp directory, so one turn per temp directory: per user on Windows) and empties PyTorch's
+cache before handing it on, so two loops aligned at once share an 8 GB GPU instead of each holding the
+model's cache until one runs out of memory. Taking the turn changes no frame's bytes. Runs on `cpu`
+and the binary take no turn, nor does any run where the platform offers no file lock.
+
 #### A GPU elsewhere: `SPRITE_GEN_RIFE_EXECUTOR`
 
 A host with no GPU (a job container, say) can have the torch backend's frames made on a machine that
