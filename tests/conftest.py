@@ -157,6 +157,27 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     if why:
         for item in torched:
             item.add_marker(pytest.mark.skip(reason=why))
+    timeout = xdist_windows_timeout(config)
+    if timeout is not None:
+        for item in items:
+            if not item.get_closest_marker("timeout"):
+                item.add_marker(pytest.mark.timeout(timeout))
+
+
+# A parallel worker's default timeout on Windows. There pytest-timeout's thread method ends the worker's process on a
+# timeout ("worker crashed"), and a test of 30 to 40 s alone took over 120 s beside seven other workers on a Windows
+# desktop (2026-11-01), a different few each run. A test with its own timeout mark, or a run naming --timeout, keeps its own.
+XDIST_WINDOWS_TIMEOUT = 600
+
+
+def xdist_windows_timeout(config: pytest.Config, windows: bool = os.name == "nt") -> int | None:
+    """The default timeout this process gives its tests in place of the configured one, None where it keeps it: only
+    an xdist worker (`config.workerinput`) on Windows whose run named no --timeout and no PYTEST_TIMEOUT."""
+    if not windows or not hasattr(config, "workerinput"):
+        return None
+    if config.getoption("timeout", None) is not None or os.environ.get("PYTEST_TIMEOUT"):
+        return None
+    return XDIST_WINDOWS_TIMEOUT
 
 
 def _fail_unmeasured_skip(report: pytest.TestReport | pytest.CollectReport, node: pytest.Item | pytest.Collector) -> None:
