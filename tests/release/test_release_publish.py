@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (the gh stand-in runs on Windows too; see NOTICE).
 """The release publisher's decision: publish once, never twice, never on a guess.
 
 `gh` is replaced by a stub that records every call and keeps its "is there a release?"
@@ -69,6 +70,9 @@ class Harness:
         self.gh = tmp_path / "gh"
         self.gh.write_text(GH_STUB, encoding="utf-8")
         self.gh.chmod(0o755)
+        if os.name == "nt":  # Windows runs no shebang script (WinError 193): a .cmd hands the stub to this interpreter
+            stub, self.gh = self.gh, tmp_path / "gh.cmd"
+            self.gh.write_text(f'@"{sys.executable}" "{stub}" %*\r\n', encoding="utf-8")
 
     def run(self, *args: str, unreachable: bool = False) -> subprocess.CompletedProcess[str]:
         env = {**os.environ, "GH_STUB_STATE": str(self.state), "GH_STUB_LOG": str(self.log)}
