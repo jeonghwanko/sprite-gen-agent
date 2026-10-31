@@ -56,14 +56,14 @@ import threading
 import time
 from collections.abc import Callable, Collection, Mapping
 from pathlib import Path, PurePath
-from typing import NamedTuple
+from typing import Any, NamedTuple, cast
 
 from PIL import Image
 
 try:  # Unix advisory locks. Windows uses LockFileEx below.
     import fcntl
 except ImportError:  # pragma: no cover - non-Unix
-    fcntl = None
+    fcntl = None  # type: ignore[assignment]
 
 
 # Publish isolation requires a cross-process reader/writer lock. POSIX flock
@@ -71,6 +71,24 @@ except ImportError:  # pragma: no cover - non-Unix
 # would silently serialize readers, so the native LockFileEx mapping is used.
 # Both guards read this one availability switch and fail loud when it is absent.
 _LOCK_IMPL: str | None = "fcntl" if fcntl is not None else None
+
+# The Windows names the code past `os.name == "nt"` reads: mypy takes `fcntl` for a module, never None, so it skips the
+# block below that binds them and cannot type them.
+_OpenProcess: Any
+_WaitForSingleObject: Any
+_CloseHandle: Any
+_CreateFileW: Any
+_SYNCHRONIZE: Any
+_WAIT_SIGNALED: Any
+_WAIT_TIMEOUT: Any
+_ERROR_ACCESS_DENIED: Any
+_ERROR_INVALID_PARAMETER: Any
+_GENERIC_WRITE: Any
+_FILE_SHARE_READ_WRITE: Any
+_CREATE_NEW: Any
+_FILE_ATTRIBUTE_NORMAL: Any
+_FILE_FLAG_OPEN_REPARSE_POINT: Any
+_INVALID_HANDLE_VALUE: Any
 
 if fcntl is None and os.name == "nt":  # pragma: no cover - Windows-only backend
     try:
@@ -428,16 +446,16 @@ def _pid_alive(pid: int) -> bool:
             return False
         handle = _OpenProcess(_SYNCHRONIZE, False, pid)
         if not handle:
-            error = ctypes.get_last_error()
+            error = ctypes.get_last_error()  # type: ignore[attr-defined]
             if error == _ERROR_INVALID_PARAMETER:
                 return False
             if error == _ERROR_ACCESS_DENIED:
                 return True
-            raise ctypes.WinError(error)
+            raise ctypes.WinError(error)  # type: ignore[attr-defined]
         try:
             state = _WaitForSingleObject(handle, 0)
             if state not in (_WAIT_SIGNALED, _WAIT_TIMEOUT):
-                raise ctypes.WinError(ctypes.get_last_error())
+                raise ctypes.WinError(ctypes.get_last_error())  # type: ignore[attr-defined]
             return state == _WAIT_TIMEOUT
         finally:
             _CloseHandle(handle)
@@ -567,8 +585,8 @@ def _make_entry(lock_path: Path) -> int:
         handle = _CreateFileW(str(lock_path), _GENERIC_WRITE, _FILE_SHARE_READ_WRITE, None, _CREATE_NEW,
                               _FILE_ATTRIBUTE_NORMAL | _FILE_FLAG_OPEN_REPARSE_POINT, None)
         if handle == _INVALID_HANDLE_VALUE:
-            error = ctypes.get_last_error()
-            failed = OSError(0, ctypes.FormatError(error), str(lock_path), error)  # winerror 로 errno 와 하위 클래스가 정해진다
+            error = ctypes.get_last_error()  # type: ignore[attr-defined]
+            failed = OSError(0, ctypes.FormatError(error), str(lock_path), error)  # type: ignore[attr-defined]  # winerror 로 errno 와 하위 클래스가 정해진다
             if error == _ERROR_ACCESS_DENIED:
                 try:
                     taken = not stat.S_ISREG(os.lstat(lock_path).st_mode)
@@ -579,7 +597,7 @@ def _make_entry(lock_path: Path) -> int:
                                           str(lock_path)) from failed
             raise failed
         try:
-            return msvcrt.open_osfhandle(handle, 0)  # O_TEXT 가 없으면 바이너리, 접근은 핸들의 것(쓰기)
+            return msvcrt.open_osfhandle(handle, 0)  # type: ignore[attr-defined]  # O_TEXT 가 없으면 바이너리, 접근은 핸들의 것(쓰기)
         except BaseException:
             _CloseHandle(handle)
             raise
@@ -698,7 +716,7 @@ def acquire_run_dir_lock(run_dir: Path, owner: str) -> Path:
                 )
             holder: dict = {}
             with contextlib.suppress(TypeError, ValueError):  # unreadable (None) or not JSON: holder unknown
-                holder = json.loads(found.content)
+                holder = json.loads(found.content)  # type: ignore[arg-type]
             pid = holder.get("pid") if isinstance(holder, dict) else None
             if isinstance(pid, int) and _pid_alive(pid):
                 raise SystemExit(
@@ -1074,7 +1092,7 @@ def write_request(run_dir: Path, request: dict) -> None:
         on_disk = {}   # 첫 발행이거나 읽을 수 없다 — 되접을 형태가 없으니 그대로 쓴다
     if not isinstance(on_disk, dict):
         on_disk = {}
-    on_disk_fit = on_disk.get("fit") if isinstance(on_disk.get("fit"), dict) else {}
+    on_disk_fit = cast("dict[str, Any]", on_disk.get("fit")) if isinstance(on_disk.get("fit"), dict) else {}
     fit = request.get("fit")
     if isinstance(fit, dict):
         restore = {current: legacy for legacy, current in LEGACY_FIT_KEYS.items()

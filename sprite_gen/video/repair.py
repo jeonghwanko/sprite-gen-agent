@@ -74,8 +74,8 @@ def union_box(frames: list[Image.Image]) -> tuple[int, int, int, int]:
     boxes = [b for b in boxes if b]
     if not boxes:
         raise ValueError("every loop frame is fully transparent")
-    return (min(b[0] for b in boxes) - BOX_MARGIN, max(0, min(b[1] for b in boxes) - BOX_MARGIN),
-            max(b[2] for b in boxes) + BOX_MARGIN, max(b[3] for b in boxes))
+    return (min(b[0] for b in boxes) - BOX_MARGIN, max(0, min(b[1] for b in boxes) - BOX_MARGIN),  # type: ignore[index]
+            max(b[2] for b in boxes) + BOX_MARGIN, max(b[3] for b in boxes))  # type: ignore[index]
 
 
 def hair_box(facing: str) -> tuple[float, float, float, float]:
@@ -165,7 +165,7 @@ def flow_states(frames: list[Image.Image], box: tuple[int, int, int, int] | None
     rows = np.where(pixels[..., 3].max(axis=(0, 2)) > 0.1)[0]
     if rows.size == 0:
         raise ValueError("every loop frame is fully transparent")
-    states = _states(pixels, FLOW_BLUR * max(1, int(rows.max() - rows.min())))
+    states = _states(pixels, FLOW_BLUR * max(1, int(rows.max() - rows.min())))  # type: ignore[call-overload]
     with _flow_memo_lock:
         _flow_memo[key] = states
         while len(_flow_memo) > FLOW_MEMO:
@@ -181,7 +181,7 @@ def clip_flow_states(frames: list[Image.Image]) -> np.ndarray:
     rows = np.where(np.max([np.asarray(f.crop(box), dtype=np.float64)[..., 3].max(axis=1) / 255.0 for f in frames], axis=0) > 0.1)[0]
     if rows.size == 0:
         raise ValueError("every loop frame is fully transparent")
-    sigma = FLOW_BLUR * max(1, int(rows.max() - rows.min()))
+    sigma = FLOW_BLUR * max(1, int(rows.max() - rows.min()))  # type: ignore[call-overload]
     return np.concatenate([_states(np.stack([np.asarray(f.crop(box), dtype=np.float64) / 255.0 for f in frames[k:k + FLOW_CHUNK]]), sigma)
                            for k in range(0, len(frames), FLOW_CHUNK)])
 
@@ -484,7 +484,7 @@ class Torso:
         features = motion_anchor._features(frame)
         rx, ry = motion_anchor.SEARCH_RADIUS
         at, edge = 0.0, False
-        for weight, reference in zip(motion_anchor.REGION_WEIGHTS, self._references):
+        for weight, reference in zip(motion_anchor.REGION_WEIGHTS, self._references):  # type: ignore[arg-type]
             costs, xs, ys = auto_motion._match_costs(reference, features, (0, 0), (rx, ry))
             iy, ix = auto_motion._best(costs, xs, ys, reference, (0, 0))
             off = 0.0
@@ -521,7 +521,7 @@ def drift_points(frame: Image.Image, torso: Torso | None = None) -> np.ndarray:
     if box is None or rows.size == 0:
         return np.full(len(DRIFT_MEASURES), np.nan)
     body = torso.x(frame, box) if torso is not None else loop_mod.body_centre(frame, box)
-    return np.array([loop_mod.foot_centre(frame, box), body, float(rows.max())])
+    return np.array([loop_mod.foot_centre(frame, box), body, float(rows.max())])  # type: ignore[call-overload]
 
 
 def mass_step(frames: list[Image.Image]) -> float:
@@ -543,7 +543,7 @@ def _surges(flow: dict[str, Any]) -> list[dict[str, Any]]:
     n = len(rel)
     if n < 2 * SURGE_AROUND + SURGE_SPAN + 1:
         return []
-    found = []
+    found: list[dict[str, Any]] = []
     for r in range(1, SURGE_SPAN + 1):
         for d in range(n):
             run = [(d + i) % n for i in range(r)]
@@ -639,7 +639,7 @@ def ease_times(times: np.ndarray, progress: np.ndarray, body: np.ndarray, bound:
         last = np.maximum(np.abs(step[:, qs, end] - step[:, ps, qs]).max(axis=0),
                           np.abs(out[:, None] - step[:, qs, end]).max(axis=0))
         total = np.maximum(cost[ps, qs], last) if limit is None else np.where(last <= limit, cost[ps, qs], np.inf)
-        k = int(total.argmin())
+        k = int(total.argmin())  # type: ignore[call-overload]
         if not np.isfinite(total[k]):
             return None
         path = [int(qs[k]), int(ps[k])]
@@ -819,7 +819,7 @@ def _ease(frames: list[Image.Image], out: list[Image.Image], interpolate: Interp
     # in every window; a stretch whose body cannot be read apart from the part keeps no beat it can show
     beat = (np.abs(after_flow["step"][stretch[:-1]][:, rest] - flow["step"][stretch[:-1]][:, rest])
             / flow["scale"][rest]).max(axis=1) if rest else np.zeros(0)
-    unbeat = not rest or float(beat.max()) > EASE_BEAT
+    unbeat = not rest or float(beat.max()) > EASE_BEAT  # type: ignore[call-overload]
     rejected = ((["fault"] if wrong else []) + (["drift"] if over else []) + (["no gain"] if part_after >= part_before else [])
                 + (["off the flow"] if off_after >= FLOW_LIMIT and off_after > off_before else [])
                 + (["a new rush"] if rushes else []) + (["the rest faster"] if faster else [])
@@ -838,7 +838,7 @@ def _ease(frames: list[Image.Image], out: list[Image.Image], interpolate: Interp
                  "step_max_after": [round(float(v), 4) for v in rest_after / flow["scale"][rest]],
                  "faster": [[round(v, 4) for v in flow["fractions"][w]] for w in faster]},
         "beat": {"bound": EASE_BEAT, "off": [round(float(v), 4) for v in beat],
-                 "off_max": round(float(beat.max()), 4) if rest else None},
+                 "off_max": round(float(beat.max()), 4) if rest else None},  # type: ignore[call-overload]
         "drift": {"measures": list(DRIFT_MEASURES), "bound": [round(float(v), 3) for v in plan["bound"]],
                   "moved": [round(float(v), 3) for v in moved], "over": over,
                   "body_mass": {"bound": mass_step([out[first[d]] for d in stretch]),
@@ -1133,7 +1133,7 @@ def overlap_wrap(frames: list[Image.Image], others: dict[str, dict[int, Image.Im
 
 
 def _give_way(frames: list[Image.Image], j: int, ghosts: dict[int, float], interpolate: Interpolate | None,
-              out: list[Image.Image], overlapped: set[int] = frozenset()) -> dict[str, Any]:
+              out: list[Image.Image], overlapped: set[int] | frozenset[int] = frozenset()) -> dict[str, Any]:
     """The round of a filmed ghost at `j` (`why` ghost), its cell replaced in `out` where it gives way.
 
     Where both frames beside it are clean, RIFE's frame half way between them is proposed and taken
@@ -1163,7 +1163,7 @@ def _give_way(frames: list[Image.Image], j: int, ghosts: dict[int, float], inter
     if taken == "rife":
         out[j] = made
     elif taken is not None:
-        out[j] = frames[beside]
+        out[j] = frames[beside]  # type: ignore[index]
     return {"why": "ghost", "target": j, "neighbours": [a, b],
             "original": {**smear(frames[j], frames[a], frames[b]), "ghost": ghosts[j]},
             "proposal": measure, **({"no_proposal": no_proposal} if no_proposal else {}), "faults": wrong,
@@ -1410,7 +1410,7 @@ def seam_bridge(frames: list[Image.Image], interpolate: Interpolate | None, *, l
             near = sorted({(a - SURGE_AROUND + i) % n for i in range(len(stretch) + 2 * SURGE_AROUND + 1)})
             reads = bool(ghost_screen([frames[k] for k in near])["reads"])
         out = list(frames)
-        made = []
+        made: list[dict[str, Any]] = []
         for k in run:
             t = between_time(a, k, b, n)
             frame = interpolate(frames[a], frames[b], t)
@@ -1499,7 +1499,7 @@ def _head_series(alphas: list[np.ndarray]) -> tuple[np.ndarray, np.ndarray, int]
     rows = np.where(np.max(np.stack(alphas), axis=0).max(axis=1) > 0.1)[0]
     if rows.size == 0:
         raise ValueError("every loop frame is fully transparent")
-    top, bottom = int(rows.min()), int(rows.max())
+    top, bottom = int(rows.min()), int(rows.max())  # type: ignore[call-overload]
     height = max(1, bottom - top)
     band = slice(top, top + max(1, int(height * HEAD_BAND)))
     xs, ys = [], []
@@ -1508,7 +1508,7 @@ def _head_series(alphas: list[np.ndarray]) -> tuple[np.ndarray, np.ndarray, int]
         mass = float(b.sum())
         xs.append(float((b.sum(axis=0) * np.arange(b.shape[1])).sum() / mass) if mass > 0 else float("nan"))
         filled = np.where(a.sum(axis=1) > 0.5)[0]
-        ys.append(float(filled.min()) if filled.size else float("nan"))
+        ys.append(float(filled.min()) if filled.size else float("nan"))  # type: ignore[call-overload]
     x = np.array(xs) / height * 100
     y = np.array(ys) / height * 100
     if not (np.isfinite(x).all() and np.isfinite(y).all()):
@@ -1565,7 +1565,7 @@ def held_side(masks: list[np.ndarray]) -> str:
     rows = np.where(stack.any(axis=(0, 2)))[0]
     if rows.size == 0:
         raise ValueError("every loop frame is fully transparent")
-    top, bottom = int(rows.min()), int(rows.max())
+    top, bottom = int(rows.min()), int(rows.max())  # type: ignore[call-overload]
     band = stack[:, top:top + max(1, int(max(1, bottom - top) * HEAD_BAND))]
     cols = np.arange(stack.shape[2])
     body, tip = stack.sum(axis=(0, 1)), band.sum(axis=(0, 1))
@@ -1614,7 +1614,7 @@ def held_edge(edges: np.ndarray, start: int, length: int) -> dict[str, Any]:
         median = np.where(counted > 0, np.nanmedian(np.where(counted > 0, steps, 0.0), axis=0), np.nan)
         read = np.isfinite(terms).sum(axis=0)
         mean = np.where(read > 0, np.nansum(terms, axis=0) / np.maximum(read, 1), np.nan)
-    floor = max(1.0, HELD_EDGE_FLOOR * float(rows.max() - rows.min()))
+    floor = max(1.0, HELD_EDGE_FLOOR * float(rows.max() - rows.min()))  # type: ignore[call-overload]
     ratio = mean / np.maximum(median, floor)
     ratio = ratio[np.isfinite(ratio)]
     if ratio.size == 0:

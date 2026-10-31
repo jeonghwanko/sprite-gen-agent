@@ -76,7 +76,7 @@ import sys
 import tempfile
 import zipfile
 from pathlib import Path
-from typing import Callable, Iterator
+from typing import Any, Callable, Iterator
 
 import PIL
 from PIL import Image, ImageFilter, PngImagePlugin
@@ -517,8 +517,8 @@ def inputs(a: Image.Image, b: Image.Image) -> tuple[list[np.ndarray], list[np.nd
     if a.size != b.size:
         raise ValueError(f"rife: frames differ in size ({a.size} vs {b.size})")
     fa, fb = (np.asarray(f.convert("RGBA"), dtype=np.float32) / 255.0 for f in (a, b))
-    return ([np.uint8(np.clip(bleed(x), 0, 1) * 255 + 0.5) for x in (fa, fb)],
-            [np.uint8(x[..., 3] * 255 + 0.5) for x in (fa, fb)])
+    return ([np.uint8(np.clip(bleed(x), 0, 1) * 255 + 0.5) for x in (fa, fb)],  # type: ignore[misc]
+            [np.uint8(x[..., 3] * 255 + 0.5) for x in (fa, fb)])  # type: ignore[misc]
 
 
 def _grey(cover: np.ndarray) -> np.ndarray:
@@ -572,7 +572,7 @@ def _joined(rgb: np.ndarray, alpha: np.ndarray) -> Image.Image:
     rgb, alpha = rgb.astype(np.float32) / 255.0, alpha.astype(np.float32) / 255.0
     alpha = np.where(alpha < ALPHA_FLOOR, 0.0, alpha)
     out = np.dstack([np.where(alpha[..., None] > 0, rgb, 0.0), alpha])
-    return Image.fromarray(np.uint8(np.clip(out, 0, 1) * 255 + 0.5), "RGBA")
+    return Image.fromarray(np.uint8(np.clip(out, 0, 1) * 255 + 0.5), "RGBA")  # type: ignore[arg-type]
 
 
 def _turned(x: np.ndarray, geometry: tuple[bool, int]) -> np.ndarray:
@@ -613,7 +613,7 @@ def passes(a: Image.Image, b: Image.Image, t: float, *, binary: Path, model: Pat
 
 
 def _mask(mask: np.ndarray, size: int, op: type) -> np.ndarray:
-    return np.asarray(Image.fromarray(np.uint8(mask) * 255).filter(op(size))) > 0
+    return np.asarray(Image.fromarray(np.uint8(mask) * 255).filter(op(size))) > 0  # type: ignore[arg-type]
 
 
 def _square_min(a: np.ndarray, r: int, **pad) -> np.ndarray:
@@ -806,7 +806,7 @@ def _match(pa: np.ndarray, pb: np.ndarray, t: float, box: tuple[int, int, int, i
             key = (cost, vy * vy + vx * vx, vy, vx)
             if best is None or key < best:
                 best = key
-    return best[2], best[3]
+    return best[2], best[3]  # type: ignore[index]
 
 
 def _travel(pa: np.ndarray, pb: np.ndarray, t: float, box: tuple[int, int, int, int], reach: int) -> tuple[int, int]:
@@ -966,6 +966,7 @@ def _matched(free: dict[int, list[tuple[float, int, int]]], side: int) -> bool:
     """Whether each of the made frame's holes `free` names can keep a hole of one neighbour (`side` 1, a; 2, b) of its
     own among those its free triples hold there: an augmenting path for each in turn (Kuhn's matching)."""
     held = dict.fromkeys(free, 0)
+    x: Any  # a free triple here, then a neighbour's hole as its bit below
     for i, f in free.items():
         for x in f:
             held[i] |= x[side]
@@ -1001,7 +1002,7 @@ def _searched(cands: dict[int, list[tuple[float, int, int]]]) -> list[int]:
     its cheapest free triple. The search ends at a set pairing every hole, since every such set pairs the same holes.
     Where it runs past HOLE_PAIR_STEPS steps none of the group's holes is paired (docs/loop-repair.md section 4)."""
     best: tuple[int, float, tuple[int, ...]] = (-1, 0.0, ())
-    stack = [(tuple(sorted(cands)), 0, 0, 0, 0.0, ())]
+    stack: list[tuple[tuple[int, ...], int, int, int, float, tuple[int, ...]]] = [(tuple(sorted(cands)), 0, 0, 0, 0.0, ())]
     for _ in range(HOLE_PAIR_STEPS):
         if not stack:
             break
@@ -1073,7 +1074,7 @@ def _local_range(x: np.ndarray) -> np.ndarray:
     """Per pixel, the largest over the channels of max - min within CROSSFADE_RANGE pixels."""
     out = np.zeros(x.shape[:2], dtype=np.float32)
     for c in range(x.shape[2]):
-        channel = Image.fromarray(np.uint8(np.clip(x[..., c], 0, 1) * 255 + 0.5), "L")
+        channel = Image.fromarray(np.uint8(np.clip(x[..., c], 0, 1) * 255 + 0.5), "L")  # type: ignore[arg-type]
         hi = np.asarray(channel.filter(ImageFilter.MaxFilter(CROSSFADE_RANGE)), dtype=np.float32)
         lo = np.asarray(channel.filter(ImageFilter.MinFilter(CROSSFADE_RANGE)), dtype=np.float32)
         out = np.maximum(out, (hi - lo) / 255.0)
@@ -1105,17 +1106,17 @@ def crossfade(made: Image.Image, a: Image.Image, b: Image.Image, t: float) -> fl
     blend &= _mask(_mask(blend, GHOST_THICK, ImageFilter.MinFilter), GHOST_THICK, ImageFilter.MaxFilter)
     if not blend.any():
         return 0.0
-    rows = np.nonzero((np.maximum.reduce([fa[..., 3], fb[..., 3], m[..., 3]]) >= 0.5).any(axis=1))[0]
+    rows = np.nonzero((np.maximum.reduce([fa[..., 3], fb[..., 3], m[..., 3]]) >= 0.5).any(axis=1))[0]  # type: ignore[call-overload]
     w = max(16, round(CROSSFADE_WINDOW * (rows[-1] - rows[0] + 1)))
     changed = _mask(d > 0.08, CROSSFADE_RANGE, ImageFilter.MaxFilter)
     ys, xs = np.nonzero(blend)
-    y0, y1, x0, x1 = max(0, ys.min() - w), ys.max() + w, max(0, xs.min() - w), xs.max() + w
+    y0, y1, x0, x1 = max(0, ys.min() - w), ys.max() + w, max(0, xs.min() - w), xs.max() + w  # type: ignore[call-overload]
     rm, ra, rb = (np.zeros(d.shape, np.float32) for _ in range(3))
     for into, x in ((rm, pm), (ra, pa), (rb, pb)):
         into[y0:y1, x0:x1] = _local_range(x[y0:y1, x0:x1])
     lost, step = 0.0, w // 2
     for y in range((y0 // step) * step, y1, step):
-        for x in range((x0 // step) * step, x1, step):
+        for x in range((x0 // step) * step, x1, step):  # type: ignore[assignment]
             win = (slice(y, y + w), slice(x, x + w))
             near = changed[win]
             if blend[win].sum() < 0.01 * w * w or near.sum() < 0.1 * w * w:
@@ -1163,7 +1164,7 @@ def doubled(made: Image.Image, a: Image.Image, b: Image.Image) -> float:
     y0, y1, x0, x1 = _bounds(differ)
     pad = 2 * r + DOUBLED_SHARED + OUTLINE_REACH + DOUBLED_THICK
     box = (slice(max(0, y0 - pad), y1 + pad), slice(max(0, x0 - pad), x1 + pad))
-    m, fa, fb, lm, la, lb, both = (v[box] for v in (m, fa, fb, lm, la, lb, both))
+    m, fa, fb, lm, la, lb, both = (v[box] for v in (m, fa, fb, lm, la, lb, both))  # type: ignore[assignment]
     line_a, line_b = _lines(fa, r), _lines(fb, r)
     darkest = _square_min(np.where(m[..., 3] >= 0.5, lm, 1.0), OUTLINE_REACH, constant_values=1.0)
     left = np.zeros(both.shape, dtype=bool)
@@ -1258,7 +1259,7 @@ def pack(header: dict, arrays: dict[str, np.ndarray] | None = None) -> bytes:
     """A request or an answer between a `RemoteRunner` and its executor as bytes: `header` as UTF-8 JSON and `arrays`, in one
     compressed NumPy archive."""
     out = io.BytesIO()
-    np.savez_compressed(out, header=np.frombuffer(json.dumps(header).encode(), np.uint8), **(arrays or {}))
+    np.savez_compressed(out, header=np.frombuffer(json.dumps(header).encode(), np.uint8), **(arrays or {}))  # type: ignore[arg-type]
     return out.getvalue()
 
 
@@ -1422,7 +1423,7 @@ class RemoteRunner:
         augmentation this host asks for now (`tta()`) and whether the passes are read; the answer is that identity's, at
         the frame's size, or it is not handed on."""
         h, w = cover[0].shape
-        want = {"rgb": ((h, w, 3), np.uint8), "alpha": ((h, w), np.uint8), **({"apart": ((h, w), np.float32)} if read else {})}
+        want: dict[str, tuple[tuple[int, ...], type]] = {"rgb": ((h, w, 3), np.uint8), "alpha": ((h, w), np.uint8), **({"apart": ((h, w), np.float32)} if read else {})}
         return self._sent({"expect": self.remote, "t": t, "modes": list(tta()), "read": read},
                           {"colour_a": colour[0], "colour_b": colour[1], "cover_a": cover[0], "cover_b": cover[1]}, want)[1]
 

@@ -42,7 +42,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from functools import cache, partial
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, cast
 
 from PIL import Image
 
@@ -296,7 +296,7 @@ def build_strip(frames: list[Image.Image], *, max_cells: int = STRIP_MAX_CELLS, 
     spaced frames as fit are kept. Subsampling is recorded in the meta, never silent."""
     L = len(frames)
     lifetime = kind == "lifetime"
-    boxes = [(im.getchannel("A") if lifetime else im.getchannel("A").point(lambda v: 255 if v >= 8 else 0)).getbbox() for im in frames]
+    boxes: list[Any] = [(im.getchannel("A") if lifetime else im.getchannel("A").point(lambda v: 255 if v >= 8 else 0)).getbbox() for im in frames]
     boxes = [b for b in boxes if b]
     if not boxes:
         raise SystemExit("video-loop: every cycle frame is fully transparent")
@@ -475,7 +475,7 @@ def _repair_jumps(frames: list[Image.Image], interpolate: rife_mod.Interpolate |
             overlap.update(why="RIFE not installed — the wrap cut as filmed", rife=str(exc), install=rife_mod.install_command())
         overlapped = overlap["frames"]
         if overlap["calls"]:
-            overlap["interpolator"] = {**made_by[0], **interpolate.counts()} if made_by else {"kind": "injected"}
+            overlap["interpolator"] = {**made_by[0], **cast("rife_mod.Rife", interpolate).counts()} if made_by else {"kind": "injected"}
     wrap_calls = calls
     try:
         repaired, record = repair_mod.repair_jumps(frames, lazy, facing=facing, screen=screen, overlapped=overlapped,
@@ -532,7 +532,7 @@ def _bridge_seam(frames: list[Image.Image], interpolate: rife_mod.Interpolate | 
         record.update(why="RIFE not installed — the wrap cut as filmed", rife=str(exc), install=rife_mod.install_command())
     record["applied"] = bool(record["replaced"])
     if record["calls"]:
-        record["interpolator"] = {**made_by[0], **interpolate.counts()} if made_by else {"kind": "injected"}
+        record["interpolator"] = {**made_by[0], **cast("rife_mod.Rife", interpolate).counts()} if made_by else {"kind": "injected"}
     return frames, record
 
 
@@ -899,7 +899,7 @@ def _select_motion_auto(sel: _Selection, report_base: dict[str, Any], *, scratch
     """`--anchor motion-auto`: the search on the frames' own motion (`local_cycle.detect`), once more with the gait fallback
     where it finds nothing, then the cut its steps say (`_counted`, `_by_steps`)."""
     lo, hi = window.lo, window.hi
-    source_frames = sel.gait_frames[skip:]
+    source_frames = sel.gait_frames[skip:]  # type: ignore[index]
     if size_hold == "auto":
         # Held before the search (`_size_hold`), the cut is chosen on frames of one size whose feet stand on one
         # row. The gait fallback below then finds nothing to undo.
@@ -928,7 +928,7 @@ def _select_motion_auto(sel: _Selection, report_base: dict[str, Any], *, scratch
         # A front or back gait that walked toward the camera, or a slow one: one more
         # search, recorded (`gait_fallback`), and only after the first found nothing.
         drift = gait_fallback.cycle_drift(source_frames, min_lag=lo, max_lag=hi)
-        fallback = {"reason": str(first), "scale_drift": {k: drift[k] for k in ("height_first_px", "height_last_px", "drift", "method")},
+        fallback: dict[str, Any] = {"reason": str(first), "scale_drift": {k: drift[k] for k in ("height_first_px", "height_last_px", "drift", "method")},
                     "scale_drift_min": gait_fallback.SCALE_DRIFT_MIN, "scale_undone": False}
         if abs(drift["drift"]) >= gait_fallback.SCALE_DRIFT_MIN:
             fallback["padding_ltrb"] = list(gait_fallback.undo_padding(source_frames, drift))
@@ -962,7 +962,7 @@ def _select_motion_auto(sel: _Selection, report_base: dict[str, Any], *, scratch
         # A count given is the word on the search's cut; the crossings are not asked.
         if refused is not None:
             raise refused
-        sel.cycle = _counted(sel.cycle, steps, window=window, D=sel.D, trajectory=trajectory, frames=source_frames, moved=moved,
+        sel.cycle = _counted(cast("dict[str, Any]", sel.cycle), steps, window=window, D=sel.D, trajectory=trajectory, frames=source_frames, moved=moved,
                              detect=detect, cells=sel.cells, signals=signals)
     else:
         sel.cycle = _by_steps(sel.cycle, refused, frames=source_frames, analysis=sel.analysis, D=sel.D, trajectory=trajectory,
@@ -1081,7 +1081,7 @@ def _select_cut(sel: _Selection, run: _Run, *, scratch: _Scratch, state: str | N
                 # Its frame numbers are the search's: the clip's after its lead-in.
                 sel.cycle["step_count"]["read_from"] = skip
         # Whatever chose the cut — a search, a count, --cycle fixed or pinned — it is inside the caller's bounds.
-        window.hold(sel.cycle)
+        window.hold(cast("dict[str, Any]", sel.cycle))
     except (SystemExit, ValueError) as exc:
         refused = getattr(exc, "diagnostics", sel.cycle)
         run.refused(str(exc), _from_lead_in(refused, skip) if skip and not sel.shifted else refused,
@@ -1136,7 +1136,7 @@ def _anchor_cut(frames: list[Image.Image], run: _Run, *, anchor: str, anchor_reg
                 report_base["automatic_motion_regions"] = region_report
             correct = auto_motion.correct_cycle if anchor == "motion-auto" else motion_anchor.correct_motion
             frames, motion = correct(
-                frames, anchor_regions, coarse_dx=body_wrap_offset(frames, search=motion_anchor.COARSE_SEARCH),
+                frames, anchor_regions, coarse_dx=body_wrap_offset(frames, search=motion_anchor.COARSE_SEARCH),  # type: ignore[arg-type]
             )
         except ValueError as exc:
             raise run.refused(f"video-loop: {exc}", cycle) from exc
@@ -1177,7 +1177,7 @@ def _repair_walk(frames: list[Image.Image], run: _Run, *, cycle: dict[str, Any],
         # Two steps by the clip's own crossings, and a wrap the gate refuses: a part on a beat of its own closes on no
         # cut of two steps. The clip's frames a cycle from the cut's beside the wrap make it again (the overlapped wrap),
         # unless it is turned off.
-        wrap = ({"others": cycle_apart(files, start=i, length=L, skip=skip, analysis=analysis, motion=motion,
+        wrap = ({"others": cycle_apart(files, start=i, length=L, skip=skip, analysis=cast("dict[str, Any]", analysis), motion=motion,
                                        size=frames[0].size), "seam_max": seam_max} if overlap_wrap == "on"
                 else {"off": OVERLAP_WRAP_OFF, "seam_max": seam_max})
     try:
@@ -1429,7 +1429,7 @@ def _read_seam(strip: Image.Image, strip_meta: dict[str, Any], strip_of: Any, re
     read_idx = seam_idx
     if by_drawing and not on_cells:
         # The source frames the distances were read on, each drawing's first.
-        firsts, seam_read = seam_drawings([gait_frames[j] for j in seam_idx])
+        firsts, seam_read = seam_drawings([gait_frames[j] for j in seam_idx])  # type: ignore[index]
         read_idx = [seam_idx[k] for k in firsts]
     resampled_adjacent = float(np.mean([D[read_idx[k], read_idx[k + 1]] for k in range(len(read_idx) - 1)]))
     resampled_seam = float(D[read_idx[-1], read_idx[0]])
@@ -1441,7 +1441,7 @@ def _read_seam(strip: Image.Image, strip_meta: dict[str, Any], strip_of: Any, re
     if on_cells or ramped:
         # The actual corrected/repaired/resampled strip cells, with the same limit — a cell given way to the frame
         # beside it as filmed (`seam_as_filmed`), on the strip the cut makes with those frames; a walk's between its drawings.
-        cells = resampled_cells(*strip_of(seam_frames), idx, L) if as_filmed else pick
+        cells = resampled_cells(*strip_of(seam_frames), idx, L) if as_filmed else pick  # type: ignore[call-arg]
         on, cells_read = seam_drawings(cells) if by_drawing else (list(range(len(cells))), None)
         adjacent, wrap, steps = _seam_on_cells([cells[k] for k in on])
     if ramped:
@@ -1565,8 +1565,8 @@ def _write_previews(pick: list[Image.Image], run: _Run, *, cycle: dict[str, Any]
         shown = shown_runs(pick)
         gif_report = verify_animation(gif_path, expect_frames=shown_runs(gif_pick), check_stale=False,
                                       **({"expected_loop": None} if single_play else {}),
-                                      **({"background": gif_background} if gif_background is not None else {}))
-        webp_report = verify_animation(webp_path, expect_frames=shown, check_stale=True, **({"expected_loop": 1} if single_play else {}))
+                                      **({"background": gif_background} if gif_background is not None else {}))  # type: ignore[arg-type]
+        webp_report = verify_animation(webp_path, expect_frames=shown, check_stale=True, **({"expected_loop": 1} if single_play else {}))  # type: ignore[arg-type]
     except SystemExit as exc:
         # The GIF or WebP could not be written (no img2webp) or failed its verification: nothing of the cut is handed over.
         run.refused(str(exc), cycle, cut_written=True)
@@ -1645,7 +1645,7 @@ def _cut_loop(
     # Each frame's mass, read only where a mode reads it (a cut played once, an effect's lifetime, a one-shot, a periodic
     # search failed over to one): a walk's search never does. An effect's is read at full size (`effect.frame_masses`).
     masses = cache(partial(effect.frame_masses if cycle_mode == "lifetime" else frame_masses, files))
-    report_base = {
+    report_base: dict[str, Any] = {
         "kind": "sprite-gen-video-loop-report", "frames_dir": str(frames_dir),
         "source": evidence_mod.source_identity(files, fps),
         "producer": evidence_mod.engine_identity(),
@@ -1667,7 +1667,7 @@ def _cut_loop(
     _select_cut(sel, run, scratch=scratch, state=state, prof=prof, fps=fps, window=window, skip=skip, n=n, masses=masses,
                 cycle_mode=cycle_mode, anchor=anchor, start=start, length=length, size_hold=size_hold, seam_max=seam_max,
                 seam_pop_max=seam_pop_max, steps=steps)
-    cycle, files, D, gait_frames, periodic_attempt = sel.cycle, sel.files, sel.D, sel.gait_frames, sel.periodic_attempt
+    cycle, files, D, gait_frames, periodic_attempt = cast("dict[str, Any]", sel.cycle), sel.files, sel.D, sel.gait_frames, sel.periodic_attempt
     i, L = cycle["start"], cycle["length"]
     if "steps" in cycle:
         # A cut two steps long is one cycle: how much of a second the clip holds past it (after its lead-in).
@@ -1853,8 +1853,8 @@ def run(**kwargs: object) -> int:
         fps=float(kwargs.get("fps") or 24.0), state=kwargs.get("state"),  # type: ignore[arg-type]
         min_len=kwargs.get("min_len"), max_len=kwargs.get("max_len"), n_out=kwargs.get("n_out"),  # type: ignore[arg-type]
         seam_max=float(kwargs.get("seam_max") or SEAM_RATIO_MAX), name=str(kwargs.get("name") or "loop"), report_path=kwargs.get("report"),  # type: ignore[arg-type]
-        cycle_mode=str(kwargs.get("cycle") or "auto"), gif_fps=float(kwargs.get("gif_fps") or GIF_FPS_DEFAULT),
-        start=kwargs.get("start"), length=kwargs.get("length"), strip_height=int(kwargs.get("strip_height") or STRIP_MAX_HEIGHT),  # type: ignore[arg-type]
+        cycle_mode=str(kwargs.get("cycle") or "auto"), gif_fps=float(kwargs.get("gif_fps") or GIF_FPS_DEFAULT),  # type: ignore[arg-type]
+        start=kwargs.get("start"), length=kwargs.get("length"), strip_height=int(kwargs.get("strip_height") or STRIP_MAX_HEIGHT),  # type: ignore[arg-type, call-overload]
         body_height=kwargs.get("body_height"),  # type: ignore[arg-type]
         anchor=kwargs.get("anchor"),  # None resolves by state inside run_loop
         anchor_regions=kwargs.get("anchor_region"),

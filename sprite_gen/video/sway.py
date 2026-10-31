@@ -274,7 +274,7 @@ def _overlay(onto: tuple[list[np.ndarray], int, int], levels: tuple[np.ndarray, 
     # is gone, so a tie is a tie on every machine, and it goes to the move nearest none.
     overlap = np.rint(np.fft.irfft2(spectrum, shape)[:height, :width]).astype(np.int64)
     shifts = [(int(j) - (a[0].shape[1] - 1) + xb - xa, int(i) - (a[0].shape[0] - 1) + yb - ya)
-              for i, j in np.argwhere(overlap == overlap.max())]
+              for i, j in np.argwhere(overlap == overlap.max())]  # type: ignore[call-overload]
     return min(shifts, key=lambda s: (s[0] ** 2 + s[1] ** 2, s[1], s[0]))
 
 
@@ -539,7 +539,7 @@ def region_weight(xx: np.ndarray, yy: np.ndarray, region: tuple[float, ...],
     return breathe_mod.flat_cos2(r, flat_of(region))
 
 
-def move_field(xx: np.ndarray, yy: np.ndarray, moves: list[tuple[list[tuple[float, float, float, float]], tuple[float, float]]],
+def move_field(xx: np.ndarray, yy: np.ndarray, moves: list[tuple[list[tuple[float, ...]], tuple[float, float]]],
                shift: tuple[float, float]) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
     """Per pixel of a cell: whether a region of `moves`, carried by `shift`, covers it, and how far it is moved
     across and down. None when no region covers a pixel of the cell."""
@@ -549,7 +549,7 @@ def move_field(xx: np.ndarray, yy: np.ndarray, moves: list[tuple[list[tuple[floa
         for region in regions:
             weight = np.maximum(weight, region_weight(xx, yy, region, shift))
         weights.append(weight)
-    inside = np.logical_or.reduce([weight > 0 for weight in weights])
+    inside = np.logical_or.reduce([weight > 0 for weight in weights])  # type: ignore[call-overload]
     if not inside.any():
         return None
     largest = np.argmax(np.stack([math.hypot(*offset) * weight for (_, offset), weight in zip(moves, weights)]), axis=0)[None]
@@ -558,7 +558,7 @@ def move_field(xx: np.ndarray, yy: np.ndarray, moves: list[tuple[list[tuple[floa
     return inside, move_x, move_y
 
 
-def move_regions(cell: Image.Image, moves: list[tuple[list[tuple[float, float, float, float]], tuple[float, float]]],
+def move_regions(cell: Image.Image, moves: list[tuple[list[tuple[float, ...]], tuple[float, float]]],
                  shift: tuple[float, float]) -> Image.Image:
     """`cell` with each group of regions moved by its own offset (dx, dy), their centres carried by `shift`.
 
@@ -655,7 +655,8 @@ def read_breath(path: Path, lag: float | None, *, verb: str = VERB) -> Breath:
         raise SystemExit(f"{verb}: --breathe {path}: a {mode} breath — the part follows a smooth breath, which rests at the "
                          "first cell (a pixel breath's travelling wave moves it)")
     try:
-        cfg = state_breathe({"states": {"frames": {"breathe": report["config"]}}}, "frames")
+        # A dict: the config is a dict (checked above), so state_breathe has a breathe entry to read.
+        cfg: dict[str, Any] = state_breathe({"states": {"frames": {"breathe": report["config"]}}}, "frames")  # type: ignore[assignment]
     except SystemExit as exc:
         raise SystemExit(f"{verb}: --breathe {path}: its config is refused as a sidecar's would be — {exc}") from exc
     phases = report["phases"]
@@ -723,7 +724,7 @@ def read_ask(regions: list[tuple[float, ...]], *, gain: float | None = None, fre
     if breathe is None:
         freq = FREQ_DEFAULT if freq is None else float(freq)
         zeta = ZETA_DEFAULT if zeta is None else float(zeta)
-    if gain < 0 or (breathe is None and (freq <= 0 or not 0 < zeta)):
+    if gain < 0 or (breathe is None and (freq <= 0 or not 0 < zeta)):  # type: ignore[operator]
         raise SystemExit(f"{verb}: --gain must be 0 or more, --freq and --zeta above 0")
     if gain_across is not None:
         gain_across = float(gain_across)
@@ -874,7 +875,7 @@ def solve(request: Request, strip: Image.Image, *, strip_name: str, verb: str = 
         raise SystemExit(f"{verb}: {strip_name} is {strip.size[0]}x{strip.size[1]}, the strip meta says {w * n}x{h}; "
                          "cut the loop again (video-loop)")
     cells = _cells(strip, n, w, h)
-    read_on = None
+    read_on: dict[str, Any] | None = None
     if ask.read_on is not None:
         if strip_sha256 is None:
             raise ValueError("solve: a request with read_on needs the strip's sha256")
@@ -883,8 +884,8 @@ def solve(request: Request, strip: Image.Image, *, strip_name: str, verb: str = 
     def transported() -> tuple[np.ndarray, np.ndarray, int, list[int]]:
         # The cut's own reading, cell for cell: the regions are where they were read, on the cut's cell 0, and the
         # damped mass answers that motion in this loop's order, length and frame time.
-        rows, cols, height0, worn, cut_cells = transported_motion(meta, cells, ask.read_on, verb=verb)
-        read_on.update(policy=TRANSPORT_POLICY, cut_cells=cut_cells)
+        rows, cols, height0, worn, cut_cells = transported_motion(meta, cells, ask.read_on, verb=verb)  # type: ignore[arg-type]
+        read_on.update(policy=TRANSPORT_POLICY, cut_cells=cut_cells)  # type: ignore[union-attr]
         return rows, cols, height0, worn
 
     carried = read_on is not None and read_on["relation"] == "transported"
@@ -899,9 +900,9 @@ def _unit_move(ask: Ask, rows: np.ndarray, cols: np.ndarray, frame_ms: float | N
     if ask.breath is not None:
         across, down = ask.breath.unit()
     else:
-        fps = 1000.0 / frame_ms
-        across = sway_offsets(cols, fps, freq=ask.freq, zeta=ask.zeta, gain=1.0)
-        down = sway_offsets(rows, fps, freq=ask.freq, zeta=ask.zeta, gain=1.0)
+        fps = 1000.0 / frame_ms  # type: ignore[operator]
+        across = sway_offsets(cols, fps, freq=ask.freq, zeta=ask.zeta, gain=1.0)  # type: ignore[arg-type]
+        down = sway_offsets(rows, fps, freq=ask.freq, zeta=ask.zeta, gain=1.0)  # type: ignore[arg-type]
     return ask.across * across, down
 
 
@@ -1004,7 +1005,7 @@ def _keep_floor(ask: Ask, radii: list[float], gains: list[float], held: list[boo
     every region is — or, under `--on-fold refuse`, when the floor lowers any."""
     floor, requested = ask.stretch_floor, ask.gain
     per = [stretch_per_gain((region[2], region[3]), *move, flat=flat_of(region)) for region in ask.regions]
-    floored = [floor_gain(requested, q, floor) for q, _ in per]
+    floored = [floor_gain(requested, q, floor) for q, _ in per]  # type: ignore[arg-type]
     lowered = [g if hold else min(g, f) for g, f, hold in zip(gains, floored, held)]
     by_floor = [not hold and g < rule for g, rule, hold in zip(lowered, gains, held)]
     if any(by_floor) and ask.on_fold == "refuse":
@@ -1239,13 +1240,13 @@ def run(**kwargs: object) -> int:
     if kwargs.get("frames") is not None:
         if kwargs.get("out") is None:
             raise SystemExit(f"{verb}: --frames needs --out, a new folder for the swayed frames")
-        result = sway_frames(Path(str(kwargs["frames"])), Path(str(kwargs["out"])), list(kwargs["region"]),  # type: ignore[arg-type]
+        result = sway_frames(Path(str(kwargs["frames"])), Path(str(kwargs["out"])), list(kwargs["region"]),  # type: ignore[call-overload]
                              fps=kwargs.get("fps"), reference=kwargs.get("reference"), verb=verb, **asked)  # type: ignore[arg-type]
     else:
         for flag in ("out", "fps", "reference"):
             if kwargs.get(flag) is not None:
                 raise SystemExit(f"{verb}: --{flag} goes with --frames; a loop directory is swayed where it is")
-        result = sway_loop(Path(str(kwargs["loop_dir"])), list(kwargs["region"]), verb=verb, **asked)  # type: ignore[arg-type]
+        result = sway_loop(Path(str(kwargs["loop_dir"])), list(kwargs["region"]), verb=verb, **asked)  # type: ignore[arg-type, call-overload]
     fold = result["fold"]
     own = "held" in fold["regions"][0]  # the regions took gains of their own
     for note in fold_notes(result, verb):
@@ -1268,7 +1269,7 @@ def main(argv: list[str] | None = None, verb: str = VERB) -> int:
 
 
 # The old names, kept: the same functions, called as they always were (the old verb in what they say).
-def follow_loop(loop_dir: Path, regions: list[tuple[float, float, float, float]], **kwargs: Any) -> dict[str, Any]:
+def follow_loop(loop_dir: Path, regions: list[tuple[float, ...]], **kwargs: Any) -> dict[str, Any]:
     return sway_loop(loop_dir, regions, **{"verb": OLD_VERB, **kwargs})
 
 

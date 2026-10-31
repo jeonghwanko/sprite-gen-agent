@@ -74,7 +74,7 @@ def estimate_background(image: Image.Image) -> tuple[int, int, int]:
     not poison the estimate. Falls back to ivory when no corner qualifies.
     """
     width, height = image.size
-    px = image.load()
+    px: Any = image.load()
     corners = [(0, 0), (width - 1, 0), (0, height - 1), (width - 1, height - 1)]
     samples = []
     for x, y in corners:
@@ -99,7 +99,7 @@ def corner_average(image: Image.Image) -> tuple[int, int, int]:
     corner pixels are converted to RGBA, so a large still is not converted whole.
     """
     width, height = image.size
-    corners = [
+    corners: list[Any] = [
         image.crop((x, y, x + 1, y + 1)).convert("RGBA").getpixel((0, 0))
         for x, y in ((0, 0), (width - 1, 0), (0, height - 1), (width - 1, height - 1))
     ]
@@ -178,7 +178,7 @@ def _soft_erode(image: Image.Image, amount: float) -> None:
     if amount <= 0:
         return
     width, height = image.size
-    px = image.load()
+    px: Any = image.load()
     full = int(amount)
     frac = amount - full
 
@@ -220,7 +220,7 @@ def _matte_route(
 ) -> tuple[Image.Image, dict[str, Any]]:
     """White/achromatic background → position flood-fill + decontaminated soft alpha."""
     width, height = image.size
-    src = image.load()
+    src: Any = image.load()
     bg = estimate_background(image)
     mask = _background_mask(src, width, height, bg, tolerance)
     if not any(mask):
@@ -234,7 +234,7 @@ def _matte_route(
     span = hi - strength
 
     result = Image.new("RGBA", (width, height))
-    dst = result.load()
+    dst: Any = result.load()
     keyed = decontaminated = 0
     for y in range(height):
         for x in range(width):
@@ -514,10 +514,10 @@ def run(**kwargs: object) -> int:
         input_path,
         out_path,
         key=str(kwargs.get("key", "auto")),  # type: ignore[arg-type]
-        strength=int(kwargs.get("strength", STRENGTH_DEFAULT)),  # type: ignore[arg-type]
-        band=int(kwargs.get("band", BAND_DEFAULT)),  # type: ignore[arg-type]
+        strength=int(kwargs.get("strength", STRENGTH_DEFAULT)),  # type: ignore[call-overload]
+        band=int(kwargs.get("band", BAND_DEFAULT)),  # type: ignore[call-overload]
         erode=float(kwargs.get("erode", ERODE_DEFAULT)),  # type: ignore[arg-type]
-        tolerance=int(kwargs.get("tolerance", CHROMA_TOLERANCE)),  # type: ignore[arg-type]
+        tolerance=int(kwargs.get("tolerance", CHROMA_TOLERANCE)),  # type: ignore[call-overload]
         white_check_dir=out_path.parent if white_check else None,
         decontam=str(kwargs.get("decontam") or "off"),
     )
