@@ -9,6 +9,11 @@ from sprite_gen.gen import gait_motion as bridge,gen_motion
 from sprite_gen.scene import gait,gait_render
 from sprite_gen.spec import pose_geometry,gait_inputs
 
+# The module's `prepared` fixture renders and checks every walk and run frame at 1024 x 1024 and is billed to the first
+# test that asks for it: about 2 minutes on a Windows desktop alone (2026-11-01), over the default 120 s, more beside
+# other workers. Its tests are given that, a hang still a named failure.
+pytestmark = pytest.mark.timeout(600)
+
 def profile():return json.loads((Path(__file__).resolve().parents[2]/'examples/gait-mocha.json').read_text())
 def settings():return {'canvas':[1024,1024],'guide_scale':2.4,'guide_translation':[128,8],'body_scale':2.,'body_translation':[10,50],'elevation_degrees':16.,'sample_policy':'clearance-safe','description':'SYNTHETIC fixture only; not character art.'}
 
