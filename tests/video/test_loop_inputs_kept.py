@@ -26,6 +26,7 @@ from tests.video import test_stop as runs
 from tests.video.test_idle_still import _still_frames
 from sprite_gen.video import loop as loop_mod
 from sprite_gen.video import stop as stop_mod
+from conftest import symlink_or_skip
 
 
 @pytest.fixture(scope="module")
@@ -85,7 +86,7 @@ def _frames_are_cycle_refused(root: Path, still: Path):
 
 def _frames_dir_links_to_cycle_source(root: Path, still: Path):
     _place(still, root / "out" / "cycle.source")
-    (root / "in").symlink_to(root / "out" / "cycle.source", target_is_directory=True)
+    symlink_or_skip(root / "in", root / "out" / "cycle.source", target_is_directory=True)
     return root / "in", root / "out", {}, r"--frames-dir and cycle\.source in --out-dir are the same folder"
 
 
@@ -93,14 +94,14 @@ def _a_frame_linked_into_cycle_source(root: Path, still: Path):
     keyed = _place(still, root / "keyed")
     (root / "out" / "cycle.source").mkdir(parents=True)
     (keyed / "frame-0000.png").rename(root / "out" / "cycle.source" / "frame-0000.png")
-    (keyed / "frame-0000.png").symlink_to(root / "out" / "cycle.source" / "frame-0000.png")
+    symlink_or_skip(keyed / "frame-0000.png", root / "out" / "cycle.source" / "frame-0000.png")
     return keyed, root / "out", {}, r"frame-0000\.png in --frames-dir lies inside cycle\.source in --out-dir"
 
 
 def _frames_through_a_link_in_cycle_source(root: Path, still: Path):
     _place(still, root / "elsewhere" / "keyed")
     (root / "out" / "cycle.source").mkdir(parents=True)
-    (root / "out" / "cycle.source" / "hop").symlink_to(root / "elsewhere", target_is_directory=True)
+    symlink_or_skip(root / "out" / "cycle.source" / "hop", root / "elsewhere", target_is_directory=True)
     return (root / "out" / "cycle.source" / "hop" / "keyed", root / "out", {},
             r"--frames-dir goes through .*hop, inside cycle\.source in --out-dir")
 

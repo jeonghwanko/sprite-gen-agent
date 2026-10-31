@@ -184,7 +184,9 @@ def test_entrypoint_without_numpy_fails_loudly_with_the_install_path(
     assert sys.executable in stderr, (
         f"{register} failure does not name the interpreter it ran under, which is the thing the "
         f"reader has to change:\n{stderr}")
-    assert f"{ROOT}/.venv/bin/python -m pip install -e {ROOT}" in stderr, (
+    venv_python = (ROOT / ".venv" / "Scripts" / "python.exe" if sys.platform == "win32"
+                   else ROOT / ".venv" / "bin" / "python")
+    assert f"{venv_python} -m pip install -e {ROOT}" in stderr, (
         f"{register} failure does not spell out the install command for the skill venv:\n{stderr}")
 
 

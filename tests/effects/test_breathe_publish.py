@@ -22,6 +22,7 @@ import pytest
 from sprite_gen.effects import breathe as B
 
 from tests.effects.test_breathe_smooth import _bust
+from conftest import symlink_or_skip
 
 FRAMES = [f"frame-{i:03d}.png" for i in range(3)]
 NOTE = b"source notes, not a frame\n"
@@ -71,7 +72,7 @@ def test_a_source_named_like_the_old_staging_folder_is_kept(tmp_path) -> None:
 def test_a_source_linked_under_the_old_staging_name_is_kept(tmp_path) -> None:
     real = _loop(tmp_path / "loop")
     link = tmp_path / ".out.partial"
-    link.symlink_to(real, target_is_directory=True)
+    symlink_or_skip(link, real, target_is_directory=True)
     before = _tree(real)
     assert _run(link, tmp_path / "out") == 0
     assert _tree(real) == before, "링크 너머의 원본이 바뀌었다"
@@ -108,19 +109,19 @@ def _frames_inside_out(root: Path):
 
 def _out_links_to_frames(root: Path):
     src = _loop(root / "loop")
-    (root / "out").symlink_to(src, target_is_directory=True)
+    symlink_or_skip(root / "out", src, target_is_directory=True)
     return src, root / "out"
 
 
 def _out_under_a_link_into_frames(root: Path):
     src = _loop(root / "loop")
-    (root / "alias").symlink_to(src, target_is_directory=True)
+    symlink_or_skip(root / "alias", src, target_is_directory=True)
     return src, root / "alias" / "out"
 
 
 def _frames_through_a_link_inside_out(root: Path):
     _loop(root / "out" / "loop")
-    (root / "in").symlink_to(root / "out" / "loop", target_is_directory=True)
+    symlink_or_skip(root / "in", root / "out" / "loop", target_is_directory=True)
     return root / "in", root / "out"
 
 
@@ -158,7 +159,7 @@ def test_an_output_link_to_an_empty_folder_publishes_where_it_points(tmp_path) -
     target = tmp_path / "target"
     target.mkdir()
     link = tmp_path / "out"
-    link.symlink_to(target, target_is_directory=True)
+    symlink_or_skip(link, target, target_is_directory=True)
     assert _run(src, link) == 0
     assert link.is_symlink() and link.resolve() == target.resolve(), "out 링크가 바뀌었다"
     assert _names(target) == sorted([*FRAMES, "breathe.json"])
