@@ -33,6 +33,7 @@ loudly (same contract as `gen/chroma.py`).
 from __future__ import annotations
 
 from collections import deque
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -378,6 +379,7 @@ def cutout(
     decontam_edge_band: int = 0,
     decontam_history: dict[str, Any] | None = None,
     prepared: dict[str, Any] | None = None,
+    write: Callable[[Image.Image, Path], None] | None = None,
 ) -> dict[str, Any]:
     """Cut a uniform-background imported image to a clean transparent RGBA PNG.
 
@@ -391,7 +393,8 @@ def cutout(
     keeps what the matte left transparent along the top, left and right edges
     transparent (`video-frames` passes its edge band), and `decontam_history` carries a
     clip's last frame to the next (`video-frames` keeps one per clip). `prepared` is `prepare_cutout`'s
-    result for the same input and arguments, computed ahead (None on the white matte route). Returns a stats dict. Raises SystemExit if the key is unknown, the background cannot be
+    result for the same input and arguments, computed ahead (None on the white matte route). `write` saves the result at
+    `out_path` in place of `Image.save` (`video-frames` hands it to a thread of its own). Returns a stats dict. Raises SystemExit if the key is unknown, the background cannot be
     located, or any transparent pixel keeps non-zero RGB (No Silent Fallback).
     """
     if key not in ("auto", "white", "magenta", "green"):
@@ -424,7 +427,7 @@ def cutout(
                                        "reason": "the white matte has no key colour to remove"}
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    result.save(out_path)
+    (write or Image.Image.save)(result, out_path)
 
     # No Silent Fallback verification.
     from sprite_gen._deps import np
