@@ -25,6 +25,7 @@ import json
 import math
 from pathlib import Path
 import sys
+from typing import Any
 
 from PIL import Image, ImageDraw
 
@@ -154,7 +155,7 @@ class _Image:
         padded = np.pad(self.array, ((1, 0), (1, 0)))
         self.sum = padded.cumsum(0).cumsum(1)
         self.sq = (padded ** 2).cumsum(0).cumsum(1)
-        self.spreads = {}
+        self.spreads: dict[tuple[int, int], np.ndarray] = {}
 
     def ncc(self, template: np.ndarray) -> np.ndarray | None:
         """Normalized cross-correlation of every placement of `template` (OpenCV's TM_CCOEFF_NORMED)."""
@@ -271,7 +272,7 @@ def _decide(record: dict, *, min_score: float, deadband: float) -> dict:
         record.update(how="check", correction=None)
     elif record["how"] == "agree" or record["score"] is not None and record["score"] >= min_score:
         record["how"] = "agree" if record["how"] == "agree" else "head"
-        record["correction"] = 1.0 if abs(size - 1) <= deadband else round(1 / size, 4)
+        record["correction"] = 1.0 if abs(size - 1) <= deadband else round(1 / size, 4)  # type: ignore[operator]
     else:
         record.update(how="check", correction=None)
     return record
@@ -303,6 +304,8 @@ def check(reference, reference_frame: int, assets, *, wide_states=(), min_score=
                          "give --head-box; otherwise measure a larger source")
     template = _grey(ref_image.crop(box))
     ref_sha = frame_sha256(ref_image)
+    records: list[dict[str, Any]]
+    crops: dict[tuple[int, str], tuple[Any, Any, Any, Any, Any]]
     records, crops = [], {}
     for states in assets:
         for state, sequence in states.items():
@@ -310,7 +313,7 @@ def check(reference, reference_frame: int, assets, *, wide_states=(), min_score=
             wide = state in wide_states
             for index, frame in enumerate(sequence.frames):
                 frame = frame.convert("RGBA")
-                record = {"frame": label(state, index), "sha256": frame_sha256(frame), "score": None, "size": None,
+                record: dict[str, Any] = {"frame": label(state, index), "sha256": frame_sha256(frame), "score": None, "size": None,
                           "angle": None, "template": "reference"}
                 if record["sha256"] == ref_sha:
                     record.update(how="reference", size=1.0, score=1.0, angle=0.0)
@@ -466,7 +469,7 @@ def _box(value: str) -> tuple[int, int, int, int]:
     parts = value.split(",")
     if len(parts) != 4:
         raise argparse.ArgumentTypeError("X,Y,W,H")
-    return tuple(int(part) for part in parts)
+    return tuple(int(part) for part in parts)  # type: ignore[return-value]
 
 
 def _range(value: str) -> tuple[float, float]:

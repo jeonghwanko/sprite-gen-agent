@@ -120,9 +120,9 @@ class Geometry:
             raise ValueError("face.eyes must be two boxes x0,y0,x1,y1")
         if not isinstance(seeds, list) or not seeds:
             raise ValueError("face.lower_face.seeds must name at least one skin point")
-        geom = cls(size=size, mouth=tuple(float(v) for v in ints(value.get("mouth"), 2, "mouth")),
-                   eyes=tuple(ints(e, 4, "eyes[]") for e in eyes), top=int(lower.get("top", -1)),
-                   box=ints(lower.get("box"), 4, "lower_face.box"), seeds=tuple(ints(s, 2, "lower_face.seeds[]") for s in seeds),
+        geom = cls(size=size, mouth=tuple(float(v) for v in ints(value.get("mouth"), 2, "mouth")),  # type: ignore[arg-type]
+                   eyes=tuple(ints(e, 4, "eyes[]") for e in eyes), top=int(lower.get("top", -1)),  # type: ignore[misc]
+                   box=ints(lower.get("box"), 4, "lower_face.box"), seeds=tuple(ints(s, 2, "lower_face.seeds[]") for s in seeds),  # type: ignore[arg-type, misc]
                    band_bottom=int(value.get("band_bottom", -1)))
         w, h = size
         x0, y0, x1, y1 = geom.box
@@ -474,7 +474,7 @@ def fit(band: Band, feat: np.ndarray, geom: Geometry) -> dict[str, Any]:
         return rr["cost"], m @ shift(-rr["sx"], -rr["sy"]), rr["edge"]
 
     def best_on(t: np.ndarray, scales: np.ndarray, thetas: np.ndarray) -> dict[str, Any]:
-        costs = np.array([[at(t, s, th)[0] for th in thetas] for s in scales])
+        costs: Any = np.array([[at(t, s, th)[0] for th in thetas] for s in scales])
         i, j = np.unravel_index(np.argmin(costs), costs.shape)
 
         def vertex(a: float, b: float, c: float) -> float:
@@ -693,8 +693,8 @@ def face_sprite(native: Image.Image, to_native: np.ndarray, w0: np.ndarray, refe
     w_nat = warp(w_face, back, native.size)
     w_nat[w_nat < 1.0 / 512] = 0
     ys, xs = np.nonzero(w_nat > 0)
-    x0, y0 = max(int(xs.min()) - 2, 0), max(int(ys.min()) - 2, 0)
-    x1, y1 = min(int(xs.max()) + 3, native.size[0]), min(int(ys.max()) + 3, native.size[1])
+    x0, y0 = max(int(xs.min()) - 2, 0), max(int(ys.min()) - 2, 0)  # type: ignore[call-overload]
+    x1, y1 = min(int(xs.max()) + 3, native.size[0]), min(int(ys.max()) + 3, native.size[1])  # type: ignore[call-overload]
     crop = nat[y0:y1, x0:x1].copy()
     crop[..., :3] = np.clip(crop[..., :3] + off, 0, 255)
     crop[..., 3] *= w_nat[y0:y1, x0:x1]

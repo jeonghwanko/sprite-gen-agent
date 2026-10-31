@@ -64,10 +64,10 @@ import os
 import shutil
 import sys
 from collections import deque
-from collections.abc import Iterator
+from collections.abc import Generator
 from concurrent.futures import Future, ProcessPoolExecutor, ThreadPoolExecutor
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from PIL import Image
 
@@ -248,7 +248,7 @@ def drop_specks(image: Image.Image, *, alpha_over: int = 0, diagonal: bool = Tru
     ys, starts, stops, labels, sizes = _components(rgba[..., 3] > alpha_over, diagonal=diagonal)
     if not len(ys):
         return image, 0
-    largest = int(sizes.argmax())
+    largest = int(sizes.argmax())  # type: ignore[call-overload]
     small = sizes < max(SPECK_MIN_PX, int(sizes[largest]) * SPECK_MIN_FRACTION)
     small[np.setdiff1d(np.arange(len(sizes)), labels)] = False  # only the roots are components
     if small.any() and apart > 0:
@@ -319,7 +319,7 @@ def _edge_pixels(raw: Image.Image, keyed: Image.Image, chroma_key: tuple[int, in
     residual = suspect & ~owned[piece]
     out["residual"] = residual
     if residual.any() and owned.any():
-        body = opaque & (piece == int(np.where(owned, sizes, -1).argmax()))
+        body = opaque & (piece == int(np.where(owned, sizes, -1).argmax()))  # type: ignore[call-overload]
         apart = np.zeros(len(ys), dtype=bool)  # pieces with a pixel farther than RIM_REACH from the body
         apart[piece[opaque & ~_near(body, RIM_REACH)]] = True
         out["rim"] = residual & ~apart[piece] & (sizes[piece] < SPECK_MIN_PX)
@@ -353,6 +353,7 @@ def classify_edge_contact(raw: Image.Image, keyed: Image.Image, chroma_key: tupl
 def _border(pixels: dict[str, np.ndarray] | None, frame: str) -> dict[str, Any]:
     """The drawing's own border (`extract.own_border`), read on the first frame's edge pixels that are the subject
     (`_edge_pixels`; None: it touches no edge): `edge_border` in the report."""
+    sides: list[str]
     sides, outer = [], {side: 0 for side in SIDES}
     if pixels is not None:
         sides, outer = own_border(pixels["contact"] & ~pixels["residual"])
@@ -597,7 +598,7 @@ def _key_frames(raw_files: list[Path], keyed_dir: Path, *, key: str, check_edges
                            spill_require_hue=spill == "full", decontam=decontam, decontam_fit=DECONTAM_FIT,
                            decontam_palette=clip_palette, decontam_edge_band=EDGE_ROWS, decontam_history=clip_history,
                            prepared=prepared, write=save)
-            image = save.last if save.last.mode == "RGBA" else save.last.convert("RGBA")
+            image = cast(Image.Image, save.last if save.last.mode == "RGBA" else save.last.convert("RGBA"))  # type: ignore[union-attr]
             # The specks go before anything reads the frame: the edge band, the coverage, the loop.
             image, specks = drop_specks(image)
             if specks:
@@ -620,7 +621,7 @@ def _key_frames(raw_files: list[Path], keyed_dir: Path, *, key: str, check_edges
                     row["decontam"] = {"applied": False, "reason": done.get("reason")}
                     decontam_skipped.append(str(done.get("reason")))
             if check_edges:
-                contact = edge_contact(image)
+                contact: dict[str, Any] = edge_contact(image)
                 touched = any(v > EDGE_MAX_PIXELS for v in contact.values())
                 pixels = None
                 if touched:
@@ -638,12 +639,12 @@ def _key_frames(raw_files: list[Path], keyed_dir: Path, *, key: str, check_edges
                               file=sys.stderr)
                 if touched:
                     if policy == "border":
-                        taken = _taken(pixels, border["sides"])
-                        off = pixels["contact"] & ~taken
+                        taken = _taken(pixels, border["sides"])  # type: ignore[arg-type, index]  # both set when touched
+                        off = pixels["contact"] & ~taken  # type: ignore[index]
                         contact["border"] = int(taken.sum())
-                        contact["off"] = {side: int((off & pixels["bands"][side]).sum()) for side in SIDES}
+                        contact["off"] = {side: int((off & pixels["bands"][side]).sum()) for side in SIDES}  # type: ignore[index]
                         if off.any():
-                            lone = int((off & pixels["residual"]).sum())
+                            lone = int((off & pixels["residual"]).sum())  # type: ignore[index]
                             untaken.append({"frame": src.name, **contact["off"], "subject": int(off.sum()) - lone, "residual": lone,
                                             "key_painted": contact["key_painted"]})
                     contacts.append({"frame": src.name, **contact})
@@ -667,7 +668,7 @@ def _key_frames(raw_files: list[Path], keyed_dir: Path, *, key: str, check_edges
     return report
 
 
-def _prepared(raw_files: list[Path], **arguments: Any) -> Iterator[dict[str, Any] | None]:
+def _prepared(raw_files: list[Path], **arguments: Any) -> Generator[dict[str, Any] | None, None, None]:
     """`prepare_cutout` for each frame in order, computed up to two frames per worker ahead (KEY_WORKERS);
     None for every frame when there is one worker, and `cutout` prepares the frame itself."""
     workers = min(KEY_WORKERS, len(raw_files))
@@ -787,7 +788,7 @@ def run_frames(clip: Path, out_dir: Path, *, key: str, allow_edge_contact: bool,
     shutil.rmtree(keyed_dir, ignore_errors=True)
     meta = probe(clip)
     decision = ({"mode": "off", "reason": "brightness alpha"} if alpha_mode == "brightness" else
-                decide_spill(Path(reference).expanduser().resolve(), key) if spill == "auto" else {"mode": spill, "reason": "explicit"})
+                decide_spill(Path(reference).expanduser().resolve(), key) if spill == "auto" else {"mode": spill, "reason": "explicit"})  # type: ignore[arg-type]
     files = extract(clip, raw_dir, meta["stream_index"])
     head = {"kind": "sprite-gen-video-frames-report", "clip": str(clip), "out_dir": str(out_dir), "raw_dir": str(raw_dir)}
     try:
@@ -806,7 +807,7 @@ def run_frames(clip: Path, out_dir: Path, *, key: str, allow_edge_contact: bool,
     if source_manifest is not None:
         from sprite_gen.video import source
         Path(source_manifest).parent.mkdir(parents=True, exist_ok=True)
-        record = source.manifest(clip=clip, canvas=Path(reference), frames_report=target,
+        record = source.manifest(clip=clip, canvas=Path(reference), frames_report=target,  # type: ignore[arg-type]
                                  files=sorted(keyed_dir.glob("*.png")),
                                  timestamps=source.timestamps(clip, meta["stream_index"]))
         atomic_write_text(Path(source_manifest), json.dumps(record, indent=2, allow_nan=False) + "\n")
@@ -833,8 +834,8 @@ def run(**kwargs: object) -> int:
                          allow_edge_contact=bool(kwargs.get("allow_edge_contact")), report_path=kwargs.get("report"),  # type: ignore[arg-type]
                          spill=str(kwargs.get("spill") or "small"), reference=kwargs.get("reference"),  # type: ignore[arg-type]
                          allow_subject_edge_contact=bool(kwargs.get("allow_subject_edge_contact")),
-                         decontam=str(kwargs.get("decontam") or DECONTAM_DEFAULT), source_manifest=kwargs.get("source_manifest"),
-                         alpha_mode=str(kwargs.get("alpha_mode") or "chroma"))  # type: ignore[arg-type]
+                         decontam=str(kwargs.get("decontam") or DECONTAM_DEFAULT), source_manifest=kwargs.get("source_manifest"),  # type: ignore[arg-type]
+                         alpha_mode=str(kwargs.get("alpha_mode") or "chroma"))
     summary = {k: payload[k] for k in ("clip", "keyed_dir", "width", "height", "fps", "frames", "codec", "pix_fmt", "audio_streams", "alpha_zero_pct_min", "alpha_zero_pct_max", "edge_contacts", "edge_policy", "spill", "report")}
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     line = decontam_warning(payload["decontam"])

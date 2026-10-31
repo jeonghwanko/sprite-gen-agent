@@ -8,7 +8,7 @@ import argparse
 import json
 from pathlib import Path
 from statistics import mean, pstdev
-from typing import Any
+from typing import Any, cast
 
 from PIL import Image, ImageChops
 
@@ -95,7 +95,7 @@ def _strip_for_state(run_dir: Path, request: dict[str, Any], state: str, args: a
         return None
     chroma_config = dict(request.get("chroma") or {})
     chroma_mode = args.chroma_mode if args.chroma_mode is not None else str(chroma_config.get("mode", "rgb"))
-    chroma_key = tuple(int(value) for value in request["chroma_key"]["rgb"])
+    chroma_key = cast(tuple[int, int, int], tuple(int(value) for value in request["chroma_key"]["rgb"]))
     unmix_reach = (
         args.fringe_unmix_reach
         if args.fringe_unmix_reach is not None
@@ -107,7 +107,7 @@ def _strip_for_state(run_dir: Path, request: dict[str, Any], state: str, args: a
         else float(chroma_config.get("spill_max_fraction", 0.005))
     )
     decontam = args.decontam if args.decontam is not None else str(chroma_config.get("decontam", "off"))
-    decontam_kwargs = {} if decontam == "off" else {"decontam": decontam}
+    decontam_kwargs: dict[str, Any] = {} if decontam == "off" else {"decontam": decontam}
     with Image.open(raw_path) as opened:
         if chroma_mode == "ycbcr":
             notes: list[str] = []
@@ -142,7 +142,7 @@ def _frames_from_raw(strip: Image.Image, expected: int, request: dict[str, Any])
 def _rgb_histogram(image: Image.Image) -> list[float]:
     bins = [0] * HISTOGRAM_BINS
     total = 0
-    for red, green, blue, alpha in image.convert("RGBA").getdata():
+    for red, green, blue, alpha in image.convert("RGBA").getdata():  # type: ignore[attr-defined]
         if alpha <= 16:
             continue
         index = (red // 64) * 16 + (green // 64) * 4 + (blue // 64)
@@ -199,7 +199,7 @@ def _motion_presence(frames: list[Image.Image]) -> float:
         b = right.convert("RGBA").resize((64, 64), Image.Resampling.BILINEAR)
         diff = ImageChops.difference(a, b)
         total = 0
-        for pixel in diff.getdata():
+        for pixel in diff.getdata():  # type: ignore[attr-defined]
             total += pixel[0] + pixel[1] + pixel[2] + pixel[3]
         values.append(total / (64 * 64 * 4 * 255))
     return mean(values) if values else 0.0
@@ -310,7 +310,7 @@ def _inspect_run_impl(run_dir: Path, states: str = "all", **kwargs: object) -> d
         if not frames:
             strip = _strip_for_state(run_dir, request, state, args)
             if strip is None:
-                row = {
+                row: dict[str, Any] = {
                     "state": state,
                     "source": "missing",
                     "expected_frames": expected,

@@ -47,11 +47,12 @@ import zipfile
 try:
     from PIL import Image
 except ImportError:  # pragma: no cover — 파이프라인 필수 의존성이지만 서버는 살아있게
-    Image = None
+    Image = None  # type: ignore[assignment]
 import webbrowser
 from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import cast
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
 from sprite_gen.effects.breathe import (DEFAULT_DEPTH, DEFAULT_LAG, freeze_anatomy,
@@ -190,7 +191,7 @@ def _base_grid_response(run_dir: Path, base_path: Path) -> dict:
         cleaned = remove_chroma_background_ycbcr(opened.convert("RGBA"), chroma)
     box = solid_alpha_bbox(cleaned) or cleaned.getbbox()
     if not box:
-        result = {"grid": None, "note": "base has no content to detect a grid on"}
+        result: dict = {"grid": None, "note": "base has no content to detect a grid on"}
     else:
         tight = cleaned.crop(box)
         # 여기서 쓰는 위상은 `detect_pixel_grid` 의 히스토그램 위상이고, 추출 스냅이 쓰는
@@ -697,7 +698,7 @@ def _recolor_info(run_dir: Path, curation: dict | None) -> dict | None:
         })
     base_name = str(report.get("base") or "")
     base_path = run_dir / base_name if base_name else None
-    base_present = bool(base_name) and base_path.is_file()
+    base_present = bool(base_name) and base_path.is_file()  # type: ignore[union-attr]
     picked = recolor_pick(curation)
     return {
         "dir": VARIANTS_DIRNAME,
@@ -707,7 +708,7 @@ def _recolor_info(run_dir: Path, curation: dict | None) -> dict | None:
         "tolerance": report.get("tolerance"),
         "base": {
             "name": base_name,
-            "url": (_url("run", base_name) + f"?v={int(base_path.stat().st_mtime)}") if base_present else None,
+            "url": (_url("run", base_name) + f"?v={int(base_path.stat().st_mtime)}") if base_present else None,  # type: ignore[union-attr]
             "present": base_present,
         },
         "variants": variants,
@@ -753,7 +754,7 @@ def _heal_attempt_key(run_dir: Path) -> tuple:
     raw_dir = run_dir / "raw"
     if raw_dir.is_dir():
         paths.extend(path for path in raw_dir.rglob("*") if path.is_file())
-    fingerprints = []
+    fingerprints: list[tuple[str, int | None, int | None]] = []
     for path in sorted(paths, key=lambda item: item.as_posix()):
         try:
             stat = path.stat()
@@ -1095,6 +1096,7 @@ class CurationHandler(BaseHTTPRequestHandler):
                 with read_guard(self.run_dir):
                     request = anchor_mod.load_request(self.run_dir)
                     curation = load_curation_report(self.run_dir)[0]
+                    resolved: dict | Path | None
                     image, resolved = anchor_mod.anchor_image(
                         self.run_dir, request, curation, direction, scale)
                     buffer = io.BytesIO()
@@ -1151,7 +1153,7 @@ class CurationHandler(BaseHTTPRequestHandler):
             if kind == "gif":
                 query = parse_qs(urlparse(self.path).query)
                 state = (query.get("state") or [""])[0]
-                scale = (query.get("scale") or ["4"])[0]
+                scale = (query.get("scale") or ["4"])[0]  # type: ignore[assignment]
                 kind = f"gif:{state}:{scale}"
             try:
                 busy = maybe_heal(self.run_dir)  # 리포트 미소비 — 소비자는 /api/run 만
@@ -1494,7 +1496,7 @@ class CurationHandler(BaseHTTPRequestHandler):
                 payload = self._read_body()
                 state = str(payload.get("state") or "")
                 try:
-                    fps = int(payload.get("fps"))
+                    fps = int(payload.get("fps"))  # type: ignore[arg-type]
                 except (TypeError, ValueError):
                     self._send_json({"error": "fps:int required"}, 400)
                     return
@@ -1599,7 +1601,7 @@ def run(*, run_dir: Path, host: str = "127.0.0.1", port: int = 0,
     CurationHandler.run_dir = run_dir
     CurationHandler.lang = lang
     server = ThreadingHTTPServer((host, port), handler)
-    host, port = server.server_address
+    host, port = cast(tuple[str, int], server.server_address)
     url = f"http://{host}:{port}/"
     print(f"sprite-gen curation webview: {url}")
     print(f"  run-dir: {run_dir}")

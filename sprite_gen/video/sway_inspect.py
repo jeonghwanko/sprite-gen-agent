@@ -54,7 +54,7 @@ import math
 import sys
 from importlib.metadata import PackageNotFoundError, version as package_version
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 from PIL import Image
 
@@ -139,7 +139,7 @@ def _weight_and_gradient(x: np.ndarray, y: np.ndarray, ellipse: tuple[float, ...
 
 
 def seam(a: tuple[float, ...], b: tuple[float, ...], move_a: tuple[float, float], move_b: tuple[float, float], one_gain: bool,
-         others: list[tuple[tuple[float, ...], tuple[float, float]]] = ()) -> tuple[float, list[float]] | None:
+         others: Sequence[tuple[tuple[float, ...], tuple[float, float]]] = ()) -> tuple[float, list[float]] | None:
     """Where two overlapping regions, carried into a cell and moved by their own offsets, meet: `video-follow` moves a
     pixel by the larger of their weighted moves (by the larger weight where they move by one gain), so across the
     curve where the two are equal the move's gradient jumps from one region's to the other's, and a straight line
@@ -298,15 +298,18 @@ def inspect_loop(loop_dir: Path, regions: list[tuple[float, ...]], out_dir: Path
                         strip_sha256=_sha256(strip_bytes))
     n, (w, h) = len(answer.cells), answer.cells[0].size
     yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    cells: list[dict[str, Any]]
     cells, source_tiles, moved_tiles = [], [], []
     for k in range(n):
         carry = answer.carry(k)
         before, moved = np.asarray(answer.cells[k]), answer.moved(k)
         changed = (before != np.asarray(moved)).any(axis=-1)
         solid = before[..., 3] >= sway.ALPHA_SOLID
-        field = sway.move_field(xx, yy, answer.moves_in(k), carry)
+        field = sway.move_field(xx, yy, answer.moves_in(k), carry)  # type: ignore[arg-type]  # sway types a region two ways
         area = None if field is None else jacobian(field[1], field[2])
         masks = [sway.region_weight(xx, yy, region, carry) > 0 for region in ask.regions]
+        entries: list[dict[str, Any]]
+        offsets: list[tuple[float, float]]
         entries, offsets = [], []
         for i, (region, radius, g, hold, mask) in enumerate(zip(ask.regions, answer.radii, answer.gains, answer.held, masks)):
             cx, cy, rx, ry, *flat = region
@@ -328,7 +331,7 @@ def inspect_loop(loop_dir: Path, regions: list[tuple[float, ...]], out_dir: Path
         for i in moving:
             for j in (j for j in moving if j > i):
                 others = [(tuple(entries[m]["ellipse"]), offsets[m]) for m in moving if m not in (i, j)]
-                found = seam(*(tuple(entries[m]["ellipse"]) for m in (i, j)), offsets[i], offsets[j], answer.gains[i] == answer.gains[j],
+                found = seam(*(tuple(entries[m]["ellipse"]) for m in (i, j)), offsets[i], offsets[j], answer.gains[i] == answer.gains[j],  # type: ignore[call-arg, arg-type]
                              others)
                 if found is not None:
                     seams.append({"regions": [i, j], "jump": round(found[0], PLACES), "deg": _degrees(found[0]), "at": found[1]})
@@ -346,7 +349,7 @@ def inspect_loop(loop_dir: Path, regions: list[tuple[float, ...]], out_dir: Path
 
     meta = request.meta
     cut_sha256 = _sha256(_canonical({key: value for key, value in meta.items() if key not in loop_mod.SWAY_RECORD_KEYS}))
-    inputs = {
+    inputs: dict[str, Any] = {
         "strip": {"file": strip_path.name, "sha256": _sha256(strip_bytes), "bytes": len(strip_bytes)},
         # `sha256` is the file's as read; `cut_sha256` is the meta's without the `follow` record `video-follow`
         # adds (one spelling: keys sorted, no spaces), so it is the same before and after a follow-through.
@@ -414,7 +417,7 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
 def run(**kwargs: object) -> int:
     verb = str(kwargs.get("verb") or VERB)
     out_dir = Path(str(kwargs["out_dir"]))
-    record = inspect_loop(Path(str(kwargs["loop_dir"])), list(kwargs["region"]), out_dir,  # type: ignore[arg-type]
+    record = inspect_loop(Path(str(kwargs["loop_dir"])), list(kwargs["region"]), out_dir,  # type: ignore[call-overload]
                           gain=kwargs.get("gain"), freq=kwargs.get("freq"), zeta=kwargs.get("zeta"),  # type: ignore[arg-type]
                           on_fold=str(kwargs.get("on_fold") or "refuse"),
                           scale=int(kwargs.get("scale", SCALE_DEFAULT)), columns=int(kwargs.get("columns", COLUMNS_DEFAULT)),  # type: ignore[call-overload]

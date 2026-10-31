@@ -39,7 +39,7 @@ import sys
 import traceback
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, cast
 
 from PIL import Image, ImageDraw
 
@@ -376,7 +376,7 @@ def _parts(mask: Any) -> list[dict[str, Any]]:
     groups: dict[int, list[int]] = {}
     for index in range(len(runs)):
         groups.setdefault(find(index), []).append(index)
-    parts = []
+    parts: list[dict[str, Any]] = []
     for members in groups.values():
         spans = [runs[i] for i in members]
         count = sum(x1 - x0 for _, x0, x1 in spans)
@@ -674,7 +674,9 @@ class _Drawing:
         everywhere (``free``). A box after one that holds it everywhere never holds it. Several spans are bounded in
         one pass over the arrays."""
         ends = np.asarray(spans, dtype=float)[:, :, None, None]  # [span, end, part, box]
-        sx, sy = tuple(ends[:, k] for k in range(4)), tuple(ends[:, k] for k in range(4, 8))
+        sx: Any
+        sy: Any
+        sx, sy =tuple(ends[:, k] for k in range(4)), tuple(ends[:, k] for k in range(4, 8))
         inx, outx = self.x.status(sx, open_)
         iny, outy = self.y.status(sy, open_)
         held = inx & iny
@@ -710,7 +712,7 @@ class _Drawing:
         """The ways the span may read an undecided part (``row`` of the open parts `bound` gave ``info`` of): its box
         (-1 for none) and the rows along x and along y that read it so. A part in a box is out of every earlier box
         whose widened box overlaps it; a part in no box is out of every box that may hold it, along x or along y."""
-        sx, sy = span[:4], span[4:]
+        sx, sy = cast(Span, span[:4]), cast(Span, span[4:])
         may = info["may"][row]
 
         def apart(others: Any) -> list[tuple[list[Row], list[Row]]]:
@@ -777,8 +779,8 @@ class _Search:
         within 2 TIE of the least cost, its least cost along each axis (`_least_on_axis`). A way whose rows leave no
         room (`_room`) is read at no drift and is not a reading."""
         drawing = self.drawing
-        sx, sy = span[:4], span[4:]
-        least: dict[Any, tuple[float, Any]] = {}
+        sx, sy = cast(Span, span[:4]), cast(Span, span[4:])
+        least:dict[Any, tuple[float, Any]] = {}
         for choice in itertools.product(*ways):
             if rest + sum(floor[box] for floor, (box, _, _) in zip(floors, choice)) > self.best + 2 * TIE:
                 continue
@@ -817,7 +819,7 @@ class _Search:
             self.read(drift)
         open_, fixed = np.arange(count), np.full(count, -2)
         tick = itertools.count()
-        heap = [(float(drawing.bound([region], open_, fixed)[0][0]), 0, next(tick), region, open_, fixed)]
+        heap: list[tuple[float, int, int, tuple[float, ...], Any, Any]] = [(float(drawing.bound([region], open_, fixed)[0][0]), 0, next(tick), region, open_, fixed)]
         proven = None
         while heap and len(self.close) < 2:
             floor = min(heap[0][0], self.exact)
@@ -1031,7 +1033,7 @@ def split_ui_kit(image: Image.Image, *, alpha_floor: int = 64,
     sx, tx, sy, ty = cut.drift
     scaled = {name: (x * sx + tx, y * sy + ty, w * sx, h * sy) for name, (x, y, w, h) in boxes((width, height)).items()}
     assigned: dict[str, list[dict[str, Any]]] = {name: [] for name in scaled}
-    loose = []
+    loose: list[dict[str, Any]] = []
     for part, name in zip(kept, cut.boxes):
         (assigned[name] if name is not None else loose).append(part)
     unassigned, reasons = [], []
@@ -1246,7 +1248,7 @@ def _write_kit(out_dir: Path, files: dict[str, bytes], report: Path | None, repo
         _rename_in(staging, out_dir, given_empty)
         if temp is not None:
             linking = True
-            _link_report(temp, report)
+            _link_report(temp, report)  # type: ignore[arg-type]  # a temp is made only for a report
             with contextlib.suppress(OSError):
                 os.unlink(temp)  # published: the temp is a second name of the report
     except BaseException:
@@ -1254,7 +1256,7 @@ def _write_kit(out_dir: Path, files: dict[str, bytes], report: Path | None, repo
         # closes it) is closed now, not when those frames go: Windows removes no file that is open.
         traceback.clear_frames(sys.exc_info()[2])
         renamed = renaming and not os.path.lexists(staging)  # the staging directory took the out-dir's name
-        published = renamed if temp is None else linking and _linked(report, temp)
+        published = renamed if temp is None else linking and _linked(report, temp)  # type: ignore[arg-type]
         if published:
             if temp is not None:
                 with contextlib.suppress(OSError):

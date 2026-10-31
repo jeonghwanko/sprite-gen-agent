@@ -78,7 +78,7 @@ class Loop:
             return "timing-missing"
         if "durations_ms" in self.meta:
             return "nonuniform-timing-unsupported"
-        seconds = self.meta.get("cycle_seconds")
+        seconds: Any = self.meta.get("cycle_seconds")
         if not _number(seconds):
             return "cycle-duration-missing"
         # The writer rounds delay_ms to .01 ms and cycle_seconds to .0001 s.
@@ -87,9 +87,9 @@ class Loop:
         return None
 
     def provenance_issue(self) -> str | None:
-        cut = self.meta.get("source_cut")
-        src = self.source_report.get("source")
-        cycle = self.source_report.get("cycle")
+        cut: Any = self.meta.get("source_cut")
+        src: Any = self.source_report.get("source")
+        cycle: Any = self.source_report.get("cycle")
         if not all(isinstance(v, dict) for v in (cut, src, cycle)):
             return "source-provenance-missing"
         if self.source_report.get("kind") != "sprite-gen-video-loop-report" or self.source_report.get("status") != "passed":
@@ -158,7 +158,7 @@ def _measure(loop: Loop) -> dict[str, Any]:
         head = {"unknown": str(exc)}
     return {"seam": {"premultiplied_rgba_mae": seam,
                      "per_second": seam * 1000 / loop.delay if loop.delay else None},
-            "interpolation": {"frames": quality, "faults": [faults(q) for q in quality]},
+            "interpolation": {"frames": quality, "faults": [faults(q) for q in quality]},  # type: ignore[arg-type]
             "body_motion": body, "top_band_motion": head}
 
 
@@ -280,7 +280,7 @@ def run(**kwargs: Any) -> int:
     paths = {s: {k: Path(kwargs[f"{s}_{k}"]) for k in ("strip", "meta", "report")} for s in ("baseline", "candidate")}
     try:
         from sprite_gen.video import restoration, source
-        origin = {k: kwargs.get(f"origin_{k}") for k in restoration.ARTIFACTS}
+        origin: dict[str, Any] = {k: kwargs.get(f"origin_{k}") for k in restoration.ARTIFACTS}
         restoration_mode = any(kwargs.get(k) is not None for k in (*source.INPUTS, "repair_evidence")) or any(origin.values())
         protected: dict[str, Path] = {}
         if restoration_mode:

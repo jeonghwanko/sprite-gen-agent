@@ -7,6 +7,7 @@ import json
 import math
 import re
 from pathlib import Path
+from typing import Any, cast
 
 from PIL import Image, ImageDraw, ImageFont
 from sprite_gen.spec import pose_geometry, gait_inputs
@@ -23,12 +24,12 @@ def _require(condition: bool, message: str) -> None:
 
 
 def _number(value: object) -> bool:
-    return type(value) in (int, float) and math.isfinite(value)
+    return type(value) in (int, float) and math.isfinite(value)  # type: ignore[arg-type]
 
 
 def _keys(value: object, required: set[str], name: str) -> None:
     _require(isinstance(value, dict), f"{name} must be an object")
-    _require(set(value) == required, f"{name} requires exactly: {', '.join(sorted(required))}")
+    _require(set(value) == required, f"{name} requires exactly: {', '.join(sorted(required))}")  # type: ignore[call-overload]
 
 
 def validate(plan: dict) -> dict:
@@ -53,7 +54,7 @@ def validate(plan: dict) -> dict:
     _require(isinstance(canvas, list) and len(canvas) == 2 and
              all(type(v) is int and 64 <= v <= 4096 for v in canvas), "canvas must be [width, height], 64..4096")
     width, height = canvas
-    reference = None
+    reference: Any = None
     if v2:
         reference = plan["body_reference"]
         _keys(reference, {"sha256", "canvas", "landmarks", "reviewer", "observation"}, "body_reference")
@@ -166,7 +167,7 @@ def render(plan: dict, frame: dict) -> Image.Image:
     width, height = image.size
     stroke = max(2, round(min(image.size) / 100))
     radius = max(3, stroke)
-    font = ImageFont.load_default(size=max(10, round(min(image.size) / 52)))
+    font = cast(ImageFont.FreeTypeFont, ImageFont.load_default(size=max(10, round(min(image.size) / 52))))
     joints = frame["joints"]
     if plan["version"] == 2:
         points = frame["body_landmarks"]
