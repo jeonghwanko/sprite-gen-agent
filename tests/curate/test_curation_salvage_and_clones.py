@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (Pillow get_flattened_data in place of the deprecated getdata; see NOTICE).
 """행 단위 큐레이션 보존(salvage) + stale 백업 + 프레임 복제(clones) 계약.
 
 배경 회귀 (2026-07-15, 합성 회귀): 엔진 커밋마다 heal 이 전
@@ -213,7 +214,7 @@ def test_clone_instances_plan_and_bake(fixture_run_dir: Path) -> None:
         source_cell = rgba.crop((0, row_y, cw, row_y + ch))
         clone_cell = rgba.crop((cw, row_y, cw * 2, row_y + ch))
     from PIL import ImageOps
-    assert list(clone_cell.getdata()) == list(ImageOps.mirror(source_cell).getdata())
+    assert list(clone_cell.get_flattened_data()) == list(ImageOps.mirror(source_cell).get_flattened_data())
 
 
 def test_compose_cycle_bakes_a_linked_clone_with_its_sources_edits(fixture_run_dir: Path) -> None:

@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (Pillow get_flattened_data in place of the deprecated getdata; see NOTICE).
 """방향 앵커 = 승인된 프레임 (maintainer 2026-07-25).
 
 - 기본 앵커 = 그 방향 앵커 행의 **큐레이션 시퀀스 첫 인스턴스** (index 0 이 아니다) 이고,
@@ -175,7 +176,7 @@ def test_anchor_bake_carries_pixel_edits_and_transform(direction_run: Path) -> N
     }})
     image, resolved = anchor_mod.anchor_image(run_dir, request, load_curation(run_dir), "down")
     assert resolved["state"] == "down_idle" and resolved["index"] == 0
-    colors = {px[:3] for px in image.convert("RGBA").getdata() if px[3] > 0}
+    colors = {px[:3] for px in image.convert("RGBA").get_flattened_data() if px[3] > 0}
     assert (255, 0, 0) in colors, "픽셀 편집이 앵커 ref 에 반영되지 않았다 (raw 를 구웠다)"
 
 
@@ -600,7 +601,7 @@ def test_reroll_identity_ref_uses_the_picked_anchor(direction_run: Path) -> None
     assert ref == run_dir / "references" / "anchors" / "down-anchor-x8.png"
     baked = anchor_mod.anchor_image(run_dir, request, load_curation(run_dir), "down")[0]
     with Image.open(ref) as written:
-        assert list(written.convert("RGBA").getdata()) == list(baked.convert("RGBA").getdata())
+        assert list(written.convert("RGBA").get_flattened_data()) == list(baked.convert("RGBA").get_flattened_data())
 
 
 def test_anchor_suffix_other_than_idle_is_honored(direction_run: Path) -> None:

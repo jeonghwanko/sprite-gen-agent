@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (Pillow get_flattened_data in place of the deprecated getdata; see NOTICE).
 """팔레트 = 절단 후 후처리 전용 불변식 (maintainer 확정 2026-07-20, plan
 sprite-gen/per-frame-pixel-grid).
 
@@ -98,7 +99,7 @@ def test_palette_never_touches_the_grid(tmp_path: Path) -> None:
     seen = set()
     for rel in row_b["files"]:
         with Image.open(run_b / rel) as im:
-            for r, g, b, a in im.convert("RGBA").getdata():
+            for r, g, b, a in im.convert("RGBA").get_flattened_data():
                 if a:
                     seen.add((r, g, b))
     assert seen

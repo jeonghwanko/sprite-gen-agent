@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (Pillow get_flattened_data in place of the deprecated getdata; see NOTICE).
 """`GET /api/breathe-anatomy` 의 기준 프레임 해소를 **실제로** 태운다.
 
 이 라우트는 검출 SSoT 를 서버로 몬 설계의 유일한 진입점이다 — 큐레이터가 호흡을 켤 때,
@@ -264,7 +265,7 @@ def test_the_reference_frame_honours_every_axis_the_bake_uses(run_dir):
     (run_dir / "curation.json").write_text(
         json.dumps(stamp_curation(run_dir, curation)), encoding="utf-8")
     frame, _ = serve_curation._breathe_source_frame(run_dir, "idle")
-    colors = {px[:3] for px in frame.convert("RGBA").getdata() if px[3] > 0}
+    colors = {px[:3] for px in frame.convert("RGBA").get_flattened_data() if px[3] > 0}
     assert (255, 0, 255) in colors, (
         "픽셀 편집이 기준 프레임에 안 얹혔다 — 굽기는 얹고 굽는다")
 
