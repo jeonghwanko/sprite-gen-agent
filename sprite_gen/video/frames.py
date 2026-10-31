@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (the keying-ahead pool is closed when the keying loop ends; see NOTICE).
 """`sprite-gen video-frames` — turn a generated clip into keyed RGBA frames.
 
 ffmpeg extracts every frame (the clip's own fps is recorded, not assumed), then
@@ -56,6 +57,7 @@ shoe's part the matte cut loose. How many each frame lost is in its report row (
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import math
 import os
@@ -584,71 +586,73 @@ def _key_frames(raw_files: list[Path], keyed_dir: Path, *, key: str, check_edges
                 report["decontam"]["reason"] = decontam_skipped[0]
         return report
 
-    ahead = _prepared(raw_files, key=key, spill_max_fraction=spill_max, spill_min_tint=spill_tint,
-                      spill_require_hue=spill == "full", decontam=decontam, decontam_fit=DECONTAM_FIT,
-                      decontam_edge_band=EDGE_ROWS)
-    for k, (src, prepared) in enumerate(zip(raw_files, ahead)):
-        dst = keyed_dir / src.name
-        stats = cutout(src, dst, key=key, spill_max_fraction=spill_max, spill_min_tint=spill_tint,
-                       spill_require_hue=spill == "full", decontam=decontam, decontam_fit=DECONTAM_FIT,
-                       decontam_palette=clip_palette, decontam_edge_band=EDGE_ROWS, decontam_history=clip_history,
-                       prepared=prepared, write=save)
-        image = save.last if save.last.mode == "RGBA" else save.last.convert("RGBA")
-        # The specks go before anything reads the frame: the edge band, the coverage, the loop.
-        image, specks = drop_specks(image)
-        if specks:
-            save(image, dst)
-        hist = image.getchannel("A").histogram()
-        w, h = image.size
-        alpha_zero_pct = round(100 * hist[0] / (w * h), 2)
-        row = {"frame": src.name, "alpha_zero_pct": alpha_zero_pct, "route": stats.get("route"), "specks": specks}
-        if decontam != "off":
-            done = stats["decontam"]
-            if done.get("applied"):
-                if clip_palette is None:
-                    clip_palette = palette_from_stats(done)
-                    decontam_first = done | {"frame": src.name}
-                row["decontam"] = {name: done[name] for name in DECONTAM_STAT_KEYS}
-                for name in DECONTAM_STAT_KEYS:
-                    decontam_totals[name] += int(done[name])
-                decontam_applied += 1
-            else:
-                row["decontam"] = {"applied": False, "reason": done.get("reason")}
-                decontam_skipped.append(str(done.get("reason")))
-        if check_edges:
-            contact = edge_contact(image)
-            touched = any(v > EDGE_MAX_PIXELS for v in contact.values())
-            pixels = None
-            if touched:
-                chroma = stats.get("chroma_key")
-                painted = stats.get("chroma_key_painted")
-                pixels = _edge_pixels(Image.open(src), image, tuple(chroma) if chroma else None, tuple(painted) if painted else None)
-                residual = int(pixels["residual"].sum())
-                contact.update(subject=int(pixels["contact"].sum()) - residual, residual=residual, rim=int(pixels["rim"].sum()))
-                contact["key_painted"] = stats.get("chroma_key_painted")
-            if policy == "border" and k == 0:
-                border = _border(pixels, src.name)
-                if border["sides"]:
-                    print(f"video-frames: the first frame's subject runs off the {_sides(border['sides'])} — read as the "
-                          "drawing's own border, where contact is accepted in every frame (`edge_border` in the report)",
-                          file=sys.stderr)
-            if touched:
-                if policy == "border":
-                    taken = _taken(pixels, border["sides"])
-                    off = pixels["contact"] & ~taken
-                    contact["border"] = int(taken.sum())
-                    contact["off"] = {side: int((off & pixels["bands"][side]).sum()) for side in SIDES}
-                    if off.any():
-                        lone = int((off & pixels["residual"]).sum())
-                        untaken.append({"frame": src.name, **contact["off"], "subject": int(off.sum()) - lone, "residual": lone,
-                                        "key_painted": contact["key_painted"]})
-                contacts.append({"frame": src.name, **contact})
-            row["edge"] = contact
-        if hist[0] == 0:
+    # Closed here, not when the generator is collected: a refused frame leaves the loop while frames are still
+    # being prepared, and the pool's shutdown, left to collection, ran on whatever thread collected it and could hang.
+    with contextlib.closing(_prepared(raw_files, key=key, spill_max_fraction=spill_max, spill_min_tint=spill_tint,
+                                      spill_require_hue=spill == "full", decontam=decontam, decontam_fit=DECONTAM_FIT,
+                                      decontam_edge_band=EDGE_ROWS)) as ahead:
+        for k, (src, prepared) in enumerate(zip(raw_files, ahead)):
+            dst = keyed_dir / src.name
+            stats = cutout(src, dst, key=key, spill_max_fraction=spill_max, spill_min_tint=spill_tint,
+                           spill_require_hue=spill == "full", decontam=decontam, decontam_fit=DECONTAM_FIT,
+                           decontam_palette=clip_palette, decontam_edge_band=EDGE_ROWS, decontam_history=clip_history,
+                           prepared=prepared, write=save)
+            image = save.last if save.last.mode == "RGBA" else save.last.convert("RGBA")
+            # The specks go before anything reads the frame: the edge band, the coverage, the loop.
+            image, specks = drop_specks(image)
+            if specks:
+                save(image, dst)
+            hist = image.getchannel("A").histogram()
+            w, h = image.size
+            alpha_zero_pct = round(100 * hist[0] / (w * h), 2)
+            row = {"frame": src.name, "alpha_zero_pct": alpha_zero_pct, "route": stats.get("route"), "specks": specks}
+            if decontam != "off":
+                done = stats["decontam"]
+                if done.get("applied"):
+                    if clip_palette is None:
+                        clip_palette = palette_from_stats(done)
+                        decontam_first = done | {"frame": src.name}
+                    row["decontam"] = {name: done[name] for name in DECONTAM_STAT_KEYS}
+                    for name in DECONTAM_STAT_KEYS:
+                        decontam_totals[name] += int(done[name])
+                    decontam_applied += 1
+                else:
+                    row["decontam"] = {"applied": False, "reason": done.get("reason")}
+                    decontam_skipped.append(str(done.get("reason")))
+            if check_edges:
+                contact = edge_contact(image)
+                touched = any(v > EDGE_MAX_PIXELS for v in contact.values())
+                pixels = None
+                if touched:
+                    chroma = stats.get("chroma_key")
+                    painted = stats.get("chroma_key_painted")
+                    pixels = _edge_pixels(Image.open(src), image, tuple(chroma) if chroma else None, tuple(painted) if painted else None)
+                    residual = int(pixels["residual"].sum())
+                    contact.update(subject=int(pixels["contact"].sum()) - residual, residual=residual, rim=int(pixels["rim"].sum()))
+                    contact["key_painted"] = stats.get("chroma_key_painted")
+                if policy == "border" and k == 0:
+                    border = _border(pixels, src.name)
+                    if border["sides"]:
+                        print(f"video-frames: the first frame's subject runs off the {_sides(border['sides'])} — read as the "
+                              "drawing's own border, where contact is accepted in every frame (`edge_border` in the report)",
+                              file=sys.stderr)
+                if touched:
+                    if policy == "border":
+                        taken = _taken(pixels, border["sides"])
+                        off = pixels["contact"] & ~taken
+                        contact["border"] = int(taken.sum())
+                        contact["off"] = {side: int((off & pixels["bands"][side]).sum()) for side in SIDES}
+                        if off.any():
+                            lone = int((off & pixels["residual"]).sum())
+                            untaken.append({"frame": src.name, **contact["off"], "subject": int(off.sum()) - lone, "residual": lone,
+                                            "key_painted": contact["key_painted"]})
+                    contacts.append({"frame": src.name, **contact})
+                row["edge"] = contact
+            if hist[0] == 0:
+                rows.append(row)
+                raise KeyingRefused(f"video-frames: {src.name} keyed to 0% transparency — the background is not the chroma key",
+                                    summary())
             rows.append(row)
-            raise KeyingRefused(f"video-frames: {src.name} keyed to 0% transparency — the background is not the chroma key",
-                                summary())
-        rows.append(row)
     report = summary()
     if untaken:
         raise KeyingRefused(_edge_contact_message(untaken), report)
