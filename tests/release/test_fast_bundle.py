@@ -39,9 +39,13 @@ def test_unmarked():
 
 def _collected(tmp_path: Path, *args: str) -> tuple[list[str], str]:
     # This repository's configuration, and tests/conftest.py as the one conftest (-p), over a file outside the suite.
+    # --confcutdir keeps collection inside tmp_path: without it pytest lists every folder from the common parent of the
+    # repository and tmp_path down to the probe, the whole temp folder among them, and on Windows (%TEMP% beside the
+    # user's home) an entry another process removes between the listing and its stat ended the run in a collection error.
     proc = subprocess.run(
         [sys.executable, "-m", "pytest", "--collect-only", "-c", str(ROOT / "pyproject.toml"), "--rootdir", str(tmp_path),
-         "--noconftest", "-p", "conftest", "-p", "no:cacheprovider", *args, str(tmp_path / "test_probe.py")],
+         "--confcutdir", str(tmp_path), "--noconftest", "-p", "conftest", "-p", "no:cacheprovider", *args,
+         str(tmp_path / "test_probe.py")],
         cwd=ROOT,
         capture_output=True,
         encoding="utf-8",
