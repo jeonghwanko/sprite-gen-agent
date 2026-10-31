@@ -677,13 +677,13 @@ def _poll_publish(
     while True:
         downloads += 1
         said: str | None = None  # what the transport said when the download got no answer it could read
-        refused: int | None = None  # type: ignore[no-redef]  # the status the clip's host refused it with
+        refused_status: int | None = None  # the status the clip's host refused it with
         try:
             data = download(video_url, credential.token, deadline=deadline)
         except TransportError as failed:
             said = failed.reason
         except DownloadRefused as failed:
-            refused = failed.status  # type: ignore[assignment]
+            refused_status = failed.status
         else:
             if _is_mp4(data):
                 break
@@ -692,13 +692,13 @@ def _poll_publish(
             raise unfinished(f"is done, but its download brought {len(data)} bytes that are not an mp4 (no ftyp box); "
                              f"the clip is made and may be billed — {_ask_again(request_id, out)}", http, poll_status, None,
                              {"http": None, "error": "not an mp4 (no ftyp box)", "bytes": len(data)})
-        again = said is not None or refused in retry.GET_AGAIN
+        again = said is not None or refused_status in retry.GET_AGAIN
         wait = retry.backoff(downloads)
         # The next download goes only before the poll timeout (`retry.too_late`): one whose wait would reach it
         # would leave no time to read it, and a wait that woke at it or past it tries none.
         if again and downloads < DOWNLOAD_ATTEMPTS and not retry.too_late(deadline, wait):
             # The status in plain digits, as the poll notes say it.
-            failure = f"got no answer ({said})" if said is not None else f"was refused ({refused})"
+            failure = f"got no answer ({said})" if said is not None else f"was refused ({refused_status})"
             print(f"[{verb}] download {downloads} of generation {request_id} {failure}; downloading again in {wait:g}s",
                   file=sys.stderr)
             sleep(wait)
@@ -707,16 +707,16 @@ def _poll_publish(
         if said is not None:
             failure = f"got no answer (last: {said})"
         elif again:
-            failure = f"was refused (last answer {refused})"
+            failure = f"was refused (last answer {refused_status})"
         else:
-            failure = f"was refused (answer {refused})"
+            failure = f"was refused (answer {refused_status})"
         if again and downloads == DOWNLOAD_ATTEMPTS:
             failure += f" after {downloads} attempts"
         elif again:
             failure += f" until the poll timeout ({timeout:g}s, {downloads} attempt{'s' if downloads > 1 else ''})"
         raise unfinished(f"is done, but its download {failure}; the clip is made and may be billed — "
                          f"{_ask_again(request_id, out)}", http, poll_status, None,
-                         {"http": refused, **({"error": said} if said is not None else {})})
+                         {"http": refused_status, **({"error": said} if said is not None else {})})
     elapsed = time.monotonic() - started
 
     out.parent.mkdir(parents=True, exist_ok=True)

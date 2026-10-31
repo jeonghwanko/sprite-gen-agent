@@ -17,7 +17,7 @@ from sprite_gen.curate.curation import apply_pixel_edits, apply_transform, frame
 from sprite_gen.spec.layout import row_frame_rel, state_frame_total
 from sprite_gen.frames.extract import heal_run, require_frames_manifest
 from sprite_gen.spec.runio import acquire_run_dir_lock, atomic_save_image, atomic_write_text, load_request
-from sprite_gen.spec.subject import default_min_used_pixels
+from sprite_gen.spec.subject import cell_number, default_min_used_pixels
 from sprite_gen.util.console import utf8_streams
 
 
@@ -26,8 +26,8 @@ def alpha_nonzero_count(image: Image.Image) -> int:
 
 
 def cell_geometry(cell: dict[str, Any]) -> tuple[int, int]:
-    width = int(cell.get("width", cell.get("size", 0)))
-    height = int(cell.get("height", cell.get("size", 0)))
+    width = cell_number(cell, "width", "size")
+    height = cell_number(cell, "height", "size")
     if width <= 0 or height <= 0:
         raise SystemExit("cell width/height must be positive in sprite-request.json")
     return width, height
