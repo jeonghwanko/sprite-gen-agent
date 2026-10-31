@@ -53,7 +53,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Generator
+from typing import TYPE_CHECKING, Any, Callable, Generator, cast
 
 from PIL import Image, ImageDraw
 
@@ -71,6 +71,9 @@ from .pixel_grid import (
     recovered, row_issues, row_text, save_gif, splice, structural, tiled_3x3, to_text, image_of,
 )
 from sprite_gen.util.console import utf8_streams
+
+if TYPE_CHECKING:
+    from .pixel_gates import Frame
 
 VERB = "pixel-draw"
 SIZE_MIN, SIZE_MAX, SIZE_DEFAULT = 8, 48, 32
@@ -443,8 +446,8 @@ def _ruler(n: int) -> str:
 def repair_prompt(request: PixelRequest, grid: Grid, issues: list[Issue]) -> tuple[str, list[tuple[str, int]]]:
     """The broken rows with their neighbours (and a column ruler), and the rows to write."""
     order = list(grid.frames)  # this call's frames, in order
-    wanted = sorted({(i.frame, i.row) for i in issues}, key=lambda fr: (order.index(fr[0]), fr[1]))
-    broken = {(i.frame, i.row): [] for i in issues}
+    wanted = sorted(cast(set[tuple[str, int]], {(i.frame, i.row) for i in issues}), key=lambda fr: (order.index(fr[0]), fr[1]))
+    broken: dict[tuple[str | None, int | None], list[Issue]] = {(i.frame, i.row): [] for i in issues}
     for issue in issues:
         broken[(issue.frame, issue.row)].append(issue)
     chargrid = grid.fmt == "chargrid"
@@ -676,7 +679,7 @@ class Calls:
             if self.credential.source == claude_login.AUTH_SOURCE_LOGIN:
                 outcome: Reply | ApiError = claude_login.send_message(body, label=f"{VERB} {call_id}")
             else:
-                outcome = api.stream_message(self.token, body, sleep=self.sleep, label=f"{VERB} {call_id}")
+                outcome = api.stream_message(self.token, body, sleep=self.sleep, label=f"{VERB} {call_id}")  # type: ignore[arg-type]
         except ApiError as exc:
             outcome = exc
         self.save(call_id, purpose, candidate, body, outcome, image=image)
@@ -710,7 +713,7 @@ class Calls:
         if need:
             self._leaving()
             try:
-                batch = api.submit_batch(self.token, [(cid, ask.body) for cid, ask in need.items()],
+                batch = api.submit_batch(self.token, [(cid, ask.body) for cid, ask in need.items()],  # type: ignore[arg-type]
                                          sleep=self.sleep, label=VERB)
             except ApiError as exc:
                 for cid, ask in need.items():
@@ -730,7 +733,7 @@ class Calls:
         deadline = started + wait
         while True:
             try:
-                batch = api.get_batch(self.token, record["id"], sleep=self.sleep, label=VERB, deadline=deadline)
+                batch = api.get_batch(self.token, record["id"], sleep=self.sleep, label=VERB, deadline=deadline)  # type: ignore[arg-type]
             except ApiError as exc:
                 self.note(f"batch {record['id']}: status not read ({exc.line}); asking again")
                 batch = {}
@@ -740,7 +743,7 @@ class Calls:
                 raise Unfinished(record["id"], time.monotonic() - started, "has not ended")
             self.sleep(BATCH_POLL_SECONDS)
         try:
-            results = api.batch_results(self.token, batch, sleep=self.sleep, label=VERB, deadline=deadline)
+            results = api.batch_results(self.token, batch, sleep=self.sleep, label=VERB, deadline=deadline)  # type: ignore[arg-type]
         except ApiError as exc:
             raise Unfinished(record["id"], time.monotonic() - started, f"has ended but its results were not read ({exc.line})") from exc
         seconds = round(time.monotonic() - started, 3)
@@ -853,7 +856,7 @@ class Run:
                 candidate.parts.append({"part": part.number, "frames": list(part.frames), "effort": effort})
         candidate.g1 = _g1(issues)
         candidate.effort, candidate.grid = min(efforts, key=EFFORTS.index), drawn
-        pixels = {name: frame_pixels(drawn, name) for name in request.frames}
+        pixels: dict[str, Frame] = {name: frame_pixels(drawn, name) for name in request.frames}  # type: ignore[arg-type]
         candidate.gates = evaluate(pixels, kind=request.kind, rule=request.palette, walk_cycle=request.walk_cycle,
                                    motion=bool(request.motion))
         candidate.warnings, candidate.info = candidate.gates["warnings"], candidate.gates["info"]
@@ -900,7 +903,7 @@ class Run:
                     number, redrawn = number + 1, True
                     continue
                 return candidate.end("failed", f"G1: {_issue_list(issues)}")
-            return grid, issues, effort
+            return grid, issues, effort  # type: ignore[return-value]
 
     def repair(self, candidate: Candidate, gen_id: str, grid: Grid | None,
                issues: list[Issue]) -> tuple[Grid | None, list[Issue]]:
@@ -952,14 +955,14 @@ class Run:
         with ThreadPoolExecutor(max_workers=len(cids)) as pool:
             asks: dict[str, Ask] = {}
             for cid, out in zip(cids, pool.map(lambda c: step(c, None), cids)):
-                (asks.__setitem__ if isinstance(out, Ask) else done.__setitem__)(cid, out)
+                (asks.__setitem__ if isinstance(out, Ask) else done.__setitem__)(cid, out)  # type: ignore[assignment]
             while asks:
                 answers = self.calls.batch_round(list(asks.values()), self.batch_wait)
                 waiting = list(asks)
                 outs = list(pool.map(lambda c: step(c, answers[asks[c].call_id]), waiting))
                 asks = {}
                 for cid, out in zip(waiting, outs):
-                    (asks.__setitem__ if isinstance(out, Ask) else done.__setitem__)(cid, out)
+                    (asks.__setitem__ if isinstance(out, Ask) else done.__setitem__)(cid, out)  # type: ignore[assignment]
         return done
 
     def candidates(self) -> list[Candidate]:
@@ -985,7 +988,7 @@ class Run:
                            scale=preview_scale(self.request.size))
         sheet_path = self.run_dir / "pick-sheet.png"
         sheet_path.write_bytes(sheet)
-        content = [{"type": "image", "source": {"type": "base64", "media_type": "image/png",
+        content: list[dict[str, Any]] = [{"type": "image", "source": {"type": "base64", "media_type": "image/png",
                                                 "data": base64.standard_b64encode(sheet).decode("ascii")}},
                    {"type": "text", "text": pick_prompt(self.request, list(labels))}]
         body = api.message_body(system=None, content=content, effort=PICK_EFFORT, max_tokens=PICK_MAX_TOKENS,
@@ -1039,7 +1042,7 @@ def _rescaled(image: Image.Image | None, scale: int, step: int) -> Image.Image |
     side is a whole number of `scale`-pixel units, and each becomes `step` pixels."""
     if image is None or step == scale:
         return image
-    return image.resize((image.width * step // scale, image.height * step // scale), Image.NEAREST)
+    return image.resize((image.width * step // scale, image.height * step // scale), Image.NEAREST)  # type: ignore[attr-defined]
 
 
 def pick_sheet(run_dir: Path, by_label: dict[str, Candidate], *, tile: bool, scale: int = 1) -> bytes:
@@ -1053,7 +1056,8 @@ def pick_sheet(run_dir: Path, by_label: dict[str, Candidate], *, tile: bool, sca
         tiled = Image.open(run_dir / candidate.files["tiled"]).convert("RGBA") if tile else None
         loaded.append((label, preview, tiled))
     for step in range(scale, 0, -1):
-        rows = [(label, _rescaled(p, scale, step), _rescaled(t, scale, step)) for label, p, t in loaded]
+        rows = cast(list[tuple[str, Image.Image, Image.Image | None]],
+                    [(label, _rescaled(p, scale, step), _rescaled(t, scale, step)) for label, p, t in loaded])
         if _fits(_sheet_size(rows)):
             break
     pad, label_width = PICK_PAD, PICK_LABEL_WIDTH
@@ -1120,7 +1124,7 @@ def _flat(files: dict[str, Any]) -> list[str]:
 
 
 def _prefixed(files: dict[str, Any], prefix: str) -> dict[str, Any]:
-    out = {k: f"{prefix}/{v}" for k, v in files.items() if k != "frames"}
+    out: dict[str, Any] = {k: f"{prefix}/{v}" for k, v in files.items() if k != "frames"}
     out["frames"] = {n: f"{prefix}/{v}" for n, v in files.get("frames", {}).items()}
     return out
 
@@ -1245,7 +1249,7 @@ def _run_grid(args: argparse.Namespace) -> int:
     if grid is None or not report["G1"]["ok"]:
         path = _write_report(out_dir, report)
         raise _refuse(f"{args.grid} does not parse whole: {_issue_list(issues)}; report {path}")
-    pixels = {name: frame_pixels(grid, name) for name in frames}
+    pixels: dict[str, Frame] = {name: frame_pixels(grid, name) for name in frames}
     gates = evaluate(pixels, kind=kind, rule=rule, walk_cycle=bool(args.walk_cycle), motion=bool(motion))
     files = write_files(out_dir, grid, frames, kind, rule, colors_used(pixels), duration_ms)
     report.update(status="ok" if gates["ok"] else "failed", gates=gates, warnings=gates["warnings"], info=gates["info"],
@@ -1305,7 +1309,7 @@ def _run(args: argparse.Namespace, *, sleep: Callable[[float], None] = time.slee
                       f"twice — collect it with `sprite-gen pixel-draw --out-dir {out_dir} --resume`; report {path}")
     for candidate in candidates:
         if candidate.grid is not None:
-            pixels = {name: frame_pixels(candidate.grid, name) for name in request.frames}
+            pixels: dict[str, Frame] = {name: frame_pixels(candidate.grid, name) for name in request.frames}
             files = write_files(out_dir / "candidates" / candidate.id, candidate.grid, request.frames, request.kind,
                                 request.palette, colors_used(pixels), request.duration_ms)
             candidate.files = _prefixed(files, f"candidates/{candidate.id}")

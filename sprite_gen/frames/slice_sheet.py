@@ -44,6 +44,7 @@ import argparse
 import json
 from collections import deque
 from pathlib import Path
+from typing import Any
 
 from PIL import Image
 
@@ -213,7 +214,7 @@ def slice_sheet(
     if alpha_floor:
         rgba, cleanup = clear_haze(rgba, floor=alpha_floor, edge=alpha_edge)
     width, height = rgba.size
-    pixels = rgba.load()
+    pixels: Any = rgba.load()
     cell_w, cell_h = width / cols, height / rows
 
     alpha = bytearray(width * height)
@@ -278,7 +279,7 @@ def slice_sheet(
               f"{cleanup['haze_fraction_after']:.2%} (floor {alpha_floor}, cleared {cleanup['cleared_pixels']} px)")
     # Every cell is measured before any is written: the sheet factor needs them all, and an empty
     # cell fails the sheet before a single cut lands.
-    cuts = []
+    cuts: list[dict[str, Any]] = []
     for cell in range(cell_count):
         comps_in = buckets[cell]
         if not comps_in:
@@ -301,6 +302,8 @@ def slice_sheet(
     for cut in cuts:
         cut["factor"], cut["factor_from"] = target_height / main_height(cut), "target_height"
         cut["fits"] = _contain_factor(cut["name"], cut, canvas, baseline_y) if fit == "contain" else None
+    sheet_factor: float | None
+    sheet_from: dict[str, str] | None
     sheet_factor = sheet_from = None
     if scale == "sheet":
         tallest = max(cuts, key=main_height)
@@ -322,7 +325,7 @@ def slice_sheet(
         mx0, mx1, main_top, main_bottom = cut["main"]
         x0, x1, y0, y1 = cut["box"]
         piece = Image.new("RGBA", (x1 - x0 + 1, y1 - y0 + 1), (0, 0, 0, 0))
-        piece_px = piece.load()
+        piece_px: Any = piece.load()
         for index in cut["pixels"]:
             x, y = index % width, index // width
             piece_px[x - x0, y - y0] = pixels[x, y]
@@ -387,7 +390,7 @@ def slice_sheet(
     }
     report_path = out_dir / f"{prefix}slice-sheet.json"
     atomic_write_text(report_path, json.dumps(report, indent=2, allow_nan=False) + "\n")
-    factor_text = f" factor {sheet_factor:.4f} ({sheet_from['rule']}, {sheet_from['cell']})" if sheet_factor else ""
+    factor_text = f" factor {sheet_factor:.4f} ({sheet_from['rule']}, {sheet_from['cell']})" if sheet_factor else ""  # type: ignore[index]
     print(f"{sheet.name}: scale {scale}, fit {fit}{factor_text}; report {report_path.name}")
     return written
 

@@ -94,7 +94,7 @@ If `.claude/worktrees/` exists, it holds other sessions' checkouts: never search
   (`tests/test_p1_perf_equivalence.py`).
 - CI's `lint` job runs ruff and mypy as configured in `pyproject.toml` (`pip install -e ".[lint]"`). Run both
   before a pull request: `.venv/Scripts/python.exe -m ruff check .` and `.venv/Scripts/python.exe -m mypy`.
-  mypy skips the modules on its debt list; a module you fix comes off the list, and none goes on.
+  mypy checks every module (the debt list it started with, 87 modules, was emptied on 2026-10-31).
 
 ## Rules the code keeps
 

@@ -14,7 +14,7 @@ import shutil
 import sys
 from pathlib import Path
 from statistics import median
-from typing import Any
+from typing import Any, cast
 
 from PIL import Image
 
@@ -242,7 +242,7 @@ ALPHA_CENTROID_MIN_ALPHA = 10
 def _alpha_centroid_x(sprite: Image.Image, bottom_fraction: float = 1.0, min_alpha: int = 0) -> float:
     alpha = sprite.getchannel("A")
     width, height = sprite.size
-    pixels = alpha.load()
+    pixels: Any = alpha.load()
     y_start = max(0, height - max(2, round(height * bottom_fraction)))
     total = 0
     weighted = 0.0
@@ -301,9 +301,9 @@ def _kcentroid_downscale(sprite: Image.Image, target_width: int, target_height: 
     # sampled (NEAREST when the target grid does not match the art's pixel grid).
     source = sprite.convert("RGBA")
     source_width, source_height = source.size
-    src = source.load()
+    src: Any = source.load()
     output = Image.new("RGBA", (target_width, target_height), (0, 0, 0, 0))
-    out = output.load()
+    out: Any = output.load()
     for oy in range(target_height):
         y0 = oy * source_height // target_height
         y1 = max(y0 + 1, (oy + 1) * source_height // target_height)
@@ -419,7 +419,7 @@ def tighten_components(images: list[Image.Image]) -> list[Image.Image]:
 
 def _boundary_mass(image: Image.Image) -> tuple[list[int], list[int]]:
     """축별 색/알파 경계 질량 프로파일 — 절단선 스냅의 증거."""
-    px = image.load()
+    px: Any = image.load()
     w, h = image.size
     col = [0] * max(1, w)
     row = [0] * max(1, h)
@@ -490,9 +490,9 @@ def snap_by_edges(image: Image.Image, x_edges: list[int], y_edges: list[int],
                   detail_bias: bool = False) -> Image.Image:
     """명시 절단선으로 블록 샘플링 (grid_snap_downscale 의 코어 — 비등간격 지원)."""
     source = image.convert("RGBA")
-    pixels = source.load()
+    pixels: Any = source.load()
     output = Image.new("RGBA", (len(x_edges) - 1, len(y_edges) - 1), (0, 0, 0, 0))
-    out = output.load()
+    out: Any = output.load()
     for oy in range(len(y_edges) - 1):
         for ox in range(len(x_edges) - 1):
             block = [
@@ -523,15 +523,17 @@ def grid_snap_downscale(
     source = image.convert("RGBA")
     width, height = source.size
     pitch_x, pitch_y = _pitch_pair(pitch)
+    offset_x: float
+    offset_y: float
     if phase is None:
         offset_x, offset_y = _grid_phase(source, max(2, int(round(pitch_x))))
     else:
         offset_x, offset_y = phase
     x_edges = grid_edges(width, pitch_x, offset_x)
     y_edges = grid_edges(height, pitch_y, offset_y)
-    pixels = source.load()
+    pixels: Any = source.load()
     output = Image.new("RGBA", (len(x_edges) - 1, len(y_edges) - 1), (0, 0, 0, 0))
-    out = output.load()
+    out: Any = output.load()
     for oy in range(len(y_edges) - 1):
         for ox in range(len(x_edges) - 1):
             block = [
@@ -548,7 +550,7 @@ def grid_snap_downscale(
 
 
 def binarize_alpha(image: Image.Image) -> Image.Image:
-    pixels = image.load()
+    pixels: Any = image.load()
     for y in range(image.height):
         for x in range(image.width):
             p = pixels[x, y]
@@ -778,7 +780,7 @@ def build_shared_palette(frames: list, size: int) -> list:
 def apply_palette(image: Image.Image, palette: list) -> Image.Image:
     if not palette:
         return image
-    pixels = image.load()
+    pixels: Any = image.load()
     cache: dict = {}
     for y in range(image.height):
         for x in range(image.width):
@@ -801,7 +803,7 @@ def enforce_outline(image: Image.Image, strength: float = 0.62) -> Image.Image:
     # 균일 오토 아웃라인: 실루엣 경계(투명 인접) 픽셀을 자기 색 기준으로 어둡게.
     # 다운스케일에서 얇은 원본 외곽선이 패치워크로 살아남는 문제를 결정론으로 보정 —
     # 모든 프레임/행에서 1 논리픽셀 외곽선이 보장돼 프레임 간 플리커도 줄인다.
-    pixels = image.load()
+    pixels: Any = image.load()
     width, height = image.size
     boundary = []
     for y in range(height):
@@ -947,7 +949,7 @@ def fit_row_to_cells(images: list[Image.Image], cell_width: int, cell_height: in
     # complete row (fit_scale) keeps every pose inside the safe area where its anchor puts it, so a
     # weapon held far out neither shrinks its pose alone nor pushes that pose off its anchor.
     if (fit or {}).get("ground_frames") is False:
-        return fit_row_preserving_y(images, cell_width, cell_height, safe_margin_x, safe_margin_y, fit)
+        return fit_row_preserving_y(images, cell_width, cell_height, safe_margin_x, safe_margin_y, fit)  # type: ignore[arg-type]
     align_x = str((fit or {}).get("align_x", "foot-centroid")).lower()
     sprites = [image.crop(bbox) for image in images if (bbox := image.getbbox()) is not None]
     scale = fit_scale(sprites, cell_width, cell_height, safe_margin_x, safe_margin_y, align_x) if sprites else 1.0
@@ -1233,7 +1235,7 @@ def _run_locked(args: argparse.Namespace, run_dir: Path):
     # Recorded once it is in play, so a run keyed before decontam existed keeps its request bytes.
     if decontam_mode != "off" or "decontam" in chroma_config:
         effective_chroma["decontam"] = decontam_mode
-    decontam_kwargs = {} if decontam_mode == "off" else {"decontam": decontam_mode}
+    decontam_kwargs: dict[str, Any] = {} if decontam_mode == "off" else {"decontam": decontam_mode}
     if effective_chroma != chroma_config:
         request["chroma"] = effective_chroma
         atomic_write_text(
@@ -1243,7 +1245,7 @@ def _run_locked(args: argparse.Namespace, run_dir: Path):
     states = list(request["states"]) if args.states == "all" else [state.strip() for state in args.states.split(",") if state.strip()]
     cell_width, cell_height, safe_margin_x, safe_margin_y = cell_geometry(request["cell"])
     fit_config = request.get("fit") or {}
-    chroma_key = tuple(int(value) for value in request["chroma_key"]["rgb"])
+    chroma_key = cast("tuple[int, int, int]", tuple(int(value) for value in request["chroma_key"]["rgb"]))
     # Build the new frames in a staging dir, then swap it into place as one generation under
     # publish_guard (below). Extract rewrites many frame files; without this, a live curation
     # reader (serve_curation read_guard) would observe a mix of old/new frame generations
@@ -1621,7 +1623,7 @@ def _run_locked(args: argparse.Namespace, run_dir: Path):
                 all_errors.append(f"{state}: take needs a filesystem-safe label: {take!r}")
                 specs = None
                 break
-            specs.append((f"{state}[{label}]", take_raw_rel(request, state, label),
+            specs.append((f"{state}[{label}]", take_raw_rel(request, state, label),  # type: ignore[union-attr]
                           int(take["frames"]), label))
         if specs is None:
             continue
@@ -1633,7 +1635,7 @@ def _run_locked(args: argparse.Namespace, run_dir: Path):
                 parts = None
                 break
             part.update({"label": label, "count": count, "raw": rel})
-            parts.append(part)
+            parts.append(part)  # type: ignore[union-attr]
         if parts is None:
             continue
         registered = register_row_frames([f for p in parts for f in p["logical"]])
@@ -1703,7 +1705,7 @@ def _run_locked(args: argparse.Namespace, run_dir: Path):
             # 관측 가능하게 스킵 — 조용한 폴백 없음.
             plain_frames = []
             orig_scale = _orig_display_scale(entry["components"], frames)
-            orig_frames = [] if orig_scale > 1 else None
+            orig_frames: list[Image.Image] | None = [] if orig_scale > 1 else None
             input_grids: list[dict | None] = []
             for index, (component, frame) in enumerate(zip(entry["components"], frames)):
                 frame_bbox = frame.getbbox()

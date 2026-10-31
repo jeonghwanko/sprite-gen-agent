@@ -156,20 +156,3 @@ warn_unused_configs = true
 # A note per annotated line in an unannotated function, not an error; it buries the real ones.
 disable_error_code = ["annotation-unchecked"]
 
-# The debt list: modules that still have mypy errors. It started at 87 of 160 modules (715 errors, 2026-10-31)
-# and is down to 10. Every module not listed, and every new one, is checked. Fix a module, then remove it
-# from here; nothing is added to this list.
-[[tool.mypy.overrides]]
-module = [
-    "sprite_gen.frames.cutout",
-    "sprite_gen.frames.extract",
-    "sprite_gen.frames.slice_sheet",
-    "sprite_gen.gen.pixel_draw",
-    "sprite_gen.gen.prepare",
-    "sprite_gen.spec.runio",
-    "sprite_gen.video.loop",
-    "sprite_gen.video.repair",
-    "sprite_gen.video.rife",
-    "sprite_gen.video.sway",
-]
-ignore_errors = true

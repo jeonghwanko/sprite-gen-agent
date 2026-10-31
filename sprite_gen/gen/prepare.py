@@ -16,7 +16,7 @@ import shutil
 import sys
 from collections import deque
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from PIL import Image, ImageDraw
 
@@ -262,7 +262,7 @@ def detect_reference_background(image: Image.Image) -> dict[str, Any]:
     nothing beyond the alpha and near-white rules.
     """
     width, height = image.size
-    pixels = image.load()
+    pixels: Any = image.load()
     ring = _border_coordinates(width, height)
     opaque = [(x, y) for x, y in ring if pixels[x, y][3] > 16]
     opaque_fraction = len(opaque) / len(ring) if ring else 0.0
@@ -271,12 +271,12 @@ def detect_reference_background(image: Image.Image) -> dict[str, Any]:
 
     # Quantize to 16-level buckets so a flat fill survives PNG/codec jitter, then
     # recover the true color as the mean of the winning bucket.
-    buckets: dict[tuple[int, int, int], list[tuple[int, int, int]]] = {}
+    buckets: dict[tuple[int, ...], list[tuple[int, int, int]]] = {}
     for x, y in opaque:
         color = pixels[x, y][:3]
         buckets.setdefault(tuple(channel // 16 for channel in color), []).append(color)
     members = max(buckets.values(), key=len)
-    background = tuple(round(sum(m[index] for m in members) / len(members)) for index in range(3))
+    background = cast(tuple[int, int, int], tuple(round(sum(m[index] for m in members) / len(members)) for index in range(3)))
 
     within = sum(1 for x, y in opaque if color_distance(pixels[x, y][:3], background) <= BACKGROUND_TOLERANCE)
     coverage = within / len(opaque)
@@ -303,7 +303,7 @@ def detect_reference_background(image: Image.Image) -> dict[str, Any]:
 def _background_mask(image: Image.Image, background: dict[str, Any]) -> list[list[bool]]:
     """Mark every pixel that belongs to the base's background rather than its subject."""
     width, height = image.size
-    pixels = image.load()
+    pixels: Any = image.load()
     transparent = [[pixels[x, y][3] <= 16 for x in range(width)] for y in range(height)]
     mask = [row[:] for row in transparent]
 
@@ -361,7 +361,7 @@ def _background_mask(image: Image.Image, background: dict[str, Any]) -> list[lis
 
 def _subject_pixels(image: Image.Image, background: dict[str, Any]) -> list[tuple[int, int, int]]:
     width, height = image.size
-    pixels = image.load()
+    pixels: Any = image.load()
     mask = _background_mask(image, background)
     candidate = [
         [not mask[y][x] and not all(channel > 244 for channel in pixels[x, y][:3]) for x in range(width)]
@@ -731,7 +731,7 @@ def build_generation_plan(request: dict[str, Any]) -> dict[str, Any] | None:
             "role": "action-row",
             "direction": state_direction(state, directions),
             "refs": [
-                anchor_ref_rel(state_direction(state, directions)),
+                anchor_ref_rel(state_direction(state, directions)),  # type: ignore[arg-type]
                 guide_rel(request, state),
             ],
             # 기계 소비 필드라 **어디서나 도는 형태**로 굽는다: `sprite-gen` 콘솔 스크립트는
@@ -778,7 +778,7 @@ def direction_prefix_requirements(request: dict[str, Any], state: str) -> list[s
     requirements = [
         f"Lock the whole row to {facing}. Do not average it into a different facing.",
     ]
-    if state == direction_anchor_states(directions).get(direction):
+    if state == direction_anchor_states(directions).get(direction):  # type: ignore[arg-type]
         requirements.append(
             "This row is the CANONICAL DIRECTION ANCHOR for this facing: derive identity from the "
             "attached base image, change only the facing/orientation, and keep poses minimal "
