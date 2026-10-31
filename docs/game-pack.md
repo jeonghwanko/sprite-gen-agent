@@ -1,6 +1,6 @@
 # `game-pack` reference
 
-> Owns: Compile sprite assets into deterministic multi-page texture atlases and manifests. · Index: [docs/README.md](README.md)
+> Owns: Compile sprite assets into deterministic multi-page texture atlases and manifests · Index: [docs/README.md](README.md)
 
 `sprite-gen game-pack` is a CPU-only command that compiles images, animation sequences, multi-state descriptors, and directional sprite sheets into deterministic multi-page texture atlases and a manifest. Source files remain unchanged on disk, and exported frames are resampled to target display dimensions.
 

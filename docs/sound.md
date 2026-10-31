@@ -1,6 +1,6 @@
 # Audio Asset Reference: `sprite-gen sound`
 
-> Owns: Generate normalized SFX and BGM audio assets with Opus and AAC encoding, SQLite raw request caching, and Web Audio loop metadata. · Index: [docs/README.md](README.md)
+> Owns: Generate normalized SFX and BGM audio assets with Opus and AAC encoding, SQLite raw request caching, and Web Audio loop metadata · Index: [docs/README.md](README.md)
 
 ## Overview and CLI Usage
 

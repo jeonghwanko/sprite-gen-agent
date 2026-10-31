@@ -1,8 +1,6 @@
 # `sprite-gen video-face` and `face-bake`: a talking face layer over body motions
 
-> Owns: Face requests, face packs, talking face rules, live player, `video-face`, and `face-bake`. · Index: [docs/README.md](README.md)
-
-This document owns the face request, the face pack, the rules of the face layer, the player `sprite-gen-face-v1.mjs`, `video-face`, and `face-bake`.
+> Owns: Face requests, face packs, talking face rules, live player, `video-face`, and `face-bake` · Index: [docs/README.md](README.md)
 
 A body motion and its talking face are two layers. `video-face` cuts the lower face from a talking clip into a face pack and anchors it on every frame of every body motion. The layer covers the mouth, jaw line, cheeks, and chin down to the neck line. A mouth alone would leave the body's moving jaw and cheeks visible under a closed mouth. The pack's JavaScript player picks face frames for a voice. It draws them live in a browser page, or `face-bake` runs the same player through node and writes the result ahead of time.
 

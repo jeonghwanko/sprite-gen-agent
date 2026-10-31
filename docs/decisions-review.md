@@ -1,6 +1,6 @@
 # Optional Decisions screening
 
-> Owns: `review-decisions`, immutable advisory reports, and offline `evaluate-decisions`.
+> Owns: `review-decisions`, immutable advisory reports, and offline `evaluate-decisions` · Index: [docs/README.md](README.md)
 > Experimental. No measured quality or end-to-end speed improvement yet.
 
 This optional QA route screens existing images with OpenAI Decisions. It supports

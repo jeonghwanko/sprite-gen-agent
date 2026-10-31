@@ -2,7 +2,7 @@
 
 > Owns: Two conversation flows, access checks, optional curation and saved defaults · Index: [docs/README.md](README.md)
 
-This document owns the conversation flow. `sprite_gen/workflow/catalog.py` owns the two journeys and their choices; `workflow` derives questions and engine steps from it.
+`sprite_gen/workflow/catalog.py` owns the two journeys and their choices; `workflow` derives questions and engine steps from it.
 
 ## Start with the user's request
 
