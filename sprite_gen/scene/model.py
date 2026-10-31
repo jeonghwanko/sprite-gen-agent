@@ -12,6 +12,7 @@ from dataclasses import dataclass
 import hashlib
 import json
 from pathlib import Path
+from typing import Any
 
 from sprite_gen.spec.assets import FrameSequence, finite, load_asset, same_identity
 
@@ -127,6 +128,7 @@ def bound_stride(measurement, sequence: FrameSequence) -> float:
 
 def load_scene(path: Path) -> Scene:
     path = Path(path).expanduser().resolve()
+    data: Any
     data, digest = read_json(path)
     fields(data, {"kind", "version", "canvas", "fps", "duration", "camera", "light", "planes", "assets", "layers"}, "scene")
     if data.get("kind") != "sprite-gen-scene" or data.get("version") != 1:

@@ -7,6 +7,8 @@ fine match. The caller must still gate the rendered, uncorrected output.
 """
 from __future__ import annotations
 
+from typing import Any
+
 from PIL import Image
 from sprite_gen._deps import np
 from sprite_gen.util import lsq
@@ -177,12 +179,12 @@ def discover(frames: list[Image.Image], *, reference_index: int) -> tuple[list, 
     centers = [_center(a) for a in arrays]
     a = arrays[reference_index]
     yy, xx = np.nonzero(a[:, :, 3] > .1)
-    x0, x1, y0, y1 = int(xx.min()), int(xx.max()+1), int(yy.min()), int(yy.max()+1)
+    x0, x1, y0, y1 = int(xx.min()), int(xx.max()+1), int(yy.min()), int(yy.max()+1)  # type: ignore[call-overload]
     body_h, body_w = y1-y0, x1-x0
     pw, ph = max(5, round(min(body_w*.5, body_h*.25))), max(5, round(body_h*.20))
     radius = max(8, round(body_h*.16))
     samples = np.unique(np.linspace(0, len(frames)-1, SAMPLE_COUNT).astype(int))
-    candidates = []
+    candidates: list[dict[str, Any]] = []
     rejected = 0
     for fraction in np.linspace(.08, .5, 6):
         y = int(y0+fraction*body_h)
@@ -211,7 +213,7 @@ def discover(frames: list[Image.Image], *, reference_index: int) -> tuple[list, 
     candidates.sort(key=lambda row: (round(row['quality']/MATCH_TIE), row['box']))
     if not candidates or candidates[0]['quality'] > .8:
         raise ValueError("automatic motion anchor found no stable textured region")
-    chosen = []
+    chosen: list[dict[str, Any]] = []
     validated = []
     for row in candidates:
         if row['quality'] > .8:
@@ -262,7 +264,7 @@ def analyse(frames: list[Image.Image], *, fps: float) -> tuple[np.ndarray, np.nd
     # Local linear X trend follows slow drift changes; vertical trend is global
     # so the periodic hop/bob remains evidence. These images are NEVER emitted.
     radius = max(3, round(fps/2))
-    trajectory = []
+    trajectory: Any = []
     for k in range(n):
         js = np.arange(max(0, k-radius), min(n, k+radius+1))
         trajectory.append(lsq.line(js-k, positions[js, 0])[1])

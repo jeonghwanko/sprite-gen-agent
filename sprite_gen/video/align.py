@@ -579,7 +579,7 @@ def _widen(run: list[int], width: int, options: dict[int, list[dict[str, Any]]],
     edge_l, edge_r = beat.off(first, chosen[0]["place"]), beat.off(last, chosen[-1]["place"])
     # each span of the leg path between two source frames, a cycle before and after too: the path climbs, a held drawing flat
     unwrapped = [(i + m * n, beat.M[i] + m * beat.P, beat.M[i + 1] + m * beat.P) for m in (-1, 0, 1) for i in range(n)]
-    moved = []
+    moved: list[dict[str, Any]] = []
     for cells, edge, hold in ((left, edge_l, off_l), (right, edge_r, off_r)):
         for d, k in enumerate(cells, start=1):
             off = hold + (edge - hold) * (share - d) / share
@@ -630,7 +630,8 @@ def _keep_the_beat(frames: list[Image.Image], out: list[Image.Image], provenance
     if all(_at_its_time(c, k, count, L) for k, c in enumerate(provenance)):
         return {**cadence_mod.beat_record(None, None), "retimed_at": []}
     beat = cadence_mod.Beat(cadence_mod.leg_path(frames), L)
-    places = [beat.place(c) for c in provenance] if beat.reads else None
+    # None only where the beat does not read, and that returns below before `places` is used
+    places: list[float] = [beat.place(c) for c in provenance] if beat.reads else None  # type: ignore[assignment]
     record = cadence_mod.beat_record(beat, places)
     if not beat.reads or between != "auto" or not gave_way or not record["over"]:
         return {**record, "retimed_at": []}
@@ -704,7 +705,7 @@ def _depth_cue(frame: Image.Image) -> float:
     """How much lower the picture's right foot is drawn than its left, as a fraction of the body's
     height (the lowest solid row of each half)."""
     solid, right, height = _feet(frame)
-    low = [int(np.nonzero(solid[:, half].any(axis=1))[0].max()) if solid[:, half].any() else 0 for half in (~right, right)]
+    low = [int(np.nonzero(solid[:, half].any(axis=1))[0].max()) if solid[:, half].any() else 0 for half in (~right, right)]  # type: ignore[call-overload]
     return (low[1] - low[0]) / height
 
 
@@ -1374,7 +1375,7 @@ def align_set(loop_dirs: list[Path], *, length: int | None = None, interpolate: 
         # the ghosts passed over or kept as frames of cycle.source/, each cell where it now stands
         ghost_at = sorted(({**g, "at": (g["at"] - start) % target, "source": index[g["source"]], "taken": index[g["taken"]]}
                            for g in facts["ghost_at"]), key=lambda g: g["at"])
-        record = {**facts, "drawings": drawings, "retake": None, "turned_by": start, "turned_on": strike["by"], "view": view, "start_foot": strike["start_foot"],
+        record: dict[str, Any] = {**facts, "drawings": drawings, "retake": None, "turned_by": start, "turned_on": strike["by"], "view": view, "start_foot": strike["start_foot"],
                   "start_foot_source": strike["start_foot_source"],
                   # the two strikes as they stand in the rebuilt cycle/: the larger first
                   "strikes": [(k - start) % target for k in strike["strikes"]],
@@ -1552,11 +1553,11 @@ def parse_feet(values: list[str], *, prog: str = "video-cycle-align", flag: str 
 
 def run(**kwargs: object) -> int:
     try:
-        report = align_set(list(kwargs["loop_dir"]), length=kwargs.get("length"), report_path=kwargs.get("report"),  # type: ignore[arg-type]
+        report = align_set(list(kwargs["loop_dir"]), length=kwargs.get("length"), report_path=kwargs.get("report"),  # type: ignore[arg-type, call-overload]
                            between=str(kwargs.get("between") or DEFAULT_BETWEEN), views=kwargs.get("view"),  # type: ignore[arg-type]
                            start_foot=str(kwargs.get("start_foot") or START_FOOT),
-                           multi_cycle=str(kwargs.get("multi_cycle") or "fail"), cycles=parse_cycles(list(kwargs.get("cycles") or [])),  # type: ignore[arg-type]
-                           state=kwargs.get("state"), feet=parse_feet(list(kwargs.get("foot") or [])),  # type: ignore[arg-type]
+                           multi_cycle=str(kwargs.get("multi_cycle") or "fail"), cycles=parse_cycles(list(kwargs.get("cycles") or [])),  # type: ignore[call-overload]
+                           state=kwargs.get("state"), feet=parse_feet(list(kwargs.get("foot") or [])),  # type: ignore[arg-type, call-overload]
                            between_cache=kwargs.get("between_cache"),  # type: ignore[arg-type]
                            same_foot=str(kwargs.get("same_foot") or "warn"),
                            beat_limit=float(kwargs.get("beat_limit") or cadence_mod.BEAT_JOLT))  # type: ignore[arg-type]

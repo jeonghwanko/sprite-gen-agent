@@ -218,13 +218,13 @@ def key_transparent(
             f"along the {_and_list(checker['edges'])} edges), not the {key} key the image was asked for; keying it "
             "would erase the image — generate it again"
         )
-    source_pixels = source.load()
+    source_pixels: Any = source.load()
     warnings: list[str] = []
     decontam_stats: dict[str, Any] = {}
     # the default call keeps its pre-decontam signature, so a caller's matte stand-in still fits
-    extra = {} if decontam == "off" else {"decontam": decontam, "decontam_stats": decontam_stats}
+    extra: dict[str, Any] = {} if decontam == "off" else {"decontam": decontam, "decontam_stats": decontam_stats}
     image = remove_chroma_background_ycbcr(source, KEYS[key]["target"], warnings, **extra)
-    pixels = image.load()
+    pixels: Any = image.load()
     width, height = image.size
     total = width * height
     alpha_zero = stale_rgb = keyed = fringe = cleaned_rgb = 0
@@ -242,7 +242,7 @@ def key_transparent(
             elif source_a > a:
                 fringe += 1
 
-    for r, g, b, a in image.getdata():
+    for r, g, b, a in image.getdata():  # type: ignore[attr-defined]
         if a == 0 and (r or g or b):
             stale_rgb += 1
 
@@ -317,7 +317,7 @@ def verify_native_alpha(
             "nothing is transparent); refusing successful transparent output"
         )
 
-    pixels = image.load()
+    pixels: Any = image.load()
     cleaned_rgb = 0
     for y in range(height):
         for x in range(width):

@@ -99,7 +99,7 @@ def _moved(h: int, w: int, dy: int, dx: int) -> tuple[tuple[slice, slice], tuple
 
 def _shift(m: np.ndarray, dy: int, dx: int, fill: Any = 0, out: np.ndarray | None = None) -> np.ndarray:
     """`m` moved dy rows down and dx columns right, `fill` where nothing moved in; written into `out` where given."""
-    dst, src = _moved(*m.shape[:2], dy, dx)
+    dst, src = _moved(*m.shape[:2], dy, dx)  # type: ignore[call-arg]
     if out is None:
         out = np.full_like(m, fill)
     else:
@@ -137,7 +137,7 @@ def _opened(m: np.ndarray, r: int) -> np.ndarray:
 
 def _blur(a: np.ndarray) -> np.ndarray:
     """The mean over each pixel's 3 x 3 square, the edges clamped."""
-    out = a.astype(np.float32)
+    out: np.ndarray = a.astype(np.float32)
     for axis in (0, 1):
         pad = [(0, 0)] * out.ndim
         pad[axis] = (2, 1)
@@ -192,7 +192,7 @@ def _least(seed: np.ndarray, cost_to: list[np.ndarray]) -> np.ndarray:
     work left scattered, each one costs kernel time, and a reading takes thousands of steps."""
     d = np.where(seed, 0.0, np.inf).astype(np.result_type(np.float32, *cost_to))
     step = np.empty_like(d)
-    moves = [_moved(*d.shape, dy, dx) for dy, dx in NB]
+    moves = [_moved(*d.shape, dy, dx) for dy, dx in NB]  # type: ignore[call-arg]
     for k in range(ITERATIONS):
         old = d.copy() if k % 25 == 24 else None
         for c, (dst, src) in zip(cost_to, moves):
@@ -316,15 +316,15 @@ class Masker:
         """The part mask of a frame (`a`, straight RGBA at the reading) shown at clip time `at`, at the reading:
         (mask, rim, siblings). `rim` is the frame's rim and siblings where they are read already; `seed`, pixels that
         seed the body besides the anchor and the feet."""
-        rim, sibs = self.rim(a, at) if rim is None else rim
+        rim, sibs = self.rim(a, at) if rim is None else rim  # type: ignore[assignment]
         p = _premul(a)
         solid = p[..., 3] > SOLID_GROW
-        seed_part = _keep(_erode(rim, 1) & solid, PIECE)
+        seed_part = _keep(_erode(rim, 1) & solid, PIECE)  # type: ignore[arg-type]
         if seed_part.sum() < SEED_MIN:
-            return np.zeros_like(solid), rim, sibs
+            return np.zeros_like(solid), rim, sibs  # type: ignore[return-value]
         rows = np.nonzero(solid.any(axis=1))[0]
         feet = np.zeros_like(solid)
-        feet[int(rows.max() - FEET * (rows.max() - rows.min())):] = True
+        feet[int(rows.max() - FEET * (rows.max() - rows.min())):] = True  # type: ignore[call-overload]
         body = self.anchor | feet if seed is None else self.anchor | feet | seed
         seed_body = body & solid & ~_dilate(seed_part, self.seed_gap)
         cost_to = []
@@ -342,15 +342,15 @@ class Masker:
         part = solid & (_least(seed_part, [c + to_part for c in cost_to]) < _least(seed_body, [c + to_body for c in cost_to]))
         part = _keep(part, KEEP)
         part |= _dilate(part, 1) & (p[..., 3] > SOFT) & ~solid
-        return part, rim, sibs
+        return part, rim, sibs  # type: ignore[return-value]
 
     def mask(self, frame: Image.Image, at: float) -> np.ndarray:
         """The part mask of `frame` shown at clip time `at` (a frame made between two shows a time between theirs), in
         the frame's pixels. The clip's own frame at its time, pixel for pixel, is read once (`clip_mask`)."""
-        own = self.clip.get(at)
+        own = self.clip.get(at)  # type: ignore[call-overload]
         if own is not None and (own is frame or (own.size == frame.size
                                                  and own.convert("RGBA").tobytes() == frame.convert("RGBA").tobytes())):
-            return self.clip_mask(at)
+            return self.clip_mask(at)  # type: ignore[arg-type]
         part, _, _ = self.mask_read(self._read(frame), at)
         return self._full(part, frame)
 

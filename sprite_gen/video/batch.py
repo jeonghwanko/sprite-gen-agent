@@ -871,7 +871,7 @@ def run_item(
 
         # a tight frame is clipped on purpose; leftover key background still fails. `decontam` is passed
         # whatever its value: run_frames defaults to auto, so leaving it out would not mean off
-        extra = {"alpha_mode": "brightness"} if lifetime else {}
+        extra: dict[str, Any] = {"alpha_mode": "brightness"} if lifetime else {}
         fr = frames_mod.run_frames(clip, item_dir / "frames", key=key, allow_edge_contact=False, report_path=item_dir / "frames.report.json", spill=spill, reference=canvas_png, allow_subject_edge_contact=fit == "tight", decontam=decontam, **extra)
         result["frames"] = {k: fr[k] for k in ("fps", "frames", "alpha_zero_pct_min", "alpha_zero_pct_max")}
         result["frames"]["spill"] = fr.get("spill", {}).get("mode")
@@ -1059,7 +1059,7 @@ def align_gaits(results: list[dict[str, Any]], root: Path, mode: str, *, interpo
         if told_items and not out[state].get("applied"):
             out[state]["feet_unused"] = told_items
     for item, foot in feet.items():
-        r = next((r for r in results if r["item"] == item), None)
+        r = next((r for r in results if r["item"] == item), None)  # type: ignore[arg-type]
         if r is None:
             raise SystemExit(f"video-set: --align-foot {item}={foot} names no item of the set")
         why = f"{item} failed" if not r.get("ok") else f"{r['state']} was not aligned (filmed in fewer than two directions)"
@@ -1219,7 +1219,7 @@ def run_set(
     aligned: dict[str, Any] = {}
     try:
         with ThreadPoolExecutor(max_workers=max(1, concurrency)) as ex:
-            futures = {ex.submit(run_item, item=i, direction=d, state=s, base=b, root=root, character=character, duration=duration, resolution=resolution, key=key, force=force, gap=gap, video_runner=video_runner, shape=shape, anchor=anchor, spill=spill, facing=f, facing_fix=facing_fix, prepare_side=side_preparer(f), body_height=body_height, fit=fit, decontam=decontam, walk_start=walk_start, redraw_runner=redraw_runner, still_provider=still_provider, handed=handed, body_plan=body_plan, **({"end_frame": end_frames[i]} if end_frames and i in end_frames else {}), **({"play": plays[i]} if i in plays else {}), **({"motion": motions[i]} if i in motions else {})): i for i, d, s, f, b in items}
+            futures = {ex.submit(run_item, item=i, direction=d, state=s, base=b, root=root, character=character, duration=duration, resolution=resolution, key=key, force=force, gap=gap, video_runner=video_runner, shape=shape, anchor=anchor, spill=spill, facing=f, facing_fix=facing_fix, prepare_side=side_preparer(f), body_height=body_height, fit=fit, decontam=decontam, walk_start=walk_start, redraw_runner=redraw_runner, still_provider=still_provider, handed=handed, body_plan=body_plan, **({"end_frame": end_frames[i]} if end_frames and i in end_frames else {}), **({"play": plays[i]} if i in plays else {}), **({"motion": motions[i]} if i in motions else {})): i for i, d, s, f, b in items}  # type: ignore[arg-type]
             try:
                 for fut in as_completed(futures):
                     r = fut.result()
@@ -1401,23 +1401,23 @@ def run(**kwargs: object) -> int:
 
 def _run_set(kwargs: dict[str, object]) -> dict[str, Any]:
     return run_set(
-        end_frames=_parse_end_frames(list(kwargs.get("end_frame") or [])),
-        bases=_parse_bases(list(kwargs.get("base") or [])),  # type: ignore[arg-type]
+        end_frames=_parse_end_frames(list(kwargs.get("end_frame") or [])),  # type: ignore[call-overload]
+        bases=_parse_bases(list(kwargs.get("base") or [])),  # type: ignore[call-overload]
         states=[s.strip() for s in str(kwargs.get("states") or "").split(",") if s.strip()],
         root=Path(str(kwargs["out_dir"])), character=kwargs.get("character"),  # type: ignore[arg-type]
-        duration=(int(kwargs["duration"]) if kwargs.get("duration") else None), resolution=str(kwargs.get("resolution") or "720p"), key=str(kwargs.get("key") or "auto"),
-        concurrency=int(kwargs.get("concurrency") or 3), force=bool(kwargs.get("force")), gap=float(kwargs.get("start_gap") or START_GAP_SECONDS),
+        duration=(int(kwargs["duration"]) if kwargs.get("duration") else None), resolution=str(kwargs.get("resolution") or "720p"), key=str(kwargs.get("key") or "auto"),  # type: ignore[call-overload]
+        concurrency=int(kwargs.get("concurrency") or 3), force=bool(kwargs.get("force")), gap=float(kwargs.get("start_gap") or START_GAP_SECONDS),  # type: ignore[arg-type, call-overload]
         facing=str(kwargs.get("facing") or "right"), facing_fix=str(kwargs.get("facing_fix") or "none"),
         shape=(str(kwargs["shape"]) if kwargs.get("shape") else None), anchor=str(kwargs.get("anchor") or "none"), spill=str(kwargs.get("spill") or "auto"),
-        body_height=(int(kwargs["body_height"]) if kwargs.get("body_height") else None), fit=str(kwargs.get("fit") or "state"),
+        body_height=(int(kwargs["body_height"]) if kwargs.get("body_height") else None), fit=str(kwargs.get("fit") or "state"),  # type: ignore[call-overload]
         decontam=str(kwargs.get("decontam") or frames_mod.DECONTAM_DEFAULT), align_cycles=str(kwargs.get("align_cycles") or "auto"),
         align_between=str(kwargs.get("align_between") or align_mod.DEFAULT_BETWEEN),
         walk_start=str(kwargs.get("walk_start") or "redraw"), still_provider=kwargs.get("still_provider"),  # type: ignore[arg-type]
-        handed=handed_mod.parse_all(list(kwargs.get("handed") or [])) or None,  # type: ignore[arg-type]
-        align_feet=align_mod.parse_feet(list(kwargs.get("align_foot") or []), prog="video-set", flag="--align-foot"),
-        body_plan=body_mod.parse_all(list(kwargs.get("body_plan") or [])) or None,  # type: ignore[arg-type]
-        play=_parse_keyed(list(kwargs.get("play") or []), "--play") or None,  # type: ignore[arg-type]
-        motion=_parse_keyed(list(kwargs.get("motion") or []), "--motion") or None,  # type: ignore[arg-type]
+        handed=handed_mod.parse_all(list(kwargs.get("handed") or [])) or None,  # type: ignore[call-overload]
+        align_feet=align_mod.parse_feet(list(kwargs.get("align_foot") or []), prog="video-set", flag="--align-foot"),  # type: ignore[call-overload]
+        body_plan=body_mod.parse_all(list(kwargs.get("body_plan") or [])) or None,  # type: ignore[call-overload]
+        play=_parse_keyed(list(kwargs.get("play") or []), "--play") or None,  # type: ignore[call-overload]
+        motion=_parse_keyed(list(kwargs.get("motion") or []), "--motion") or None,  # type: ignore[call-overload]
     )
 
 
