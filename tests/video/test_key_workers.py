@@ -2,6 +2,7 @@
 worker processes (`KEY_WORKERS`); the keyed frames and the report are the ones one process makes."""
 from __future__ import annotations
 
+import multiprocessing
 from pathlib import Path
 
 import numpy as np
@@ -58,6 +59,18 @@ def test_prepared_frames_come_back_in_clip_order(tmp_path: Path, monkeypatch) ->
         here = prepare_cutout(src, key="green", decontam="off")
         assert np.array_equal(prepared["matte"]["data"], here["matte"]["data"])
         assert "source_rgb" not in prepared["matte"]  # the main process reads the frame again rather than receive it
+
+
+def test_a_clip_refused_partway_leaves_no_worker_running(tmp_path: Path, monkeypatch) -> None:
+    """The pool keying ahead is shut down when a frame is refused, on the run's own thread, not when the abandoned
+    generator is collected: left to collection, the shutdown ran on whatever thread collected it and could hang."""
+    files = _raw(tmp_path, n=9)
+    Image.new("RGB", (W, H), (190, 70, 40)).save(files[2])  # no key anywhere: refused, with frames still ahead
+    monkeypatch.setattr(frames_mod, "KEY_WORKERS", 3)
+    with pytest.raises(SystemExit, match="frame-0002.png keyed to 0% transparency") as refused:
+        frames_mod.key_frames(files, tmp_path / "keyed", key="green", decontam="off")
+    assert refused.value.__traceback__ is not None  # the run's frames, and anything they hold, are still alive here
+    assert multiprocessing.active_children() == []
 
 
 def test_a_refusal_leaves_every_frame_handed_to_the_saver_on_disk_and_no_later_one(tmp_path: Path) -> None:
