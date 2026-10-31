@@ -26,6 +26,11 @@ import pytest
 
 import prompt_freeze_table as table
 
+# Drawing the table (`drawn`) is most of this module's time, and its first test's: some 1,700 stills each written
+# through a staging folder, 50 to 80 s on a Windows desktop alone (2026-11-01), and every parallel worker running one of
+# these tests draws its own. Its tests are given that, a hang still a named failure.
+pytestmark = pytest.mark.timeout(600)
+
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "prompts-v2.22.0.json.gz"
 GROUPS = ("clip", "video-prompt", "start-still", "still", "video-side")
 # The two diagonal stills' view sentences as 2.22.0 said them: the turn, the head and the feet only, words a still
