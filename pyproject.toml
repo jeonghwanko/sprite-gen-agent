@@ -140,6 +140,10 @@ ignore = [
 "scripts/**/*.py" = ["F821"]
 # A pytest fixture imported from another test module is redefined by the test that takes it as an argument.
 "tests/**/*.py" = ["F811"]
+# extract.py and loop.py import what moved out of them so that extract.<name> and loop.<name> keep working:
+# for callers, for the scripts/ shims that copy their globals, and for tests that monkeypatch them.
+"sprite_gen/frames/extract.py" = ["F401"]
+"sprite_gen/video/loop.py" = ["F401"]
 
 [tool.mypy]
 files = ["sprite_gen"]

@@ -55,8 +55,7 @@ Some files are too big to read whole. No markdown line is over 2,000 characters;
 | `CHANGELOG-before-3.0.md` | ~380 KB (1.x and 2.x) | grep only, for history |
 | `docs/loop-repair.md` | ~290 KB, 2,800+ lines | read its "Reading this doc" table at the top, then only the part it points to |
 | `docs/video-pipeline.md`, `docs/run-contract.md` | ~60 KB each | grep `^#` for the outline, then read one section with an offset |
-| `sprite_gen/frames/extract.py`, `sprite_gen/video/loop.py` | ~200 KB, 3,000+ lines each | grep for the function, read around it |
-| `sprite_gen/video/align.py`, `repair.py`, `batch.py`, `rife.py` | ~100 KB each | same |
+| `sprite_gen/video/align.py`, `repair.py`, `batch.py`, `rife.py`, `sprite_gen/frames/extract.py`, `sprite_gen/video/loop.py` | 85–135 KB each | grep for the function, read around it |
 
 If `.claude/worktrees/` exists, it holds other sessions' checkouts: never search or edit there.
 
@@ -86,6 +85,9 @@ If `.claude/worktrees/` exists, it holds other sessions' checkouts: never search
   against zero.
 - Tests monkeypatch functions by module attribute (for example `loop.distance_matrix`). A refactor keeps
   calling them through that name; grep `monkeypatch.setattr(<module>, "…")` before rerouting a call.
+  `frames/extract.py` and `video/loop.py` import back what moved out of them, so `extract.<name>` still
+  answers, but a patch there reaches only the callers still in that file: a caller that moves takes its
+  patched callees with it, or stays.
 - A speed-up that claims "bytes unchanged" proves it: the pre-change form is kept in a test and compared
   (`tests/test_p1_perf_equivalence.py`).
 - CI's `lint` job runs ruff and mypy as configured in `pyproject.toml` (`pip install -e ".[lint]"`). Run both
