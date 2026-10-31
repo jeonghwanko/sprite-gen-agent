@@ -310,6 +310,13 @@ shared depths and bars) and mask morphology with window sums (`frames/morph.py`)
 keying engines: `frames.extract`, `frames.decontam`, `frames.logo_matte`, `video.frames` and
 `video.restoration` take these names from those two modules, not through one another.
 
+`frames/extract.py` holds the run: the CLI, cell fitting, row placement, the palette and the heal.
+Steps 1 and the matting it calls live beside it — `frames/chroma_key.py` (the RGB path) and
+`frames/chroma_ycc.py` (the YCbCr path) — with `frames/pixel_grid.py` (pitch and grid detection, §6.1)
+and `frames/frames_manifest.py` (loading and checking a run's frames manifest). `extract` imports every
+name back, so `frames.extract.<name>` still answers, and its `engine_revision` hashes the three pixel
+modules with it.
+
 ### 6.1 Pixel-unfake path (`fit.pixel_unfake`, deterministic)
 
 The behavior contract is [`pixel-unfake.md`](pixel-unfake.md); this is how

@@ -19,7 +19,7 @@ still ──video-canvas──▶ canvas.png ──video──▶ clip.mp4 ─�
 | `sprite-gen video` | `sprite_gen/gen/video.py` ([gen](video.md)) | still + prompt → mp4 + report |
 | `sprite-gen video-prompt` | `sprite_gen/video/clip_prompt.py` | (direction, state) → the prompt `video-set` sends, for a clip made by a video MCP on your agent ([below](#a-clip-from-a-video-mcp-on-your-agent--zcre)) |
 | `sprite-gen video-frames` | `sprite_gen/video/frames.py` | mp4 → `raw/`, `keyed/` RGBA frames (`keyed.refused/` when refused) + report |
-| `sprite-gen video-loop` | `sprite_gen/video/loop.py` | keyed frames → `cycle/`, `<name>.strip.png` + `.strip.json`, `<name>.gif`, `<name>.webp` + report |
+| `sprite-gen video-loop` | `sprite_gen/video/loop.py` (with `loop_params`, `loop_cycle`, `loop_pose`, `loop_cells`, `loop_output`, `loop_words` beside it) | keyed frames → `cycle/`, `<name>.strip.png` + `.strip.json`, `<name>.gif`, `<name>.webp` + report |
 | `sprite-gen video-set` | `sprite_gen/video/batch.py` | bases × states → one folder per item, `set.report.json`, `table.md` |
 | `sprite-gen video-cycle-align` | `sprite_gen/video/align.py` | the loop directories of one walk or run, one per direction → one cycle length, each loop turned to start on a foot strike, + report ([loop repair](loop-repair.md) section 4) |
 | `sprite-gen video-sway` | `sprite_gen/video/sway.py` | a loop directory + an ellipse -> the strip, GIF and WebP with that region swaying with the body (old name `video-follow`) ([section 6](#6-the-sway-layer--video-sway)) |
