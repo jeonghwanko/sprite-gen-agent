@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import functools
 import heapq
 import io
 import itertools
@@ -34,6 +35,8 @@ import math
 import os
 import secrets
 import shutil
+import sys
+import traceback
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -1158,8 +1161,10 @@ def _make_dirs(directory: Path, made: list[tuple[Callable[[Path], object], Path]
 
 
 def _write_new(path: Path, data: bytes) -> None:
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0), 0o666)
-    with os.fdopen(fd, "wb") as handle:
+    # os.open makes the file and `open` wraps its descriptor at once, with no Python instruction between them: an
+    # interrupt never finds a bare descriptor no file object will close (os.open, then os.fdopen, had one), under which
+    # Windows cannot remove the file.
+    with open(path, "xb", opener=functools.partial(os.open, mode=0o666)) as handle:
         handle.write(data)
         handle.flush()
         os.fsync(handle.fileno())
@@ -1245,6 +1250,9 @@ def _write_kit(out_dir: Path, files: dict[str, bytes], report: Path | None, repo
             with contextlib.suppress(OSError):
                 os.unlink(temp)  # published: the temp is a second name of the report
     except BaseException:
+        # A file the run opened and an interrupted frame still holds (between `open` and its `with`, or as the `with`
+        # closes it) is closed now, not when those frames go: Windows removes no file that is open.
+        traceback.clear_frames(sys.exc_info()[2])
         renamed = renaming and not os.path.lexists(staging)  # the staging directory took the out-dir's name
         published = renamed if temp is None else linking and _linked(report, temp)
         if published:

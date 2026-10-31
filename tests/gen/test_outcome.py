@@ -500,11 +500,16 @@ def test_a_stopped_set_starts_no_child_after_the_stop(tmp_path, monkeypatch):
     """A row still preparing when the stop lands never starts its paid child (`base.run_logged` refuses)."""
     run_dir = _prepared(tmp_path)
     ran = tmp_path / "child-ran"
+    preparing = threading.Event()
 
     def runner(prompt_file, out, refs, report, *, provider, model, log) -> int:
         if out.stem == "idle":
-            signal.raise_signal(signal.SIGTERM)  # the stop arrives while walk is still preparing
+            # The stop arrives while walk is still preparing: once its row has begun, not before (on a busy host the
+            # walk row could otherwise not have begun at all, and so be no item of the report).
+            assert preparing.wait(30), "the walk row never began"
+            signal.raise_signal(signal.SIGTERM)
             return 1
+        preparing.set()
         time.sleep(0.5)
         return gen_base.run_logged([sys.executable, "-c", f"open({str(ran)!r}, 'w').close()"], log)
 
