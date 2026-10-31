@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 """The sentences a loop report says about its repairs: ghost limbs, overlaps, pops and seam reasons.
 
-Moved out of `loop.py` unchanged; `loop` re-exports every name, so `loop.<name>` still works."""
+Moved out of `loop.py`; `loop` re-exports every name, so `loop.<name>` still works. The start-stop retake
+(`STAND_REASON`, `stand_retake`, `retakes`) is ported from upstream sprite-gen 3.13."""
 
 from __future__ import annotations
 
@@ -139,6 +140,49 @@ def part_retake(record: dict[str, Any], cut: tuple[int, int], *, given: bool) ->
                          "cut": list(cut), "searched": not given},
             "limits": {k: record[k] for k in ("floor", "speed", "curve", "lead")},
             "remedy": "recut-or-retake" if given else "retake"}
+
+
+STAND_REASON = "start-stop"
+
+
+def stand_retake(cycle: dict[str, Any]) -> dict[str, Any] | None:
+    """A take to film again where the walk starts or stops in it: the clip shows its steps (`step_count`), its feet stand
+    together longer than any pass (the reading's `stands`) — the walk stands still — and the cut kept is not counted
+    two steps (its `cut` verdict is not `two`): no cut of two steps closes between the stands. `reason` STAND_REASON,
+    `reasons`, the stands, the run limit, the crossings and the cut kept with the count's word on it under
+    `start_stop`, and `remedy` `retake`. None otherwise."""
+    counted = cycle.get("step_count") or {}
+    cut = counted.get("cut") or {}
+    if not counted.get("readable") or not counted.get("stands") or cut.get("verdict") == "two":
+        return None
+    return {"reason": STAND_REASON, "reasons": [STAND_REASON],
+            "start_stop": {"stands": counted["stands"], "run_limit": counted["run_limit"], "crossings": counted["crossings"],
+                           "cut": [cycle["start"], cycle["length"]],
+                           **{k: cut[k] for k in ("verdict", "code", "why") if k in cut}},
+            "remedy": "retake"}
+
+
+def retakes(*records: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The loop's `retake`: the first reason's record, every reason in `reasons` and each other reason's numbers beside
+    it. None where there is none."""
+    found = [r for r in records if r]
+    if not found:
+        return None
+    out = dict(found[0])
+    for other in found[1:]:
+        out.update({k: v for k, v in other.items() if k not in ("reason", "reasons", "remedy")})
+        out["reasons"] = [*out["reasons"], *other["reasons"]]
+    return out
+
+
+def _stand_line(record: dict[str, Any]) -> str:
+    """A walk that starts or stops in the take (`stand_retake`), in words (a `video-loop: warning:` line)."""
+    said = record["start_stop"]
+    stands = ", ".join(f"{a}..{b}" for a, b in said["stands"])
+    why = f": {said['why']}" if "why" in said else ""
+    return (f"film this direction again ({STAND_REASON}) — the feet stand together {stands}, longer than any pass "
+            f"({said['run_limit']:g} frames): the walk starts or stops in the take, and the cut {said['cut'][0]}/{said['cut'][1]} "
+            f"kept is not two steps ({said.get('verdict', 'unread')}{why})")
 
 
 def _pop_lines(record: dict[str, Any], *, given: bool) -> list[str]:

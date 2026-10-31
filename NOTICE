@@ -62,3 +62,11 @@ canonicalizes shipped audio player line endings so pack hashes remain portable
 across Windows and Unix checkouts, and keeps a stable Python API for embedding programs
 (sprite_gen.api). Source files it changed carry a "Modified for
 sprite-gen-agent" line; the files it added carry their own SPDX header.
+
+The walk and run gait witness (sprite_gen/video/local_cycle.py, legs.py,
+crossings.py, loop.py `_witnessed`, loop_cells.py `read_steps`, loop_words.py
+`stand_retake`, batch.py `anchor_for` and `left_out`, align.py `held_cut`, and
+their tests and docs) comes from sprite-gen 3.13.0 and 3.14.0 (upstream commits
+46cd5f1 to 2d50505, pull requests #162 and #163), ported by hand onto this fork's
+split loop modules; the parts of 3.5 to 3.12 it leans on upstream and this fork
+does not have were left out.
