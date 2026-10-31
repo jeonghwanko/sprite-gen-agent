@@ -70,7 +70,8 @@ If `.claude/worktrees/` exists, it holds other sessions' checkouts: never search
 
 - Plain `pytest` is the fast bundle: `tests/conftest.py` deselects the tests marked `slow`. `pytest --full`
   runs every test; only the release lanes do (`scripts/linux_lane.sh`, `scripts/t4_lane.py`). A test's
-  default timeout is 120 s (`pyproject.toml`); long ones set their own.
+  default timeout is 120 s (`pyproject.toml`); long ones set their own. Under pytest-xdist on Windows it is
+  600 s (`XDIST_WINDOWS_TIMEOUT` in `tests/conftest.py`): a timeout there ends the worker's process.
 - Run the areas you touched, not the whole suite (about an hour on a Windows checkout). CI runs the fast
   bundle on every pull request (`.github/workflows/test.yml`: Ubuntu, Python 3.14, no RIFE).
 
