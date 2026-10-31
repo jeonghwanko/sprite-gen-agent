@@ -617,6 +617,7 @@ def pack(request: Path, out_dir: Path, *, page_size=MAX_PAGE_SIZE, max_bytes=MAX
     audio_entries = document.get("audio", [])
     if not isinstance(audio_entries, list):
         raise ValueError("audio must be a list")
+    audio_payloads: dict[str, bytes]
     audio, audio_payloads = {}, {}
     for entry in audio_entries:
         if not isinstance(entry, dict):

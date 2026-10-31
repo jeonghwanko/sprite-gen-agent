@@ -532,7 +532,7 @@ def generate(run_dir: Path, manifest: dict, fid: str, *, model: str | None = Non
 def export_asset(run_dir: Path, manifest: dict) -> dict:
     _require_input_review(run_dir, manifest)
     frames, hashes, decoded = [], [], set()
-    accepted = {}
+    accepted: dict = {}
     for frame in manifest["plan"]["frames"]:
         path, receipt = _accepted(run_dir, frame["id"], manifest, accepted)
         with Image.open(path) as im:
@@ -618,7 +618,7 @@ def run(*, plan: Path, run_dir: Path, prepare_only: bool = False, frame: str | N
             # Recording turns SIGTERM / SIGHUP into `Interrupted`, after the stop hook has sent the running `gen` SIGTERM
             # (`run_gen`); the attempt receipt then reads gen's report (`generate`).
             with outcome.recording("gen-motion"):
-                result = generate(run_dir, manifest, frame, model=model, retry=retry, reconcile=reconcile, normalize_canvas=normalize_canvas)
+                result = generate(run_dir, manifest, frame, model=model, retry=retry, reconcile=reconcile, normalize_canvas=normalize_canvas)  # type: ignore[arg-type]
         print(_json(result), end="")
         return 0
     except (ValueError, OSError) as exc:

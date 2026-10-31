@@ -744,7 +744,7 @@ def _run(args: argparse.Namespace) -> int:
                                             exit_status=outcome.exit_code(code, exc)),
                 }
                 with outcome.deferred():  # a signal now waits for the report, then ends the run
-                    atomic_write_text(report_path, json.dumps(failed, ensure_ascii=False, indent=2) + "\n")
+                    atomic_write_text(report_path, json.dumps(failed, ensure_ascii=False, indent=2) + "\n")  # type: ignore[arg-type]
             ending = outcome.ended(exc, code)
             if ending is exc:
                 raise

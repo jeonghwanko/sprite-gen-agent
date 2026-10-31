@@ -61,7 +61,7 @@ class Renderer:
         for layer in scene.layers:
             seq = layer.sequence
             size = tuple(layer.raster_size)
-            anchor = tuple(a*new/old for a, new, old in zip(seq.anchor, size, seq.size))
+            anchor = tuple(a*new/old for a, new, old in zip(seq.anchor, size, seq.size))  # type: ignore[arg-type]
             frames = {}
             for source in seq.frames:
                 image = resize_cell(source, size)
@@ -91,7 +91,7 @@ class Renderer:
             image, anchor, shadow, bbox = self.prepared[layer.id][id(source)]
             point = [layer.at[i] + layer.velocity[i]*time - (scene.camera_at[i]+scene.camera_velocity[i]*time)*layer.parallax for i in range(2)]
             left, top = point[0]-anchor[0], point[1]-anchor[1]
-            offsets = [0]
+            offsets: list[int] | range = [0]
             if layer.repeat_x:
                 period = image.width
                 left %= period

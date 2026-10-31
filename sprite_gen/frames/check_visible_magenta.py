@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+from typing import Any
 
 from PIL import Image
 from sprite_gen.util.cli_kwargs import namespace_from_kwargs
@@ -43,7 +44,7 @@ def _run(args: argparse.Namespace):
 
     image = Image.open(args.image).convert("RGBA")
     width, height = image.size
-    pixels = image.load()
+    pixels: Any = image.load()
     count = 0
     min_x = width
     min_y = height

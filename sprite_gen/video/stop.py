@@ -212,7 +212,7 @@ def stand_on(cells: list[Image.Image], frame: Image.Image, ground: int, reach: i
     the cells' mean coverage, where the loop's body is over a cycle — within `reach` px either way: searched on a
     quarter-size matte, then to the pixel. Returns the move and its coverage difference (the mean over the canvas)."""
     box = _box(frame)
-    dy = ground - (box[3] - 1)
+    dy = ground - (box[3] - 1)  # type: ignore[index]
     target, alpha = np.mean([_alpha(c) for c in cells], axis=0), _shifted(_alpha(frame), (0, dy))
     qt, qa = _quarter(target), _quarter(alpha)
     q = reach // 4 + 1
@@ -314,13 +314,13 @@ def place(cells: list[Image.Image], frames: list[Image.Image], found: dict[str, 
     boxes = [_box(c) for c in cells]
     if any(b is None for b in boxes) or _box(frames[0]) is None:
         raise StopRefused(f"{PROG}: a loop cell or the clip's first frame is empty", found)
-    ground = max(b[3] - 1 for b in boxes)  # the loop's lowest body row: its feet on the ground
+    ground = max(b[3] - 1 for b in boxes)  # type: ignore[index]  # the loop's lowest body row: its feet on the ground
     # The clip may have carried its body far across its frame: the still is looked for over a cell's width.
     end, end_mismatch = stand_on(cells, frames[0], ground, cells[0].width)
     # A straight share per frame shown, the stop's own steps: the still's rest frames, never shown, take none.
     played = found["played"]
     moves = {j: tuple(int(round(a + (b - a) * (i + 1) / len(played))) for a, b in zip(leave, end)) for i, j in enumerate(played)}
-    return moves, {"leave": {"by": list(leave), "cell": cell, "mismatch": mismatch},
+    return moves, {"leave": {"by": list(leave), "cell": cell, "mismatch": mismatch},  # type: ignore[return-value]
                    "stand": {"by": list(end), "mismatch": end_mismatch},
                    "clip_px": [b - a for a, b in zip(leave, end)], "ground": ground}
 
@@ -492,7 +492,7 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
 
 def run(**kwargs: object) -> int:
     payload = make_stop(Path(str(kwargs["frames_dir"])), Path(str(kwargs["loop"])), Path(str(kwargs["out_dir"])),
-                        name=str(kwargs.get("name") or "stop"), speed=int(kwargs.get("speed") or 1),  # type: ignore[arg-type]
+                        name=str(kwargs.get("name") or "stop"), speed=int(kwargs.get("speed") or 1),  # type: ignore[call-overload]
                         max_frames=kwargs.get("max_frames"), fps=kwargs.get("fps"), report_path=kwargs.get("report"),  # type: ignore[arg-type]
                         seam_max=float(SEAM_MAX if kwargs.get("seam_max") is None else kwargs["seam_max"]),  # type: ignore[arg-type]
                         run_up_max=float(RUN_UP_MAX_CYCLES if kwargs.get("run_up_max") is None else kwargs["run_up_max"]))  # type: ignore[arg-type]

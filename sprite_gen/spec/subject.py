@@ -49,8 +49,8 @@ def cell_area(request: dict[str, Any]) -> int:
     cell = request.get("cell")
     if not isinstance(cell, dict):
         raise SystemExit("sprite-request.json cell must be an object")
-    width = int(cell.get("width", cell.get("size", 0)))
-    height = int(cell.get("height", cell.get("size", 0)))
+    width = int(cell.get("width", cell.get("size", 0)))  # type: ignore[arg-type]
+    height = int(cell.get("height", cell.get("size", 0)))  # type: ignore[arg-type]
     if width <= 0 or height <= 0:
         raise SystemExit("sprite-request.json cell width/height must be positive")
     return width * height

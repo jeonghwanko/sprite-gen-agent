@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 from PIL import Image
 
@@ -108,7 +109,7 @@ class Anatomy:
 
 def axis_x(image: Image.Image, box: tuple[int, int, int, int]) -> int:
     """몸통 세로축 = 불투명 픽셀 x 무게중심 (box 상대 좌표)."""
-    px = image.load()
+    px: Any = image.load()
     x0, y0, x1, y1 = box
     total = acc = 0
     for y in range(y0, y1):
@@ -154,7 +155,7 @@ def width_profile(image: Image.Image, box: tuple[int, int, int, int], cx: int) -
     행 전체 불투명 픽셀을 세면 박쥐 날개처럼 옆으로 뻗은 부속이 폭을 지배한다.
     몸통 축을 지나는 **연속 런**만 재면 떨어져 있는 부속이 배제된다 — 실루엣의
     국소 두께를 세로축으로 샘플링한 것과 같다."""
-    px = image.load()
+    px: Any = image.load()
     out: list[int] = []
     for y in range(box[1], box[3]):
         run = center_run(px, box, cx, y)
@@ -225,7 +226,7 @@ def detect_face(image: Image.Image, box: tuple[int, int, int, int], cx: int,
     있기·크기 비·행 겹침은 그대로다 — 그 둘을 빼면 목걸이 쪽 엉뚱한 쌍이 잡혀 경계가 목 아래로
     내려간다. 지금 규칙이 찾는 그림은 이 단계를 타지 않아 결과가 그대로다.
     못 찾으면 None — 그때는 목이 경계를 정한다."""
-    px = image.load()
+    px: Any = image.load()
     x0, y0, x1, y1 = box
     w, h = x1 - x0, y1 - y0
     lums: list[tuple[float, int]] = []
@@ -300,7 +301,7 @@ def _eye_pair(mask: list[bool], w: int, h: int, cx: int, min_area: int, max_area
 def torso_metrics(image: Image.Image, box: tuple[int, int, int, int], cx: int,
                   profile: list[int], row_lo: int, row_hi: int) -> tuple[int, int]:
     """(몸통 반폭 중앙값, 실루엣 최대 반폭) — 둘의 비가 부속의 존재량이다."""
-    px = image.load()
+    px: Any = image.load()
     x0, y0, x1, y1 = box
     band = [profile[r] for r in range(max(0, row_lo), min(len(profile), row_hi)) if profile[r]]
     torso = (sorted(band)[len(band) // 2] // 2) if band else (x1 - x0) // 4

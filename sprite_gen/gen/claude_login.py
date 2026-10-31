@@ -197,7 +197,7 @@ def send_message(body: dict[str, Any], *, label: str, env: Mapping[str, str] | N
         said = (done.stderr or done.stdout).strip()[-300:]
         raise api.ApiError(f"{label}: `claude -p` ended with exit {done.returncode} and no result: {said!r}",
                            billed=True)
-    usage = result.get("usage") if isinstance(result.get("usage"), dict) else {}
+    usage: Any = result.get("usage") if isinstance(result.get("usage"), dict) else {}
     said = str(result.get("result") or "")
     if result.get("is_error"):
         if OUTPUT_CAP_ERROR.search(said):

@@ -71,7 +71,7 @@ def _references(image: np.ndarray, regions: list[Box]) -> list[tuple]:
             raise ValueError(f"motion anchor region contains no foreground: {box}")
         for _ in range(2):
             padded = np.pad(mask, 1)
-            mask = np.logical_or.reduce([
+            mask = np.logical_or.reduce([  # type: ignore[call-overload]
                 padded[y:y + mask.shape[0], x:x + mask.shape[1]]
                 for x, y in ((1, 1), (0, 1), (2, 1), (1, 0), (1, 2))
             ])
@@ -117,10 +117,10 @@ def _row_costs(reference: tuple, blocks: np.ndarray, at: np.ndarray, scratch: tu
         high = part.max(axis=0) if high is None else np.maximum(high, part.max(axis=0))
         low = part.min(axis=0) if low is None else np.minimum(low, part.min(axis=0))
         if total is None:
-            total = np.add.reduce(part, axis=0)
+            total = np.add.reduce(part, axis=0)  # type: ignore[call-overload]
         else:
             block[0] = total
-            total = np.add.reduce(block[:c + 1], axis=0)
+            total = np.add.reduce(block[:c + 1], axis=0)  # type: ignore[call-overload]
     mean = np.true_divide(total, np.intp(n), out=total, casting="unsafe")
     # The centered patches one after the other, a pixel copied as its bytes.
     pixels = laid[:count * n].reshape(count, n)
@@ -132,8 +132,8 @@ def _row_costs(reference: tuple, blocks: np.ndarray, at: np.ndarray, scratch: tu
         pixels[:, s:s + c] = part.view(laid.dtype)[:, :, 0].T
     patches = pixels.view(block.dtype).reshape(count, n, block.shape[2])
     squares, products = squares[:n], products[:n]
-    textured = (high - low).any(axis=1)
-    costs = []
+    textured = (high - low).any(axis=1)  # type: ignore[operator]
+    costs: list[float | None] = []
     for k in range(count):
         if not textured[k]:
             costs.append(None)
@@ -172,7 +172,7 @@ def _register(references: list[tuple], moving: np.ndarray, center: tuple[int, in
                 rows.append(_row_costs(reference, blocks, (y0 - dy) * width + x0 - hi + at, scratch)[::-1])
             for dx, costs in zip(range(lo, hi + 1), zip(*rows)):
                 if None not in costs:
-                    costs = list(costs)
+                    costs = list(costs)  # type: ignore[assignment]
                     candidates.append((sum(w * c for w, c in zip(REGION_WEIGHTS, costs)), dx, dy, costs))
     if not candidates:
         raise ValueError("motion anchor found no measurable match inside the search window")

@@ -138,9 +138,9 @@ def _chroma_content_bbox(image: Image.Image, chroma_rgb: tuple[int, int, int],
                          tolerance: int = 60) -> tuple[int, int, int, int] | None:
     """크로마 단색 배경 위 피사체의 bbox — 크로마와 충분히 다른 픽셀만 콘텐츠로 센다."""
     rgb = image.convert("RGB")
-    pixels = rgb.load()
+    pixels: Any = rgb.load()
     mask = Image.new("L", rgb.size, 0)
-    out = mask.load()
+    out: Any = mask.load()
     cr, cg, cb = chroma_rgb
     for y in range(rgb.height):
         for x in range(rgb.width):
@@ -163,7 +163,7 @@ def normalize_tween_scale(mid: Image.Image, img0: Image.Image, img1: Image.Image
     mid_box = _chroma_content_bbox(mid, chroma_rgb)
     if not all(ref_boxes) or not mid_box:
         raise SystemExit("tween scale normalization failed: could not find content on the chroma background")
-    target_h = sum(b[3] - b[1] for b in ref_boxes) / 2.0
+    target_h = sum(b[3] - b[1] for b in ref_boxes) / 2.0  # type: ignore[index, misc]
     mid_h = mid_box[3] - mid_box[1]
     factor = target_h / mid_h
     content = mid.convert("RGB").crop(mid_box)
@@ -172,7 +172,7 @@ def normalize_tween_scale(mid: Image.Image, img0: Image.Image, img1: Image.Image
                             Image.Resampling.LANCZOS)
     canvas = Image.new("RGB", img0.size, chroma_rgb)
     left = (canvas.width - scaled.width) // 2
-    top = canvas.height - scaled.height - (img0.height - ref_boxes[0][3])  # 참조와 같은 바닥선
+    top = canvas.height - scaled.height - (img0.height - ref_boxes[0][3])  # type: ignore[index]  # 참조와 같은 바닥선
     canvas.paste(scaled, (left, max(0, top)))
     return canvas
 

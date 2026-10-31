@@ -127,7 +127,7 @@ def billed_tokens(usage: dict[str, Any]) -> dict[str, Any]:
     `output_tokens`. Cache writes are split by their lifetime (`usage.cache_creation`); a reply that does not split
     them wrote for five minutes. Each count is as the reply gave it — None where it gave none — so a caller pricing
     the call at rates of its own reads a missing count its own way; `cost_usd` reads it as nothing."""
-    creation = usage.get("cache_creation") if isinstance(usage.get("cache_creation"), dict) else {}
+    creation: Any = usage.get("cache_creation") if isinstance(usage.get("cache_creation"), dict) else {}
     write_5m = creation.get("ephemeral_5m_input_tokens")
     write_1h = creation.get("ephemeral_1h_input_tokens")
     if write_5m is None and write_1h is None:
@@ -338,14 +338,14 @@ def get_batch(token: str, batch_id: str, *, sleep: Sleep = time.sleep, label: st
 
 
 def _message_reply(message: dict[str, Any], batch_id: str) -> Reply:
-    content = message.get("content") if isinstance(message.get("content"), list) else []
+    content: Any = message.get("content") if isinstance(message.get("content"), list) else []
     return Reply(
         text="".join(b.get("text") or "" for b in content if isinstance(b, dict) and b.get("type") == "text"),
         thinking="\n".join(b.get("thinking") or "" for b in content
                            if isinstance(b, dict) and b.get("type") == "thinking" and b.get("thinking")),
         stop_reason=message.get("stop_reason"),
         stop_details=message.get("stop_details") if isinstance(message.get("stop_details"), dict) else None,
-        usage=message.get("usage") if isinstance(message.get("usage"), dict) else {},
+        usage=message.get("usage") if isinstance(message.get("usage"), dict) else {},  # type: ignore[arg-type]
         model=message.get("model"),
         message_id=message.get("id"),
         batch_id=batch_id,

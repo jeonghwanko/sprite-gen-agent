@@ -131,7 +131,7 @@ def audit(image: Image.Image, plan: dict, frame: dict, evidence: dict,
     source = landmarks(evidence.get("body_landmarks"), plan["canvas"])
     target = landmarks(frame["body_landmarks"], plan["canvas"])
     for x,y in source.values():
-        if image.getpixel((min(round(x),image.width-1),min(round(y),image.height-1)))[3] < LIMITS["alpha_threshold"]:
+        if image.getpixel((min(round(x),image.width-1),min(round(y),image.height-1)))[3] < LIMITS["alpha_threshold"]:  # type: ignore[index]
             raise ValueError("geometry: body landmarks must be observed on visible character pixels")
     if not isinstance(evidence.get("feet"), dict) or set(evidence["feet"]) != {"A", "B"}:
         raise ValueError("geometry: observed physical feet A and B required")
@@ -290,7 +290,7 @@ def contact_coverage(plan: dict, reports: dict) -> dict:
     result = []
     for leg in ("A", "B"):
         for members in _runs([bool(f["contacts"][leg]) for f in frames]):
-            offsets = {}
+            offsets: dict[str, list[list[float]]] = {}
             def stance(i, leg=leg, offsets=offsets):
                 f = frames[i]
                 value, why = foot(f["id"], leg)

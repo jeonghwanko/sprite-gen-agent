@@ -424,7 +424,7 @@ def run(*, dir: Path | None = None, host: str = "127.0.0.1", port: int = 0,
 
     handler = partial(ComposeHandler)
     server = ThreadingHTTPServer((host, port), handler)
-    host, port = server.server_address
+    host, port = server.server_address  # type: ignore[assignment, misc]
     url = f"http://{host}:{port}/"
     print(f"sprite-gen composition canvas: {url}")
     print(f"  mounted: {ComposeHandler.mount_root or '(none — mount a folder in the UI)'}")

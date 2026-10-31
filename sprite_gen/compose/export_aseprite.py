@@ -160,7 +160,7 @@ def _publish_split(output_dir: Path, documents: dict[str, dict[str, Any]]) -> No
     staging = Path(tempfile.mkdtemp(prefix=f".{output_dir.name}.staging-", dir=output_dir.parent))
     backup = output_dir.with_name(f".{output_dir.name}.backup")
     try:
-        payloads = {
+        payloads: dict[Path, bytes | str] = {
             staging / f"{state}.json": json.dumps(document, ensure_ascii=False, indent=2) + "\n"
             for state, document in documents.items()
         }

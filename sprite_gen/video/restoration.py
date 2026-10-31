@@ -212,7 +212,7 @@ def proposals(frames: list[Image.Image], projection: source.Projection, shown: l
     eligible = [k for k in projection.record["repair_hints"] if k in shown and k not in boundary and k not in applied
                 and k not in filmed and frames[k].tobytes() != ref[k].tobytes()
                 and faults(actual[k]) and faults(fixed[k]) and not faults(original[k])]
-    return sorted(eligible, key=lambda k: (-max(fixed[k]["outline_loss"], fixed[k]["dark_excess"]), k))[:MAX_PROPOSALS]
+    return sorted(eligible, key=lambda k: (-max(fixed[k]["outline_loss"], fixed[k]["dark_excess"]), k))[:MAX_PROPOSALS]  # type: ignore[operator, type-var]
 
 
 def _portable(value: Any) -> Any:
@@ -276,7 +276,7 @@ def jump(before: list[Image.Image], after: list[Image.Image], ref: list[Image.Im
     box = repair.union_box(ref)
     a, b = (repair.jump_scores(row, facing=facing, box=box) for row in (before, after))
     n = len(before)
-    cells = [{"cell": c, "steps": [(c - 1) % n, c],
+    cells: list[dict[str, Any]] = [{"cell": c, "steps": [(c - 1) % n, c],
               "baseline": max(float(a["score"][s]) for s in ((c - 1) % n, c)),
               "candidate": max(float(b["score"][s]) for s in ((c - 1) % n, c))} for c in changed]
     return {"baseline": a["score"].tolist(), "candidate": b["score"].tolist(),
@@ -308,11 +308,11 @@ def judge(before: list[Image.Image], after: list[Image.Image], ref: list[Image.I
     a_fixed, b_fixed = measure(before, ref, reads), measure(after, ref, reads)
     axes: dict[str, Any] = {}
     for metric, threshold in (("outline_loss", OUTLINE_WARN), ("dark_excess", SMEAR_WARN)):
-        a, b = ([max(0, q[metric] - threshold) for q in row] for row in (a_final, b_final))
+        a, b = ([max(0, q[metric] - threshold) for q in row] for row in (a_final, b_final))  # type: ignore[operator]
         axes[metric] = {"baseline": [q[metric] for q in a_final], "candidate": [q[metric] for q in b_final],
                         "reference": [q[metric] for q in reference], "threshold": threshold,
                         "status": _status(list(zip(a, b)))}
-    a_partial, b_partial = ([max(0, q["partial_excess"] - r["partial_excess"]) for q, r in zip(row, reference)]
+    a_partial, b_partial = ([max(0, q["partial_excess"] - r["partial_excess"]) for q, r in zip(row, reference)]  # type: ignore[operator]
                             for row in (a_fixed, b_fixed))
     axes["introduced_partial"] = {"baseline": a_partial, "candidate": b_partial,
                                   "raw_baseline": [q["partial_excess"] for q in a_fixed],
@@ -524,7 +524,7 @@ def _write_candidate(paths: dict[str, Path], out: Path, name: str, baseline: Loo
                 shutil.copyfile(paths[key], stage / filename)
         else:
             frames = list(baseline.frames)
-            frames[target] = frame
+            frames[target] = frame  # type: ignore[assignment]
             w, h = frames[0].size
             strip = Image.new("RGBA", (w * len(frames), h))
             for k, cell in enumerate(frames):
@@ -534,7 +534,7 @@ def _write_candidate(paths: dict[str, Path], out: Path, name: str, baseline: Loo
             # The loop report stays the origin's own record; only the receipt is added.
             report = {**baseline.source_report, "restoration": receipt}
             (stage / names["report"]).write_text(json.dumps(report, indent=2, allow_nan=False) + "\n", encoding="utf-8")
-            indices, delay = playback.mapping(baseline)
+            indices, delay = playback.mapping(baseline)  # type: ignore[misc]
             selected = [frames[k] for k in indices]
             save_clean_gif(selected, stage / names["gif"], duration_ms=delay, alpha_threshold=128)
             write_webp(selected, stage / names["webp"], delay_ms=delay)

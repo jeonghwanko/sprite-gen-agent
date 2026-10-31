@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
 
 from PIL import Image, ImageSequence
 
@@ -35,7 +35,7 @@ def _prepare_transparent_frame(frame: Image.Image, alpha_threshold: int) -> Imag
     rgb = Image.new("RGB", rgba.size, (0, 0, 0))
     rgb.paste(rgba.convert("RGB"), mask=alpha)
 
-    paletted = rgb.convert("P", palette=Image.ADAPTIVE, colors=255)
+    paletted = rgb.convert("P", palette=Image.ADAPTIVE, colors=255)  # type: ignore[attr-defined]
     palette = paletted.getpalette() or []
     if len(palette) < 768:
         palette.extend([0] * (768 - len(palette)))
@@ -88,7 +88,7 @@ def save_clean_gif(
             prepared = list(pool.map(_prepare_opaque_frame, frames))
             # Restore-to-background depends on palette indices that can change per
             # frame. Keep the opaque canvas and encode every changed pixel instead.
-            options = {"disposal": 1, "optimize": False}
+            options: dict[str, Any] = {"disposal": 1, "optimize": False}
         else:
             prepared = list(pool.map(lambda frame: _prepare_transparent_frame(frame, alpha_threshold), frames))
             options = {"disposal": 2, "transparency": 255}
@@ -100,7 +100,7 @@ def save_clean_gif(
         save_all=True,
         append_images=prepared[1:],
         duration=duration_ms,
-        **({"loop": loop} if loop is not None else {}),
+        **({"loop": loop} if loop is not None else {}),  # type: ignore[arg-type]
         **options,
     )
 
@@ -109,7 +109,7 @@ def gif_report(path: Path) -> dict[str, object]:
     """Return frame count, delay list, loop, transparency, and disposal values."""
     with Image.open(path) as image:
         delays = []
-        alpha_extrema = []
+        alpha_extrema: list[Any] = []
         disposal = []
         # The iterator reuses its decoder object. Read each frame's properties
         # before advancing, while they still describe that frame.

@@ -16,7 +16,7 @@ import urllib.request
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 
 from . import refusal, retry
 from .base import env_api_key
@@ -104,7 +104,7 @@ def _load_grok_login(auth_path: Path, *, now: datetime) -> Credential:
     return Credential(token=token, source=AUTH_SOURCE_GROK_LOGIN, expires_at=expires_at if isinstance(expires_at, str) else None)
 
 
-def resolve_credential(*, env: dict[str, str] | None = None, now: datetime | None = None) -> Credential:
+def resolve_credential(*, env: Mapping[str, str] | None = None, now: datetime | None = None) -> Credential:
     """Prefer the subscription login; a failed login never switches to API credit."""
     env = os.environ if env is None else env
     now = now or datetime.now(timezone.utc)
@@ -215,7 +215,7 @@ def read_whole(response: http.client.HTTPResponse, timeout: float, deadline: flo
     while not response.isclosed():
         # http.client keeps no public handle on the connection once its answer began; the socket under
         # the response's reader is where a read's wait is set.
-        response.fp.raw._sock.settimeout(time_left(timeout, deadline))
+        response.fp.raw._sock.settimeout(time_left(timeout, deadline))  # type: ignore[attr-defined]
         chunk = response.read1(ANSWER_CHUNK)
         if not chunk:
             break
@@ -230,7 +230,7 @@ def error_body(refused: urllib.error.HTTPError, timeout: float = HTTP_TIMEOUT_SE
     """The body of a refusal, read whole (read_whole): its JSON, or its text as `refusal.RawBody`. A refusal's
     status alone is not an answer read whole: a body broken on the way raises what broke it (one of NO_ANSWER),
     which every direct provider transport (`xai`, `anthropic_api`, `openai_provider`) takes as no answer."""
-    raw = read_whole(refused.fp, timeout, deadline).decode("utf-8", "replace")
+    raw = read_whole(refused.fp, timeout, deadline).decode("utf-8", "replace")  # type: ignore[arg-type]
     try:
         return json.loads(raw)
     except json.JSONDecodeError:

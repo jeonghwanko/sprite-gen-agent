@@ -544,7 +544,7 @@ def flat_cos2(r: np.ndarray, flat: float = 0.0) -> np.ndarray:
 def smooth_lift(anat: Anatomy, cfg: dict) -> float:
     """smooth 의 가슴이 들숨 꼭대기에서 오르는 px — depth × 기준 높이. Sway 레이어가 숨 박자를 받을 때(`video-sway
     --breathe`) 같은 식으로 그 크기를 읽는다."""
-    return float(cfg.get("depth") if cfg.get("depth") is not None else DEFAULT_SMOOTH_DEPTH) * anat.basis_rows
+    return float(cfg.get("depth") if cfg.get("depth") is not None else DEFAULT_SMOOTH_DEPTH) * anat.basis_rows  # type: ignore[arg-type]
 
 
 def _smoothstep_array(a: float, b: float, x: np.ndarray) -> np.ndarray:
@@ -599,7 +599,7 @@ def smooth_displacement(anat: Anatomy, cfg: dict, x: np.ndarray, y: np.ndarray,
     down = np.minimum(1.0, np.abs(y - smooth_shoulder_row(anat)) / (1.4 * band))   # 양 어깨 높이가 달라도
     w_shoulder = np.cos(0.5 * np.pi * down) ** 2 * np.cos(0.5 * np.pi * across) ** 2
     lift = smooth_lift(anat, cfg)
-    swell = float(cfg.get("depth_x") if cfg.get("depth_x") is not None else DEFAULT_SMOOTH_DEPTH_X)
+    swell = float(cfg.get("depth_x") if cfg.get("depth_x") is not None else DEFAULT_SMOOTH_DEPTH_X)  # type: ignore[arg-type]
     # 어깨가 켜지는 구간은 오르는 양의 8배 이상 — 더 짧으면 그 사이가 행당 상한 넘게 눌린다.
     quick = max(0.15 * band, 8.0 * shape["shoulder"] * lift)
     u = np.clip((y - top) / (quick + (band - quick) * neckness), 0.0, 1.0) if band > quick else \
@@ -1116,7 +1116,7 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
 
 def _cli_breathe(raw: dict) -> dict:
     try:
-        return state_breathe({"states": {"frames": {"breathe": raw}}}, "frames")
+        return state_breathe({"states": {"frames": {"breathe": raw}}}, "frames")  # type: ignore[return-value]
     except SystemExit as exc:
         raise SystemExit(f"breathe: 사이드카와 같은 검사에서 거부됐다 — {exc}")
 

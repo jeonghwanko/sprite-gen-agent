@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from typing import Any, Callable
+from typing import Any, Callable, cast
 
 from PIL import Image
 
@@ -112,7 +112,7 @@ def drawing_pose(frames: list[Image.Image], boxes: list[Box | None],
 
     def distance(k: int) -> tuple[float, int]:
         if k not in measured:
-            shift = round((boxes[0][0] + boxes[0][2] - boxes[k][0] - boxes[k][2]) / 2)
+            shift = round((boxes[0][0] + boxes[0][2] - boxes[k][0] - boxes[k][2]) / 2)  # type: ignore[index]
             moved = Image.new("RGBA", frames[k].size)
             moved.paste(frames[k], (shift, 0))
             measured[k] = float(np.abs(features(moved) - reference).mean()), shift
@@ -137,7 +137,7 @@ def terminal_pose(boxes: list[Box | None], *, count: int, state: str | None) -> 
     """A named terminal state's end pose (`end_pose`): compare body geometry, independent of color noise and horizontal
     drift."""
     first = boxes[0]
-    tail = boxes[-count:]
+    tail = cast("list[Box]", boxes[-count:])
     if first is None or any(b is None for b in tail):
         raise ValueError("once needs a visible end pose")
     height = first[3] - first[1]

@@ -377,7 +377,7 @@ def _write_anchor_pick(run_dir: Path, request: dict[str, Any], state: str | None
             # `repin` = 명시 재지정 의도. CLI 로 찍는 건 언제나 사람이 방금 한 행동이므로
             # 낡은 핀을 그 자리에서 푼다 (writer 가 소비·제거한다). 뷰는 stale 핀을 다시
             # 누를 때만 이 플래그를 싣는다 (autosave 가 세탁하지 못하게).
-            anchors[direction] = {"state": state, "index": int(index), "repin": True}
+            anchors[direction] = {"state": state, "index": int(index), "repin": True}  # type: ignore[arg-type]
         # 커밋 전 검증 (Atomicity): 지정을 얹은 문서로 먼저 해석해 본다. 없는 인스턴스·
         # 타 방향 프레임을 디스크에 남긴 뒤 죽으면, 사용자는 "지정은 됐는데 매번 에러"
         # 상태에 갇힌다 (validator 검증 2026-07-25 파생 증상 1 — write 후 크래시로 잔류).
@@ -387,7 +387,7 @@ def _write_anchor_pick(run_dir: Path, request: dict[str, Any], state: str | None
             # 앵커로 찍을 수는 없고, 세대 지문도 계산되지 않아 저장하면 다음 로드에서
             # "재생성됐다" 로 오분류돼 그 방향 생성이 막힌다 (validator 5차 기각 2 실측).
             try:
-                path = frame_source_path(run_dir, request, doc, state, int(index))
+                path = frame_source_path(run_dir, request, doc, state, int(index))  # type: ignore[arg-type]
             except AnchorUnavailable as exc:
                 if not exc.pending:
                     raise

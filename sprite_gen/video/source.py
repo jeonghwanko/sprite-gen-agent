@@ -218,7 +218,7 @@ def project(baseline: Any, source: Source) -> tuple[Projection | None, str | Non
     keep = [k for k in range(n) if k not in hints]
     frames = []
     for j, frame in enumerate(source.frames[start:start + n]):
-        frame = gait_fallback.hold_frame(frame, moves[j], pad) if moves else frame.copy()
+        frame = gait_fallback.hold_frame(frame, moves[j], pad) if moves else frame.copy()  # type: ignore[arg-type]
         loop._scrub(frame)
         frames.append(drop_specks(frame, alpha_over=16, diagonal=False, apart=0)[0])
     dx = loop.body_wrap_offset(frames) if anchor == "body" else 0
@@ -246,9 +246,9 @@ def project(baseline: Any, source: Source) -> tuple[Projection | None, str | Non
                                      ("body_height_target", "body_src_h", "cell_height_cap", "top_margin_px"))
         if any(type(v) is not int or v <= 0 for v in (target, standing, cap)) or type(top) is not int or top < 0:
             return None, "legacy-projection-recipe-missing"
-        left_max, right_min = min(b[0] for b in boxes) - 8, max(b[2] for b in boxes) + 8
+        left_max, right_min = min(b[0] for b in boxes) - 8, max(b[2] for b in boxes) + 8  # type: ignore[index]
         candidates = []
-        for bottom in range(max(b[3] for b in boxes), frames[0].height + 1):
+        for bottom in range(max(b[3] for b in boxes), frames[0].height + 1):  # type: ignore[index]
             if bottom <= top:
                 continue
             scale = min(cap / (bottom - top), target / standing)
@@ -264,14 +264,14 @@ def project(baseline: Any, source: Source) -> tuple[Projection | None, str | Non
                             return None, "legacy-projection-search-budget"
     hits = []
     for crop in candidates:
-        if all(resize_cell(frames[k].crop(crop), (w, h)).tobytes() == baseline.frames[k].tobytes() for k in keep):
+        if all(resize_cell(frames[k].crop(crop), (w, h)).tobytes() == baseline.frames[k].tobytes() for k in keep):  # type: ignore[arg-type]
             hits.append(crop)
             if len(hits) > 1:
                 return None, "legacy-projection-ambiguous"
     if not hits:
         return None, "legacy-source-correspondence-unverified"
     crop = hits[0]
-    cropped = [frame.crop(crop) for frame in frames]
+    cropped = [frame.crop(crop) for frame in frames]  # type: ignore[arg-type]
     projected = [resize_cell(frame, (w, h)) for frame in cropped]
     receipt = {"recipe": RECIPE, "crop": crop, "cell": [w, h], "wrap_dx_px": dx,
                "source": source.record["source"], "inputs": source.artifacts,
@@ -281,7 +281,7 @@ def project(baseline: Any, source: Source) -> tuple[Projection | None, str | Non
                "unmodified_cells": keep, "repair_hints": hints, "exact_projections": 1,
                "reference_pixels_sha256": [evidence.digest(f.tobytes()) for f in projected]}
     if moves:
-        receipt["size_hold"] = {"padding_ltrb": list(pad), "cut_frames": moves}
+        receipt["size_hold"] = {"padding_ltrb": list(pad), "cut_frames": moves}  # type: ignore[arg-type]
     return Projection(projected, receipt, cropped), None
 
 

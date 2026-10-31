@@ -92,7 +92,7 @@ class Stop(SystemExit):
 
     def __init__(self, message: str, code: int, *, outcome: str | None = None) -> None:
         super().__init__(message)
-        self.code = code
+        self.code: int = code
         self.outcome = outcome
 
 

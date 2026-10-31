@@ -19,7 +19,7 @@ def __getattr__(name: str) -> Any:
     return getattr(_inspect, name)
 
 
-def inspect_loop(loop_dir: Path, regions: list[tuple[float, float, float, float]], out_dir: Path,
+def inspect_loop(loop_dir: Path, regions: list[tuple[float, ...]], out_dir: Path,
                  **kwargs: Any) -> dict[str, Any]:
     return _inspect.inspect_loop(loop_dir, regions, out_dir, **{"verb": VERB, **kwargs})
 

@@ -185,9 +185,9 @@ def measure(image: Image.Image, marker: tuple[int, int, int], *, strap: tuple[in
         raise SystemExit("handed-check: a frame has no transparent pixels — check keyed frames (video-frames, cutout or "
                          "gen --transparent), so the body's centre is the body's")
     ys, xs = np.nonzero(body)
-    height = int(ys.max() - ys.min() + 1)
+    height = int(ys.max() - ys.min() + 1)  # type: ignore[call-overload]
     rows = np.zeros_like(body)
-    rows[int(ys.min() + zone[0] * height):int(ys.min() + zone[1] * height) + 1] = True
+    rows[int(ys.min() + zone[0] * height):int(ys.min() + zone[1] * height) + 1] = True  # type: ignore[call-overload]
     found = blobs(marker_mask(rgba, marker) & rows, link=max(2, round(LINK * height)),
                   min_area=max(4, round((MIN_BLOB_SIDE * height) ** 2)))
     keep = [b for b in found if b["area"] >= SPECK * found[0]["area"]] if found else []
@@ -266,7 +266,7 @@ def check(frames: list[Image.Image], *, item: handed_mod.Handed, view: str, faci
     # item when its largest blob is more than a sliver (the far side's own limit), or a far sliver turned over
     # would count as the near item shown.
     sized = view == "side" and (expect["depth"] == "near" or swings) and full is not None
-    shown = sum(1 for r in rows if r["blobs"] and (not sized or r["blobs"][0]["ratio"] > FAR_MAX * full))
+    shown = sum(1 for r in rows if r["blobs"] and (not sized or r["blobs"][0]["ratio"] > FAR_MAX * full))  # type: ignore[misc, operator]
     rules: dict[str, Any] = {}
     if expect["picture"]:
         rules["picture_side"] = expect["picture"]
@@ -308,7 +308,7 @@ def board(frames: list[Image.Image], report: dict[str, Any], out: Path, *, heigh
         k = height / frame.height
         cell = Image.new("RGBA", frame.size, (236, 236, 236, 255))
         cell.alpha_composite(frame.convert("RGBA"))
-        cell = cell.convert("RGB").resize((max(1, round(frame.width * k)), height), Image.LANCZOS)
+        cell = cell.convert("RGB").resize((max(1, round(frame.width * k)), height), Image.LANCZOS)  # type: ignore[attr-defined]
         draw = ImageDraw.Draw(cell)
         colour = (200, 0, 0) if row["bad"] else (0, 160, 0)
         for b in row["blobs"]:
@@ -383,9 +383,9 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def run(**kwargs: object) -> int:
-    frames = load_frames(images=list(kwargs.get("image") or []), frames_dir=kwargs.get("frames_dir"),  # type: ignore[arg-type]
+    frames = load_frames(images=list(kwargs.get("image") or []), frames_dir=kwargs.get("frames_dir"),  # type: ignore[arg-type, call-overload]
                          strip=kwargs.get("strip"))  # type: ignore[arg-type]
-    references = load_frames(images=list(kwargs.get("reference") or []), frames_dir=None, strip=None) if kwargs.get("reference") else []
+    references = load_frames(images=list(kwargs.get("reference") or []), frames_dir=None, strip=None) if kwargs.get("reference") else []  # type: ignore[call-overload]
     report = check(frames, item=handed_mod.parse(str(kwargs["handed"])), view=str(kwargs["direction"]),
                    facing=kwargs.get("facing"), marker=parse_marker(str(kwargs["marker"])), references=references,  # type: ignore[arg-type]
                    strap=parse_marker(str(kwargs["strap"])) if kwargs.get("strap") else None,

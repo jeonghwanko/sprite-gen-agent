@@ -111,7 +111,7 @@ def read_row(loop_dir: Path, view: str) -> Row:
     except (OSError, ValueError) as exc:
         raise SystemExit(f"{PROG}: {d}: {exc}") from exc
     body_h = meta.get("body_h")
-    return Row(code=code, view=view, dir=d, name=name, frames=tuple(seq.frames), anchor=(float(seq.anchor[0]), float(seq.anchor[1])),
+    return Row(code=code, view=view, dir=d, name=name, frames=tuple(seq.frames), anchor=(float(seq.anchor[0]), float(seq.anchor[1])),  # type: ignore[index]
                delay_ms=meta["delay_ms"], body_h=int(body_h) if body_h is not None else None,
                sha256=hashlib.sha256(strip.read_bytes()).hexdigest())
 
@@ -139,7 +139,7 @@ def _centre(path: Path, rows: list[Row]) -> tuple[Image.Image, dict[str, Any]]:
     if missing:
         raise SystemExit(f"{PROG}: --center needs the rows' standing height, and {', '.join(missing)} has no body_h in its "
                          "strip metadata — cut it with video-loop")
-    target = round(statistics.median(r.body_h for r in rows))  # type: ignore[misc]
+    target = round(statistics.median(r.body_h for r in rows))  # type: ignore[type-var, arg-type]
     try:
         standing = loop_mod.standing_height(p)
     except SystemExit as exc:
@@ -253,7 +253,7 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def run(**kwargs: object) -> int:
-    record = make_sheet(list(kwargs["loop_dir"]), kwargs.get("view"), out_dir=Path(kwargs["out_dir"]),  # type: ignore[arg-type]
+    record = make_sheet(list(kwargs["loop_dir"]), kwargs.get("view"), out_dir=Path(kwargs["out_dir"]),  # type: ignore[arg-type, call-overload]
                         name=str(kwargs.get("name") or "set"), center=kwargs.get("center"))  # type: ignore[arg-type]
     out = Path(kwargs["out_dir"]).expanduser()  # type: ignore[arg-type]
     print(json.dumps({"sheet": str(out / record["sheet"]), **{k: record[k] for k in ("order", "columns", "cell_w", "cell_h",

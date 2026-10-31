@@ -62,7 +62,7 @@ LIFT_TIE = 0.5  # px: rests this near the nearest lift are told apart by their s
 
 # The voice -> mouth level rule the player runs (sprite-gen-face-v1.mjs `mouthTrack`): the flap's numbers,
 # docs/face-parts.md "The line".
-MOUTH_RULES = {"closed_under": 0.12, "prominence": 0.05, "min_gap_s": 1 / 12, "open_lo_hi": [2, 5], "surprise_at": 0.85,
+MOUTH_RULES: dict[str, Any] = {"closed_under": 0.12, "prominence": 0.05, "min_gap_s": 1 / 12, "open_lo_hi": [2, 5], "surprise_at": 0.85,
                "lead_frames": 1, "max_step": 3, "normal_top": 6, "surprise_top": 6, "wide_from": 4,
                "surprise_tags": ["[surprised]", "[gasps]"]}
 # The face frame pick (`pickFaces`): a hold, a jump within a line and an entry from or exit to the rest cost these
@@ -143,7 +143,7 @@ def read_request(path: Path) -> tuple[dict[str, Any], fl.Geometry, Image.Image, 
         raise SystemExit(f"{PROG}: fps must be a positive number")
     reference = Image.open(base / str(req.get("reference"))).convert("RGBA")
     try:
-        geom = fl.Geometry.read(req.get("face"), reference.size)
+        geom = fl.Geometry.read(req.get("face"), reference.size)  # type: ignore[arg-type]
     except ValueError as exc:
         raise SystemExit(f"{PROG}: {exc}") from None
 
@@ -226,7 +226,7 @@ def _anchor(task: tuple[str, tuple[int, int, int]]) -> dict[str, Any]:
     feat = fl.features(fl.to_reference(Image.open(path).convert("RGBA"), place, geom.size))
     a = fl.fit(band, feat, geom)
     a["band_residual"] = fl.band_residual(band, feat, fl.matrix(a, geom))
-    a["band_residual_place_only"] = fl.band_residual(band, feat, fl.sim(*a["place_only"], 1.0, 0.0, geom.mouth))
+    a["band_residual_place_only"] = fl.band_residual(band, feat, fl.sim(*a["place_only"], 1.0, 0.0, geom.mouth))  # type: ignore[call-arg]
     a["band_residual_fixed"] = fl.band_residual(band, feat, np.eye(3))
     return a
 
@@ -373,6 +373,7 @@ def build(request: Path, out: Path, jobs: int = 0) -> dict[str, Any]:
         closed_in = {s: [k for k in sets[s] if face_rows[k]["closed"]] for s in ("smile", "neutral")}
 
         # the body clips
+        body_rows: list[dict[str, Any]]
         body_rows, rests_used = [], set()
         prepared = []
         for c in bodies:
@@ -440,7 +441,7 @@ def build(request: Path, out: Path, jobs: int = 0) -> dict[str, Any]:
         levels = MOUTH_RULES["normal_top"]
         rules = {**MOUTH_RULES, **PICK_RULES, "levels": levels,
                  "open_px": [round(top * level / levels, 1) for level in range(levels + 1)],
-                 "jump_line": fl.JUMP_LINE, "enter_line": round(float(steps.max() / med), 3)}
+                 "jump_line": fl.JUMP_LINE, "enter_line": round(float(steps.max() / med), 3)}  # type: ignore[call-overload]
         shutil.copyfile(PLAYER_PATH, tmp / PLAYER_PATH.name)
         np.save(tmp / "weight.npy", w0)
         pack = {"kind": PACK_KIND, "version": VERSION, "fps": fps, "size": list(geom.size), "rules": rules,
@@ -489,7 +490,7 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def run(**kwargs: object) -> int:
-    report = build(Path(str(kwargs["request"])), Path(str(kwargs["out"])), jobs=int(kwargs.get("jobs") or 0))  # type: ignore[arg-type]
+    report = build(Path(str(kwargs["request"])), Path(str(kwargs["out"])), jobs=int(kwargs.get("jobs") or 0))  # type: ignore[call-overload]
     print(json.dumps({"pack": report["pack"], "sets": {k: len(v) for k, v in report["talk"]["sets"].items()},
                       "body": [{"name": b["name"], "own_mouth": b["own_mouth"] and [b["own_mouth"]["start_s"], b["own_mouth"]["end_s"]],
                                 "entry": {k: b["entry"][k] for k in ("frame", "set", "rest")}, "hand_frames": len(b["hand_frames"])}

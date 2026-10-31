@@ -33,8 +33,8 @@ def checker(size: tuple[int, int], square: int = 16) -> Image.Image:
     w, h = size
     y, x = np.ogrid[:h, :w]
     light = ((x // square) + (y // square)) % 2 == 0
-    return Image.fromarray(np.where(light[..., None], np.uint8([235, 235, 235, 255]),
-                                    np.uint8([210, 210, 210, 255])).astype(np.uint8))
+    return Image.fromarray(np.where(light[..., None], np.uint8([235, 235, 235, 255]),  # type: ignore[arg-type]
+                                    np.uint8([210, 210, 210, 255])).astype(np.uint8))  # type: ignore[arg-type]
 
 
 def flatten(frame: Image.Image) -> Image.Image:

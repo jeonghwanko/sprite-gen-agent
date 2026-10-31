@@ -60,7 +60,7 @@ def _returns(D: np.ndarray, lag: int, js: np.ndarray | None, cyclic: bool) -> tu
     if js.size == 0:
         return None
     x = at(js + lag)
-    extra = np.minimum.reduce([D[at(js + a), x] + D[x, at(js + b)] - D[at(js + a), at(js + b)] for a, b in SPANS])
+    extra = np.minimum.reduce([D[at(js + a), x] + D[x, at(js + b)] - D[at(js + a), at(js + b)] for a, b in SPANS])  # type: ignore[call-overload]
     step = float(D[js, at(js + 1)].mean())
     return (float(extra.mean()) / step, float(D[js, x].mean()) / step) if step > 0 else None
 

@@ -30,7 +30,7 @@ import argparse
 import json
 import shutil
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 
 from PIL import Image
 
@@ -69,7 +69,7 @@ def auto_detect(atlas: Image.Image) -> tuple[list[dict[str, Any]], tuple[int, in
     """
     scale = max(1, max(atlas.width, atlas.height) // 600)  # downsample for speed
     sw, sh = atlas.width // scale, atlas.height // scale
-    small = atlas.getchannel("A").resize((sw, sh), Image.BILINEAR)
+    small = atlas.getchannel("A").resize((sw, sh), Image.BILINEAR)  # type: ignore[attr-defined]
     mask = [b > ALPHA_THRESHOLD for b in small.tobytes()]  # 'L' mode: 1 byte/px
     boxes_small = mask_components(mask, sw, sh, min_area=max(6, (sw * sh) // 4000))
     if not boxes_small:
@@ -143,7 +143,7 @@ def grid_layout(atlas: Image.Image, cols: int, rows: int) -> tuple[list[dict[str
 def manifest_layout(
     manifest: dict[str, Any],
     direction: str | None,
-) -> tuple[list[dict[str, Any]], tuple[int, int], str, dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], tuple[int, int], str | None, dict[str, Any]]:
     """Resolve frame rectangles from a known manifest format.
 
     Returns (states, cell, atlas_filename, per_state_meta).
@@ -367,7 +367,7 @@ def import_png_groups(out_dir: Path, groups: list[dict[str, Any]], iso: dict[str
             "base_source": base_out_name, "imported_refs": imported_refs_manifest}
 
 
-def _refuse_overlap(inputs: dict[str, Path | None], out_dir: Path) -> None:
+def _refuse_overlap(inputs: Mapping[str, Path | None], out_dir: Path) -> None:
     """An input is never written, moved or deleted. Refused before anything is made: an input that is
     the run dir (the run would replace it), lies inside it or goes through anything inside it (a --force
     publish moves the run dir's prior content aside and deletes it entry by entry — a link as a link, so a
@@ -536,8 +536,8 @@ def _run(args: argparse.Namespace):
         iso = None
         meta_path = src / "meta.json"
         if meta_path.is_file():
-            meta = json.loads(meta_path.read_text(encoding="utf-8"))
-            file_to_name = {info.get("file"): name for name, info in meta.get("items", {}).items() if isinstance(info, dict)}
+            meta: dict[str, Any] = json.loads(meta_path.read_text(encoding="utf-8"))
+            file_to_name = {info.get("file"): name for name, info in meta.get("items", {}).items() if isinstance(info, dict)}  # type: ignore[misc]
             tile = meta.get("tile")
             anchor = meta.get("anchor")
             if tile and anchor:
@@ -592,7 +592,7 @@ def _run(args: argparse.Namespace):
 
     # resolve layout + atlas image
     atlas_path = args.atlas
-    meta: dict[str, Any] = {}
+    meta = {}
     if args.grid:
         layout_source = "grid-explicit"
         if not atlas_path:

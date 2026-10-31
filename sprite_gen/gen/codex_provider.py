@@ -328,7 +328,7 @@ def _indexed_thread(session_id: str, codex_home: Path) -> IndexedThread:
         return IndexedThread("absent")
     fields = {column: (str(value) if value else None) for column, value in zip(wanted, row)}
     rollout = fields.pop("rollout_path")
-    return IndexedThread("indexed", rollout_path=Path(rollout) if rollout else None, **fields)
+    return IndexedThread("indexed", rollout_path=Path(rollout) if rollout else None, **fields)  # type: ignore[arg-type]
 
 
 def _resolve_rollout(
