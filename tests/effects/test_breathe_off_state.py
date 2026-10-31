@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (the pre-3.0 CHANGELOG archive is scanned too; see NOTICE).
 """호흡을 **끈** 상태에서 큐레이터가 워프를 그리지 않는지 (소스 계약).
 
 봉투에서 위상 0 은 항등이 아니다 — 진행파 지연 때문에 `t=0` 도 변형된 프레임이다.
@@ -879,7 +880,7 @@ RETIRED_DOC_CLAIMS = [
     ("fingerprint of the\n  frame it came from", "지문은 프레임이 아니라 **입력 키**의 지문이다"),
     ("a mismatch re-detects", "굽기는 지문을 안 보고 **매번** 재검출한다"),
 ]
-DOC_FILES = ["CHANGELOG.md", "SKILL.md", "README.md",
+DOC_FILES = ["CHANGELOG.md", "CHANGELOG-before-3.0.md", "SKILL.md", "README.md",
              "docs/breathing.md", "docs/run-contract.md", "docs/curation.md"]
 
 

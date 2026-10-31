@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Modified for sprite-gen-agent (every leaf doc opens with its Owns line; AGENTS.md links checked; see NOTICE).
+# Modified for sprite-gen-agent (every leaf doc opens with its Owns line; AGENTS.md and the CHANGELOG archive's links checked; see NOTICE).
 """docs/README.md is the documentation index: every leaf doc appears there exactly once,
 grouped under the taxonomy, opens with the `> Owns:` line that says what it decides, and no
 markdown link in the repo's docs points at a file that does not exist. A doc added without an
@@ -47,7 +47,7 @@ def test_every_leaf_doc_opens_with_its_owns_line() -> None:
 
 
 def _markdown_files() -> list[Path]:
-    files = [ROOT / "README.md", ROOT / "SKILL.md", ROOT / "AGENTS.md", ROOT / "CHANGELOG.md", *DOCS.glob("*.md"), ROOT / "scripts" / "dev" / "README.md"]
+    files = [ROOT / "README.md", ROOT / "SKILL.md", ROOT / "AGENTS.md", ROOT / "CHANGELOG.md", ROOT / "CHANGELOG-before-3.0.md", *DOCS.glob("*.md"), ROOT / "scripts" / "dev" / "README.md"]
     return [f for f in files if f.is_file()]
 
 
