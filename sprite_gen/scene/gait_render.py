@@ -7,10 +7,8 @@ draw order never determine physical leg identity. No source artwork is edited.
 from __future__ import annotations
 import base64
 import hashlib
-import html
 import json
 import math
-from pathlib import Path
 
 from sprite_gen._deps import np
 from PIL import Image, ImageDraw, ImageFont

@@ -50,7 +50,6 @@ import os
 import re
 import shlex
 import shutil
-import subprocess
 import sys
 import time
 import urllib.error
@@ -65,7 +64,7 @@ from . import outcome, prompt_parts, refusal, retry
 from .base import announce_api_billing, print_json
 from .facing import FACINGS, validate as validate_facing
 from sprite_gen.video import facing as facing_mod
-from .xai import (
+from .xai import (  # noqa: F401 - tests and callers read these as video.<name>
     API_BASE, AUTH_ENV, AUTH_SOURCE_API_KEY, AUTH_SOURCE_GROK_LOGIN,
     HTTP_TIMEOUT_SECONDS, GROK_REFRESH_COMMAND, GROK_REFRESH_WHERE, GROK_LOGIN_COMMAND,
     NO_ANSWER, Credential, HttpCall, TransportError, resolve_credential, http_json, no_answer, post,

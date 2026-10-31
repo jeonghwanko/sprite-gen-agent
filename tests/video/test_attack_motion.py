@@ -6,7 +6,6 @@ caller's own motion paragraph (`build_prompt(motion=...)`) in place of the built
 from __future__ import annotations
 
 import json
-import subprocess
 from pathlib import Path
 
 import pytest

@@ -10,7 +10,6 @@ its body unchanged); `sprite-gen logo` asks what the lettering spells (`inspect_
 from __future__ import annotations
 
 import base64
-import json
 import subprocess
 import tempfile
 import time

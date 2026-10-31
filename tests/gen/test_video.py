@@ -13,7 +13,7 @@ import re
 import shlex
 import socket
 import urllib.error
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest

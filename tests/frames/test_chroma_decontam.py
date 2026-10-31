@@ -738,7 +738,7 @@ def test_video_frames_default_on_brightness_alpha_is_off_with_its_reason(tmp_pat
     rgb[4:12, 4:12] = (240, 120, 30)
     Image.fromarray(rgb).save(src)
     default = frames_mod.key_frames([src], tmp_path / "default", alpha_mode="brightness")
-    off = frames_mod.key_frames([src], tmp_path / "off", alpha_mode="brightness", decontam="off")
+    frames_mod.key_frames([src], tmp_path / "off", alpha_mode="brightness", decontam="off")
     assert np.array_equal(_keyed(tmp_path / "default", src), _keyed(tmp_path / "off", src))
     assert default["decontam"] == {"mode": "auto", "applied_frames": 0,
                                    "reason": "brightness alpha has no key colour to remove"}
@@ -750,7 +750,7 @@ def test_video_frames_default_on_brightness_alpha_is_off_with_its_reason(tmp_pat
 def test_video_frames_default_halves_key_contamination_on_thin_red_strands(tmp_path: Path):
     """Red strands 1 to 3 px wide on green, chroma shared by each aligned 2x2 block as a decode does."""
     files, truth = _clip(tmp_path, GREEN_PAINTED, widths=STRANDS_1_TO_3)
-    off = frames_mod.key_frames(files, tmp_path / "off", key="green", decontam="off")
+    frames_mod.key_frames(files, tmp_path / "off", key="green", decontam="off")
     on = frames_mod.key_frames(files, tmp_path / "on", key="green")
     assert on["decontam"]["mode"] == "auto" and on["decontam"]["applied_frames"] == len(files)
     assert on["decontam"]["palette_keyfree"] is True and on["decontam"]["key_material_share"] == 0

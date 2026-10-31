@@ -11,7 +11,6 @@ chain is written to references/generation-plan.json.
 import json
 from pathlib import Path
 
-import pytest
 
 from conftest import run_script
 

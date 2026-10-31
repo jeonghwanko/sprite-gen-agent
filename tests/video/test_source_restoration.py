@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 from PIL import Image, ImageDraw
 
-from sprite_gen.video import evidence, source, restoration, playback, loop, repair as repair_mod
+from sprite_gen.video import evidence, source, restoration, loop, repair as repair_mod
 from sprite_gen.cli import main
 from sprite_gen.util.gif_utils import save_clean_gif
 from sprite_gen.util.resample import resize_cell

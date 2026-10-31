@@ -8,7 +8,6 @@ structure to lock on; nothing else on the body repeats it. Shared by the `scale-
 """
 from __future__ import annotations
 
-import math
 
 from PIL import Image, ImageDraw
 

@@ -10,7 +10,6 @@ import json
 import math
 import os
 import shutil
-import subprocess
 import sys
 from bisect import bisect_left
 from pathlib import Path
@@ -24,8 +23,7 @@ from sprite_gen._deps import np
 from sprite_gen.curate.curation import effective_logical_height, pixel_snap_scale
 from sprite_gen.spec.layout import frames_dir_rel, raw_rel, take_raw_rel
 from sprite_gen.spec.runio import (REQUEST_FILENAME, acquire_run_dir_lock, atomic_save_image,
-                              atomic_write_text, load_request, publish_guard, relative_posix,
-                              release_run_dir_lock)
+                              atomic_write_text, load_request, publish_guard, release_run_dir_lock)
 from sprite_gen.frames import decontam as decontam_module
 from sprite_gen.frames.keyfield import (IN_BAND_UNMIX_KEY_DEPTH, KEY_CHANNEL_DARK, key_channel_split, key_distance_field,
                                         key_excess_field, key_tint_field)

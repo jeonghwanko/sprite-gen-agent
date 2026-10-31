@@ -8,7 +8,6 @@ synthetic figure of the inspection's tests, which sways once and bobs twice a cy
 """
 import json
 import math
-import shutil
 
 import numpy as np
 import pytest

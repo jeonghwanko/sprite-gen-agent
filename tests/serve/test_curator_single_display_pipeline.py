@@ -116,7 +116,6 @@ def test_server_snapshot_grid_behavior(tmp_path):
     """실행 행동 핀 (validator R3): 진짜 1:1 임포트 런을 만들어 스냅샷을 어서션한다."""
     import subprocess
     import sys
-    import json
     from PIL import Image
 
     pngs = tmp_path / "pngs" / "rowa"

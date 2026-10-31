@@ -809,7 +809,7 @@ def directional_requirements(state: str, any_body: bool = False) -> list[str]:
     opposite_side = "left" if side == "right" else "right"
     requirements = [
         f"Lock the whole row to a 45-degree {body_view} view facing {camera_side} and slightly {toward}.",
-        f"Do not average this into a straight front, straight back, or pure side-view sprite.",
+        "Do not average this into a straight front, straight back, or pure side-view sprite.",
         (f"Make {camera_side} readable through face/body orientation, the silhouette of hair, a mane or a tail, the overlap of near and far parts, and prop angle."
          if any_body else
          f"Make {camera_side} readable through face/body orientation, hair silhouette, shoulder overlap, hand/foot placement, and prop angle."),

@@ -106,7 +106,7 @@ from sprite_gen.video import legs as legs_mod
 from sprite_gen.video import loop as loop_mod
 from sprite_gen.video import period as period_mod
 from sprite_gen.video import rife as rife_mod
-from sprite_gen.video.interpolation_quality import CROSSFADE_LOOK, GHOST_WARN, SMEAR_WARN, OUTLINE_WARN, clean_beside, faults, ghost_screen, looks
+from sprite_gen.video.interpolation_quality import CROSSFADE_LOOK, GHOST_WARN, clean_beside, faults, ghost_screen, looks
 from sprite_gen.util.console import utf8_streams
 
 SNAP = 0.03  # a sample time within this of a source frame takes that frame

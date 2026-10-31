@@ -20,7 +20,6 @@ from PIL import Image
 
 from http_answer import Answer
 from sprite_gen import gen
-from sprite_gen.gen import grok_provider as grok
 from sprite_gen.gen import openai_provider as openai
 from sprite_gen.gen import base, retry, xai
 from sprite_gen.gen.base import GenRequest

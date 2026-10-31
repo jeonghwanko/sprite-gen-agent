@@ -259,7 +259,6 @@ def _passthrough_report(
 
 def _propagate_manifest(manifest_path: Path, out_dir: Path, sheet_name: str, variant_name: str) -> str:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    base_sheet = manifest_path.name  # only for reference in log
     for field in MANIFEST_SHEET_FIELDS:
         if isinstance(manifest.get(field), str):
             manifest[field] = sheet_name
