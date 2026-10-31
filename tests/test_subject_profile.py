@@ -9,6 +9,7 @@ from drawable cell geometry.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -80,6 +81,24 @@ def test_profile_resolves_floor_and_rejects_unknown_kinds() -> None:
     assert default_min_used_pixels({**request, "subject": "effect"}) == 32
     with pytest.raises(SystemExit):
         subject_kind({**request, "subject": "creature"})
+
+
+@pytest.mark.parametrize("value", [None, "wide", [64]])
+def test_a_cell_side_that_is_no_number_is_refused_naming_it(value) -> None:
+    """`"width": null` in a request is refused like a width of 0, with the value it was given, by each reader of
+    the cell: not a TypeError or ValueError from inside int()."""
+    from sprite_gen.compose import compose_atlas
+    from sprite_gen.frames import extract
+
+    request = _request_for_cell(64, 64, 6, 6)
+    request["cell"]["width"] = value
+    named = rf"cell width must be a number, not {re.escape(repr(value))}"
+    with pytest.raises(SystemExit, match=named):
+        cell_area(request)
+    with pytest.raises(SystemExit, match=named):
+        extract.cell_geometry(request["cell"])
+    with pytest.raises(SystemExit, match=named):
+        compose_atlas.cell_geometry(request["cell"])
 
 
 # One formula with one branch: a square and a rect cell pin its values; the 64² case is in

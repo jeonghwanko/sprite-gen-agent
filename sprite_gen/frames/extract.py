@@ -27,7 +27,8 @@ from sprite_gen.spec.runio import (REQUEST_FILENAME, acquire_run_dir_lock, atomi
 from sprite_gen.frames import decontam as decontam_module
 from sprite_gen.frames.keyfield import key_channel_split, key_distance_field  # key_channel_split: tests import it from here
 from sprite_gen.frames.segment import separate_fused_poses
-from sprite_gen.spec.subject import SUBJECT_DEFAULT, default_min_used_pixels, sparse_frame_error, subject_kind
+from sprite_gen.spec.subject import (SUBJECT_DEFAULT, cell_number, default_min_used_pixels, sparse_frame_error,
+                                     subject_kind)
 from sprite_gen.util.resample import resize_cell
 from sprite_gen.util.console import utf8_streams
 from sprite_gen import local_tool
@@ -203,10 +204,10 @@ def component_group_image(source: Image.Image, components: list[dict[str, Any]],
 
 
 def cell_geometry(cell: dict[str, Any]) -> tuple[int, int, int, int]:
-    width = int(cell.get("width", cell.get("size", 0)))
-    height = int(cell.get("height", cell.get("size", 0)))
-    safe_margin_x = int(cell.get("safe_margin_x", cell.get("safe_margin", 0)))
-    safe_margin_y = int(cell.get("safe_margin_y", cell.get("safe_margin", 0)))
+    width = cell_number(cell, "width", "size")
+    height = cell_number(cell, "height", "size")
+    safe_margin_x = cell_number(cell, "safe_margin_x", "safe_margin")
+    safe_margin_y = cell_number(cell, "safe_margin_y", "safe_margin")
     if width <= 0 or height <= 0:
         raise SystemExit("cell width/height must be positive in sprite-request.json")
     return width, height, safe_margin_x, safe_margin_y
