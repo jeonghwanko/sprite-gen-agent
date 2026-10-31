@@ -1,5 +1,7 @@
 # Effects
 
+> Owns: `pixel-draw --kind effect`, `video-frames --alpha-mode brightness`, `video-loop --cycle lifetime` · Index: [docs/README.md](README.md)
+
 `sprite-gen` creates non-looping additive visual effects (bursts, flashes, impacts) using pixel drawing or video workflows.
 
 ## Pixel Effects

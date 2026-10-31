@@ -1,5 +1,7 @@
 # Loop automation and visual review
 
+> Owns: Automatic loop decisions, ambiguous gait review, visual evidence and explicit cut/alignment overrides · Index: [docs/README.md](README.md)
+
 Use the normal pipeline first. No model needs to choose every cut:
 
 ```bash

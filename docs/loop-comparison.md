@@ -1,5 +1,7 @@
 # Comparing delivered loops
 
+> Owns: Final loop artifact digests, comparable quality axes and explicit unknown verdicts · Index: [docs/README.md](README.md)
+
 `video-loop-compare` reads the **final strip and metadata**, including any
 `video-sway` changes. A loop report supplies provenance; its seam score and
 pass status do not describe later pixels and are never used as comparison scores.

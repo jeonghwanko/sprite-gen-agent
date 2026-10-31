@@ -1,5 +1,7 @@
 # Execute the existing row sprite pipeline
 
+> Owns: Execution of GPT row sprites through the existing extraction pipeline · Index: [docs/README.md](README.md)
+
 This page owns the agent's row execution procedure. Start and finish conversation choices belong to [user-workflow](user-workflow.md). Stage data, numeric settings and output ownership belong to [run-contract](run-contract.md).
 
 ## Lock the base before preparing a run

@@ -1,5 +1,7 @@
 # Prompt assembly — the caller's text, then the engine's pieces
 
+> Owns: What the engine adds to a still or clip prompt and when: the pieces, the 2.22.0 freeze without `--handed`, what counts as already said, and the notes on the caller's own words · Index: [docs/README.md](README.md)
+
 A prompt the engine sends is the caller's own text and then the engine's sentences. Every engine
 sentence is a **piece** with a topic, and every piece goes on through one place
 (`sprite_gen/gen/prompt_parts.py`, `Prompt.add`). The caller's text is never edited.
