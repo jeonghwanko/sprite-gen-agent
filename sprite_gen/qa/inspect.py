@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Modified for sprite-gen-agent (machine-readable outcomes; see NOTICE).
+# Modified for sprite-gen-agent (machine-readable outcomes, Pillow get_flattened_data; see NOTICE).
 """Inspect generated sprite rows for closed-loop correction signals."""
 
 from __future__ import annotations
@@ -142,7 +142,7 @@ def _frames_from_raw(strip: Image.Image, expected: int, request: dict[str, Any])
 def _rgb_histogram(image: Image.Image) -> list[float]:
     bins = [0] * HISTOGRAM_BINS
     total = 0
-    for red, green, blue, alpha in image.convert("RGBA").getdata():  # type: ignore[attr-defined]
+    for red, green, blue, alpha in cast(tuple[tuple[int, ...], ...], image.convert("RGBA").get_flattened_data()):
         if alpha <= 16:
             continue
         index = (red // 64) * 16 + (green // 64) * 4 + (blue // 64)
@@ -161,7 +161,7 @@ def _dhash(image: Image.Image) -> int:
     flattened = Image.new("RGBA", image.size, (255, 255, 255, 255))
     flattened.alpha_composite(image.convert("RGBA"))
     small = flattened.convert("L").resize((9, 8), Image.Resampling.BILINEAR)
-    pixels = list(small.getdata())
+    pixels = cast(tuple[int, ...], small.get_flattened_data())
     value = 0
     bit = 0
     for y in range(8):
@@ -199,7 +199,7 @@ def _motion_presence(frames: list[Image.Image]) -> float:
         b = right.convert("RGBA").resize((64, 64), Image.Resampling.BILINEAR)
         diff = ImageChops.difference(a, b)
         total = 0
-        for pixel in diff.getdata():  # type: ignore[attr-defined]
+        for pixel in cast(tuple[tuple[int, ...], ...], diff.get_flattened_data()):
             total += pixel[0] + pixel[1] + pixel[2] + pixel[3]
         values.append(total / (64 * 64 * 4 * 255))
     return mean(values) if values else 0.0

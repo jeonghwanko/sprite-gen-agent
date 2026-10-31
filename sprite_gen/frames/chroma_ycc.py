@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import math
 import sys
-from typing import Any
+from typing import Any, cast
 
 from PIL import Image, ImageChops
 
@@ -227,7 +227,7 @@ def _matte_ycc(source: Image.Image, key: tuple[int, int, int]) -> tuple[Image.Im
     # 캐시값: (despill 후 r, g, b, coverage). coverage<=0 이면 원본과 같이 건너뛴다.
     cache: dict[tuple[int, int, int], tuple[int, int, int, float]] = {}
     out_data = [(0, 0, 0, 0)] * (width * height)
-    src = list(source.getdata())
+    src = cast(tuple[tuple[int, ...], ...], source.get_flattened_data())
     for i, px in enumerate(src):
         alpha = px[3]
         if alpha == 0:

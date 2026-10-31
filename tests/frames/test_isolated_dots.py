@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (Pillow get_flattened_data in place of the deprecated getdata; see NOTICE).
 """A lone pixel is one judgment, `frames.extract.isolated_dots`: an opaque pixel with no opaque pixel
 among its eight neighbours - one that touches another only at a corner is joined to it, as every
 component the engine reads is. The YCbCr matte's cleanup erases a matte's dots by it
@@ -25,7 +26,7 @@ def mask(rows: list[str]) -> Image.Image:
 
 
 def marked(image: Image.Image) -> list[str]:
-    values = list(image.getdata())
+    values = list(image.get_flattened_data())
     return ["".join("#" if values[y * image.width + x] else "." for x in range(image.width)) for y in range(image.height)]
 
 
@@ -82,7 +83,7 @@ def test_pixel_draw_g5_counts_them(monkeypatch):
     frame = stroke_and_speck()
     gates = evaluate({"f": frame}, kind="icon", rule=FREE16, walk_cycle=False)
     ((op, dots),) = seen
-    assert list(op.getdata()) == [1 if p[3] >= 128 else 0 for row in frame for p in row]
+    assert list(op.get_flattened_data()) == [1 if p[3] >= 128 else 0 for row in frame for p in row]
     assert gates["G5"]["isolated_pixels"] == dots.histogram()[255] == 1
     assert gates["warnings"] == ["G5 1 stray pixel(s) with no opaque neighbour"]
 

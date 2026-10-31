@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (Pillow get_flattened_data in place of the deprecated getdata; see NOTICE).
 """Transparent-PNG contracts for generated images — one per strategy.
 
 - `key_transparent` (strategy `chroma`): the model cannot return alpha, so the
@@ -18,7 +19,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from PIL import Image
 
@@ -242,7 +243,7 @@ def key_transparent(
             elif source_a > a:
                 fringe += 1
 
-    for r, g, b, a in image.getdata():  # type: ignore[attr-defined]
+    for r, g, b, a in cast(tuple[tuple[int, ...], ...], image.get_flattened_data()):
         if a == 0 and (r or g or b):
             stale_rgb += 1
 
