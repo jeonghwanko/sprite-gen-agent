@@ -88,6 +88,9 @@ If `.claude/worktrees/` exists, it holds other sessions' checkouts: never search
   calling them through that name; grep `monkeypatch.setattr(<module>, "…")` before rerouting a call.
 - A speed-up that claims "bytes unchanged" proves it: the pre-change form is kept in a test and compared
   (`tests/test_p1_perf_equivalence.py`).
+- CI's `lint` job runs ruff and mypy as configured in `pyproject.toml` (`pip install -e ".[lint]"`). Run both
+  before a pull request: `.venv/Scripts/python.exe -m ruff check .` and `.venv/Scripts/python.exe -m mypy`.
+  mypy skips the modules on its debt list; a module you fix comes off the list, and none goes on.
 
 ## Rules the code keeps
 

@@ -167,7 +167,6 @@ def manifest_layout(
         return states, (cell_w, cell_h), atlas_file, meta
 
     # archive-2dir-mirror / grid-row format: rows carry {row, frames, fps, loop}
-    cols = int(cell.get("columns", 0)) or None
     rows_src = None
     atlas_file = None
     if "directions" in manifest:

@@ -24,7 +24,7 @@ def walk_frames(xs=(24, 22, 20, 18, 16)):
         frame = Image.new("RGBA", (48, 40))
         draw = ImageDraw.Draw(frame)
         draw.rectangle((15, 5, 30, 20), fill="white")
-        draw.rectangle((x, 30, x + 3, y := 32), fill=(200, 40, 40, 255))
+        draw.rectangle((x, 30, x + 3, 32), fill=(200, 40, 40, 255))
         frames.append(frame)
     return frames
 

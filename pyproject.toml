@@ -50,6 +50,8 @@ dev = [
 # wheel is the CUDA 13 build; a host that runs it on the CPU only takes PyTorch's CPU index
 # (`pip install torch==2.13.0 --index-url https://download.pytorch.org/whl/cpu`) before the extra.
 torch = ["torch>=2.13.0,<3"]
+# The CI lint job (.github/workflows/test.yml): pinned, so a new release cannot fail a pull request that changed nothing.
+lint = ["ruff==0.17.3", "mypy==2.4.1"]
 
 # The console script is what removes the "which python?" question: pip writes it
 # with a shebang naming the interpreter of the environment it was installed
@@ -113,3 +115,134 @@ include = ["sprite_gen*"]
 # `curator/**/*` derives the answer from the filesystem, the same fix as packages.find above.
 [tool.setuptools.package-data]
 sprite_gen = ["serve/curator/**/*", "serve/composer/**/*", "audio/*.mjs", "video/*.mjs"]
+
+[tool.ruff]
+target-version = "py311"
+extend-exclude = [".claude"]
+
+[tool.ruff.lint]
+# Rules that find bugs, not style: syntax errors, pyflakes (unused or undefined names),
+# bugbear and pylint's error class. The repo has never had a formatter; style rules
+# (line length alone is 25,000 lines) wait until someone decides to reformat.
+select = ["E9", "F", "B", "PLE"]
+ignore = [
+    "B007",    # unused loop variable: names the tuple's shape, which the code relies on
+    "B008",    # call in a default argument: one deliberate, read-only default
+    "B017",    # pytest.raises(Exception): two parse-refusal tests that accept either error
+    "B023",    # loop variable in a closure: 31 sites, each called inside its own iteration
+    "B904",    # raise inside except without from: SystemExit messages, the cause shown already
+    "B905",    # zip() without strict=: 293 sites; worth its own pass, not a gate yet
+    "PLE0605", # __all__ = sorted([...]) in sprite_gen/api.py is a list; ruff cannot tell
+]
+
+[tool.ruff.lint.per-file-ignores]
+# The scripts/ shims copy their module's globals in (globals().update), so main is defined at run time.
+"scripts/**/*.py" = ["F821"]
+# A pytest fixture imported from another test module is redefined by the test that takes it as an argument.
+"tests/**/*.py" = ["F811"]
+
+[tool.mypy]
+files = ["sprite_gen"]
+python_version = "3.11"
+# One platform for every checkout: runio and local_tool branch on sys.platform, and a Windows run
+# would check the other branch. CI runs on Linux.
+platform = "linux"
+ignore_missing_imports = true
+warn_unused_configs = true
+# A note per annotated line in an unannotated function, not an error; it buries the real ones.
+disable_error_code = ["annotation-unchecked"]
+
+# The debt list: modules that had mypy errors when the check was added (2026-10-31, 715 errors in 87 of
+# 160 modules). Every module not listed, and every new one, is checked. Fix a module, then remove it
+# from here; nothing is added to this list.
+[[tool.mypy.overrides]]
+module = [
+    "sprite_gen.background.tile",
+    "sprite_gen.compose.export_aseprite",
+    "sprite_gen.compose.game_pack",
+    "sprite_gen.curate.anchor",
+    "sprite_gen.curate.curation",
+    "sprite_gen.effects.anatomy",
+    "sprite_gen.effects.breathe",
+    "sprite_gen.effects.interpolate",
+    "sprite_gen.effects.recolor",
+    "sprite_gen.effects.shadow",
+    "sprite_gen.frames.check_visible_magenta",
+    "sprite_gen.frames.cutout",
+    "sprite_gen.frames.decontam",
+    "sprite_gen.frames.extract",
+    "sprite_gen.frames.logo_matte",
+    "sprite_gen.frames.morph",
+    "sprite_gen.frames.slice_sheet",
+    "sprite_gen.frames.ui_kit",
+    "sprite_gen.frames.unpack_atlas",
+    "sprite_gen.gen",
+    "sprite_gen.gen.anthropic_api",
+    "sprite_gen.gen.base",
+    "sprite_gen.gen.chroma",
+    "sprite_gen.gen.claude_login",
+    "sprite_gen.gen.codex_provider",
+    "sprite_gen.gen.gen_motion",
+    "sprite_gen.gen.gen_set",
+    "sprite_gen.gen.grok_provider",
+    "sprite_gen.gen.openai_provider",
+    "sprite_gen.gen.outcome",
+    "sprite_gen.gen.pixel_draw",
+    "sprite_gen.gen.pixel_grid",
+    "sprite_gen.gen.prepare",
+    "sprite_gen.gen.retry",
+    "sprite_gen.gen.video",
+    "sprite_gen.gen.xai",
+    "sprite_gen.qa.handed",
+    "sprite_gen.qa.inspect",
+    "sprite_gen.qa.motion",
+    "sprite_gen.qa.preview",
+    "sprite_gen.qa.scale_check",
+    "sprite_gen.scene.inspect_scene",
+    "sprite_gen.scene.model",
+    "sprite_gen.scene.render",
+    "sprite_gen.serve.serve_compose",
+    "sprite_gen.serve.serve_curation",
+    "sprite_gen.spec.pose_geometry",
+    "sprite_gen.spec.pose_plan",
+    "sprite_gen.spec.runio",
+    "sprite_gen.spec.subject",
+    "sprite_gen.util.gif_utils",
+    "sprite_gen.util.resample",
+    "sprite_gen.video.align",
+    "sprite_gen.video.auto_motion",
+    "sprite_gen.video.batch",
+    "sprite_gen.video.cadence",
+    "sprite_gen.video.canvas",
+    "sprite_gen.video.clip_prompt",
+    "sprite_gen.video.compare",
+    "sprite_gen.video.crossings",
+    "sprite_gen.video.effect",
+    "sprite_gen.video.face_bake",
+    "sprite_gen.video.face_layer",
+    "sprite_gen.video.face_pack",
+    "sprite_gen.video.follow_inspect",
+    "sprite_gen.video.frames",
+    "sprite_gen.video.gait_fallback",
+    "sprite_gen.video.held",
+    "sprite_gen.video.interpolation_quality",
+    "sprite_gen.video.loop",
+    "sprite_gen.video.motion_anchor",
+    "sprite_gen.video.nonloop",
+    "sprite_gen.video.part_pop",
+    "sprite_gen.video.parts",
+    "sprite_gen.video.period",
+    "sprite_gen.video.playback",
+    "sprite_gen.video.repair",
+    "sprite_gen.video.restoration",
+    "sprite_gen.video.rife",
+    "sprite_gen.video.set_sheet",
+    "sprite_gen.video.source",
+    "sprite_gen.video.stop",
+    "sprite_gen.video.sway",
+    "sprite_gen.video.sway_inspect",
+    "sprite_gen.video.wrap_blend",
+    "sprite_gen.workflow.guide",
+    "sprite_gen.workflow.preferences",
+]
+ignore_errors = true

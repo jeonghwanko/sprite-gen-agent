@@ -19,7 +19,6 @@ AI 개입은 raw 생성 한 곳 — 최종 프레임은 언제나 결정론 추�
 from __future__ import annotations
 
 import argparse
-import json
 import re
 import sys
 from pathlib import Path

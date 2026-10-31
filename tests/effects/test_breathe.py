@@ -18,7 +18,6 @@ from PIL import Image
 
 from sprite_gen.effects.anatomy import analyze
 from sprite_gen.effects.anatomy import axis_x as axis_centroid
-from pathlib import Path
 
 from sprite_gen.effects.breathe import (DEFAULT_DEPTH, MAX_ROW_STRAIN, SMOOTH_CYCLE_FRAMES, TAPER,
                                 anatomy_report, bake_breathe_sequence, breathe_reads_smoothly,

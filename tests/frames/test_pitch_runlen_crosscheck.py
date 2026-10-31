@@ -23,7 +23,7 @@ from sprite_gen.frames.extract import (
     detect_pixel_grid,
     estimate_pixel_grid_runlen,
 )
-from test_pitch_ground_truth import PALETTE, _logical_art
+from test_pitch_ground_truth import _logical_art
 
 MAGENTA = (255, 0, 255)
 

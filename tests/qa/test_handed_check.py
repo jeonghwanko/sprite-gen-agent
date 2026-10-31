@@ -5,7 +5,6 @@ Each view is drawn as it should look (the table below, written out by hand), pas
 import json
 import subprocess
 import sys
-from pathlib import Path
 
 import pytest
 from PIL import Image, ImageDraw, ImageOps

@@ -4,7 +4,6 @@ import base64
 import io
 import json
 import subprocess
-import urllib.error
 from types import SimpleNamespace
 
 import pytest

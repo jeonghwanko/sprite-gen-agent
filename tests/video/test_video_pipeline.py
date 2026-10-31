@@ -173,7 +173,7 @@ def test_detect_cycle_refuses_empty_window() -> None:
 
 @pytest.mark.skipif(not HAS_IMG2WEBP, reason="img2webp not installed")
 def test_run_loop_emits_strip_gif_webp_and_verifies(tmp_path: Path) -> None:
-    files = _gait_frames(tmp_path, period=12, n=96)
+    _gait_frames(tmp_path, period=12, n=96)
     rep = loop_mod.run_loop(tmp_path / "keyed", tmp_path / "out", fps=24.0, state="walk", min_len=None, max_len=None, n_out=8, seam_max=2.0, name="walker", report_path=None, repair="off")
     # 12 frames at 24 fps is half a second — below the walk gait floor (0.6 s), so the
     # half-period guard doubles it to the two-step 24 and records that it did
@@ -317,7 +317,7 @@ def test_fixed_cycle_cuts_exactly_and_skips_detection(tmp_path: Path) -> None:
 
 @pytest.mark.skipif(not HAS_IMG2WEBP, reason="img2webp not installed")
 def test_strip_height_caps_the_output_size(tmp_path: Path) -> None:
-    files = _gait_frames(tmp_path, period=12, n=60, size=(160, 400))
+    _gait_frames(tmp_path, period=12, n=60, size=(160, 400))
     rep = loop_mod.run_loop(tmp_path / "keyed", tmp_path / "h", fps=24.0, state="walk", min_len=None, max_len=None, n_out=None, seam_max=2.0, name="h", report_path=None, strip_height=100, repair="off")
     assert rep["strip"]["h"] <= 100
     assert Image.open(rep["gif"]["file"] if Path(rep["gif"]["file"]).is_absolute() else tmp_path / "h" / rep["gif"]["file"]).height <= 100

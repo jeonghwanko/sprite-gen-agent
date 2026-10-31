@@ -5,7 +5,6 @@ import json
 import math
 import shutil
 
-import numpy as np
 import pytest
 from PIL import Image, ImageDraw
 from sprite_gen.video import follow, follow_inspect
