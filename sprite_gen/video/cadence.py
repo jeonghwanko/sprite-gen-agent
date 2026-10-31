@@ -116,7 +116,7 @@ def leg_path(frames: list[Image.Image]) -> list[float]:
     scale = min(1.0, READ_HEIGHT / max(1, bottom))
     if scale < 1.0:
         size = (round(frames[0].width * scale), round(frames[0].height * scale))
-        frames = [f.convert("RGBA").resize(size, Image.LANCZOS) for f in frames]
+        frames = [f.convert("RGBA").resize(size, Image.LANCZOS) for f in frames]  # type: ignore[attr-defined]
     pm = [_premultiplied(f) for f in frames]
     y0, y1, x0, x1 = _box([p[..., 3] >= 128 for p in pm])
     height = y1 - y0
@@ -134,7 +134,7 @@ def screen_steps(frames: list[Image.Image]) -> dict[str, list[float]]:
     scale = min(1.0, READ_HEIGHT / max(1, bottom))
     if scale < 1.0:
         size = (round(frames[0].width * scale), round(frames[0].height * scale))
-        frames = [f.convert("RGBA").resize(size, Image.LANCZOS) for f in frames]
+        frames = [f.convert("RGBA").resize(size, Image.LANCZOS) for f in frames]  # type: ignore[attr-defined]
     rgba = [np.asarray(f.convert("RGBA"), dtype=np.float32) for f in frames]
     y0, y1, x0, x1 = _box([a[..., 3] >= 128 for a in rgba])
     top = y1 - round((y1 - y0) * SCREEN_ROWS)
@@ -367,7 +367,7 @@ def _read_feet(profiles: list[dict[str, Any]], *, seam: bool = False) -> dict[st
 
 
 def view_reads_feet(view: str | None) -> bool:
-    return bool(view) and view.partition("@")[0] in STEP_VIEWS
+    return bool(view) and view.partition("@")[0] in STEP_VIEWS  # type: ignore[union-attr]
 
 
 def same_foot(frames: list[Image.Image], view: str | None) -> dict[str, Any]:

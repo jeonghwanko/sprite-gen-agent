@@ -84,7 +84,7 @@ def verify(loop: Any, animations: dict[str, Playback]) -> tuple[dict[str, Any], 
         return {}, "playback-schedule-unverified"
     indices, delay = recipe
     shown = runs(loop, indices)
-    records = {}
+    records: dict[str, Any] = {}
     for key, fmt in (("gif", "GIF"), ("webp", "WEBP")):
         if key not in animations:
             return records, "playback-missing"

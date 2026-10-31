@@ -72,9 +72,9 @@ def faults(measure: dict[str, float | None]) -> list[str]:
     where it carries the band read in windows of the body (`ghost_window`, the cycle alignment's frames:
     `rife.ghost_window`) and that is over GHOST_WINDOW_WARN."""
     shift = measure.get("outline_shift")
-    outline = measure["outline_loss"] if shift is None else min(measure["outline_loss"], shift)
-    return ([*(["smear"] if measure["dark_excess"] > SMEAR_WARN else []),
-             *(["outline"] if outline > OUTLINE_WARN else []),
+    outline = measure["outline_loss"] if shift is None else min(measure["outline_loss"], shift)  # type: ignore[type-var]
+    return ([*(["smear"] if measure["dark_excess"] > SMEAR_WARN else []),  # type: ignore[operator]
+             *(["outline"] if outline > OUTLINE_WARN else []),  # type: ignore[operator]
              *(["ghost"] if ((measure.get("ghost") or 0.0) > GHOST_WARN
                              or (measure.get("ghost_window") or 0.0) > GHOST_WINDOW_WARN) else []),
              *(["torn"] if (measure.get("torn") or 0.0) > TORN_WARN else []),

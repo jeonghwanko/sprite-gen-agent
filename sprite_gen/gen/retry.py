@@ -103,7 +103,7 @@ def _act_first(provider: str, body: Any) -> bool:
     error = body.get("error") if isinstance(body, dict) else None
     if not isinstance(error, dict):
         return False
-    details = error.get("details") if isinstance(error.get("details"), dict) else {}
+    details: Any = error.get("details") if isinstance(error.get("details"), dict) else {}
     said = (error.get("code"), error.get("type"), details.get("error_code"))
     return any(isinstance(word, str) and word in ACT_FIRST[provider] for word in said)
 
@@ -194,7 +194,7 @@ def ask(send: Send, *, provider: str, who: str, label: str, method: str = "POST"
             return status, body, headers, asks
         said = kind(body) if kind else None
         if too_late(deadline, wait):
-            print(out_of_time(label, who, method, status, said, wait, deadline - time.monotonic()), file=sys.stderr)
+            print(out_of_time(label, who, method, status, said, wait, deadline - time.monotonic()), file=sys.stderr)  # type: ignore[operator]
             return status, body, headers, asks
         print(asking_again(label, who, method, status, said, wait, asks), file=sys.stderr)
         (sleep or _sleep)(wait)

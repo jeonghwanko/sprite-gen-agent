@@ -177,8 +177,8 @@ def choose_key(mood: Image.Image, box: list[float] | None = None,
         scores[key] = {"hued_pct": round(hued * 100, 2), "hold": round(float(hold.mean()), 4),
                        "score": round(float(hold.mean()) - CHOICE_HUED_WEIGHT * hued, 4), "named": words,
                        "clash_at_pct": clash_at, "clashes": hued * 100 >= clash_at}
-    left = [key for key in KEYS if not scores[key]["clashes"]]
-    key = max(left, key=lambda k: (scores[k]["score"], k == "magenta")) if left else None
+    left = [key for key in KEYS if not scores[key]["clashes"]]  # type: ignore[assignment]
+    key = max(left, key=lambda k: (scores[k]["score"], k == "magenta")) if left else None  # type: ignore[call-overload, assignment]
     return {"key": key, "region": region, "scores": scores}
 
 
@@ -195,7 +195,7 @@ def border_key(image: Image.Image) -> str | None:
     for key, target in KEYS.items():
         key_cb, key_cr = _cbcr(np.array(target, dtype=np.float64))
         shares[key] = float((np.hypot(cb - key_cb, cr - key_cr) <= KEY_FAMILY_DIST).mean())
-    best = max(shares, key=shares.get)
+    best = max(shares, key=shares.get)  # type: ignore[arg-type]
     return best if shares[best] >= MIN_BORDER_KEY_SHARE else None
 
 

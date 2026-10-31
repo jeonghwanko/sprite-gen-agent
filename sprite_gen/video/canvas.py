@@ -135,7 +135,7 @@ def corner_key(image: Image.Image) -> tuple[int, int, int]:
     """The still's flat background colour, read from its four corners; refuses a non-flat one."""
     rgb = image.convert("RGB")
     w, h = rgb.size
-    corners = [rgb.getpixel(p) for p in ((0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1))]
+    corners: list[Any] = [rgb.getpixel(p) for p in ((0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1))]
     for channel in range(3):
         values = [c[channel] for c in corners]
         if max(values) - min(values) > CORNER_TOLERANCE:

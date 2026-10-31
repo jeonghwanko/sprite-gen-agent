@@ -375,12 +375,12 @@ def read(sig: dict[str, list[float]]) -> Reading:
                 continue
             twin = runs[i + 2] if a == 0 and i + 2 < len(runs) else runs[i - 2] if b == n - 1 and i >= 2 else None
             seen = twin[1] - twin[0] + 1 if twin is not None and twin[0] > 0 and twin[1] < n - 1 else 0
-            if a == 0 and seen >= b + 1 and _moves_like(sig, (0, b), (twin[1] - b, twin[1])):
+            if a == 0 and seen >= b + 1 and _moves_like(sig, (0, b), (twin[1] - b, twin[1])):  # type: ignore[index]
                 crossings.append(((2 * b + 1 - seen) / 2, b / 2))
             elif a == 0:
                 head_limit = b / 2
                 unconfirmed.append((a, b))
-            elif seen >= n - a and _moves_like(sig, (a, n - 1), (twin[0], twin[0] + n - 1 - a)):
+            elif seen >= n - a and _moves_like(sig, (a, n - 1), (twin[0], twin[0] + n - 1 - a)):  # type: ignore[index]
                 crossings.append(((a + n - 1) / 2, (2 * a + seen - 1) / 2))
             else:
                 tail_limit = (a + n - 1) / 2
@@ -395,7 +395,7 @@ def read(sig: dict[str, list[float]]) -> Reading:
                       sides=[int(x) for x in sides], unconfirmed=unconfirmed)
     if reading.readable:
         # The lean of feet stepping turns over every step; a body swaying or wobbling on another beat does not.
-        alternation = _alternation(sig["lean"], reading.step)
+        alternation = _alternation(sig["lean"], reading.step)  # type: ignore[arg-type]
         reading.alternation = None if alternation is None else round(alternation, 3)
         if alternation is None or alternation > ALTERNATION_MAX:
             reading.why = (f"the foot band's lean does not turn over a step on (correlation {alternation:+.2f} at "

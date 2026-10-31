@@ -368,7 +368,7 @@ def read_reference(path: Path, *, label: str) -> tuple[str, bytes]:
         data = path.read_bytes()
         with Image.open(io.BytesIO(data)) as source:
             source.load()
-            mime = Image.MIME.get(source.format)
+            mime = Image.MIME.get(source.format)  # type: ignore[arg-type]
         if mime not in REFERENCE_MIMES:
             raise ValueError("reference must be PNG, JPEG or WebP")
     except (OSError, ValueError, UnidentifiedImageError) as exc:

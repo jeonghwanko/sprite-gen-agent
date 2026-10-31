@@ -283,9 +283,9 @@ def analyze_motion(sequence: FrameSequence, *, contacts=None, foot_box=None, fac
     durations = [_number(value, "duration") for value in raw_durations]
     if any(value <= 0 for value in durations):
         raise ValueError("frame durations must be positive")
-    if len(sequence.anchor) != 2:
+    if len(sequence.anchor) != 2:  # type: ignore[arg-type]
         raise ValueError("anchor requires x,y in source pixels")
-    anchor = [_number(v, "anchor") for v in sequence.anchor]
+    anchor = [_number(v, "anchor") for v in sequence.anchor]  # type: ignore[union-attr]
     if facing not in (None, "left", "right"):
         raise ValueError("facing must be left or right")
     spans = _contact_spans(contacts, len(frames))
@@ -301,11 +301,11 @@ def analyze_motion(sequence: FrameSequence, *, contacts=None, foot_box=None, fac
 
     masks, rows = [], []
     seen_frames, seen_masks = set(), set()
-    unique_masks = []
+    unique_masks: list[np.ndarray] = []
     exact = exact_silhouette = near_silhouette = adjacent_exact = 0
     changed = silhouette_changed = 0
     silhouette_change = 0.0
-    sides = {name: [] for name in ("left", "top", "right", "bottom")}
+    sides: dict[str, list[int]] = {name: [] for name in ("left", "top", "right", "bottom")}
     previous_pixels = None
     previous_hash = None
     for index, frame in enumerate(frames):
@@ -322,7 +322,7 @@ def analyze_motion(sequence: FrameSequence, *, contacts=None, foot_box=None, fac
         else:
             for earlier in unique_masks:
                 union = np.count_nonzero(mask | earlier)
-                if union and np.count_nonzero(mask & earlier) / union >= NEAR_SILHOUETTE_IOU:
+                if union and np.count_nonzero(mask & earlier) / union >= NEAR_SILHOUETTE_IOU:  # type: ignore[operator]
                     near_silhouette += 1
                     break
             unique_masks.append(mask)
@@ -332,7 +332,7 @@ def analyze_motion(sequence: FrameSequence, *, contacts=None, foot_box=None, fac
             union = np.count_nonzero(mask | masks[-1])
             difference = np.count_nonzero(mask ^ masks[-1])
             silhouette_changed += bool(difference > 0)
-            silhouette_change += difference / union if union else 0.0
+            silhouette_change += difference / union if union else 0.0  # type: ignore[operator, assignment]
         previous_pixels = pixels
         masks.append(mask)
         bbox = _bbox(mask)

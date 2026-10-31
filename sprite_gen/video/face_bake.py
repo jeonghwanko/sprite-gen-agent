@@ -248,7 +248,7 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
 def run(**kwargs: object) -> int:
     out = Path(str(kwargs["out"]))
     report = bake(Path(str(kwargs["pack"])), Path(str(kwargs["voice"])), out, play=kwargs.get("play"),  # type: ignore[arg-type]
-                  start=int(kwargs.get("start_cell") or 0), tags=list(kwargs.get("tags") or []),  # type: ignore[arg-type]
+                  start=int(kwargs.get("start_cell") or 0), tags=list(kwargs.get("tags") or []),  # type: ignore[call-overload]
                   lead=float(0.5 if kwargs.get("lead") is None else kwargs["lead"]),  # type: ignore[arg-type]
                   tail=float(0.6 if kwargs.get("tail") is None else kwargs["tail"]))  # type: ignore[arg-type]
     made = []

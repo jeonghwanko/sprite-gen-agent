@@ -386,7 +386,7 @@ def _publish(
     metrics.update({"source": str(source), "output": str(out)})
     png = io.BytesIO()
     tile.save(png, format="PNG")
-    payloads = {out: png.getvalue(), report_path: json.dumps(metrics, indent=2, allow_nan=False) + "\n"}
+    payloads: dict[Path, bytes | str] = {out: png.getvalue(), report_path: json.dumps(metrics, indent=2, allow_nan=False) + "\n"}
     # Validate and encode everything before any filesystem mutation. Lock each
     # destination directory (stable ordering), since reports may live elsewhere.
     # The locks are task-scoped: whatever this call acquired is released when it

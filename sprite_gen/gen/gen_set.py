@@ -113,7 +113,7 @@ def read_report(report: Path) -> tuple[dict[str, Any] | None, str | None]:
 
 def _auth_source(report: dict[str, Any]) -> str | None:
     """What a row's gen call ran on, as its report says (`extra.auth_source`)."""
-    extra = report.get("extra") if isinstance(report.get("extra"), dict) else {}
+    extra: Any = report.get("extra") if isinstance(report.get("extra"), dict) else {}
     return extra.get("auth_source")
 
 
@@ -413,7 +413,7 @@ def run(**kwargs: object) -> int:
             payload = run_set(
                 run_dir=Path(str(kwargs["run_dir"])), states=states,
                 provider=kwargs.get("provider"), model=kwargs.get("model"),  # type: ignore[arg-type]
-                concurrency=int(kwargs.get("concurrency") or DEFAULT_CONCURRENCY), force=bool(kwargs.get("force")),
+                concurrency=int(kwargs.get("concurrency") or DEFAULT_CONCURRENCY), force=bool(kwargs.get("force")),  # type: ignore[call-overload]
             )
         except outcome.Interrupted as exc:  # stopped before the first row began: no set report to write
             raise outcome.Stop(f"gen-set: {exc}", outcome.exit_code(outcome.INTERRUPTED, exc)) from exc

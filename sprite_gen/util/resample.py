@@ -102,7 +102,7 @@ def transform_cell(image: Image.Image, size: tuple[int, int], inverse: tuple[flo
     if window is None:
         return _transform_whole(image, size, inverse)
     (_sx0, _sy0, sx1, sy1), (_ox0, _oy0, ox1, oy1) = window
-    out = Image.new("RGBA", tuple(size), (0, 0, 0, 0))
+    out = Image.new("RGBA", tuple(size), (0, 0, 0, 0))  # type: ignore[arg-type]
     if ox1 <= 0 or oy1 <= 0:
         return out
     # Trimmed on the right and below only: Pillow steps each row's source point from the cell's origin, so a window that
@@ -160,7 +160,7 @@ def _transform_whole(image: Image.Image, size: tuple[int, int], inverse: tuple[f
     # The four source pixels BILINEAR reads sit half a pixel either side of the mapped centre;
     # NEAREST at those four offsets reads exactly them (nothing outside the source: alpha 0).
     corners = [mapped(alpha, Image.Resampling.NEAREST, dx, dy) for dx in (-0.5, 0.5) for dy in (-0.5, 0.5)]
-    low, high = np.minimum.reduce(corners), np.maximum.reduce(corners)
+    low, high = np.minimum.reduce(corners), np.maximum.reduce(corners)  # type: ignore[call-overload]
     cover = np.clip(mapped(alpha, Image.Resampling.BICUBIC), low, high)
     cover = np.where(mix_alpha > 1e-3, np.round(cover), 0)
     colour = np.where((cover > 0)[..., None], np.round(mix / np.maximum(mix_alpha, 1e-3)[..., None]), 0)

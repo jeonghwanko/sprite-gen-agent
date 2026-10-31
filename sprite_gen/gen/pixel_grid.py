@@ -299,7 +299,7 @@ def _parse_chargrid_body(body: str, width: int, height: int, frames: Sequence[st
                 issues.append(Issue("bad_palette_line", None, None, stripped[:80]))
                 continue
         if section == "frame":
-            written[current].append(list(line))
+            written[current].append(list(line))  # type: ignore[index]
         else:
             issues.append(Issue("stray_line", None, None, stripped[:80]))
     if section is None and not palette:
@@ -581,7 +581,7 @@ def preview_strip(frames: Sequence[Sequence[Sequence[Pixel]]], scale: int,
                   columns: int = PREVIEW_COLUMNS) -> Image.Image:
     """The frames side by side, each enlarged `scale` times, two enlarged pixels apart; past `columns`
     frames they go on in rows, left to right and top to bottom, so a long set stays readable."""
-    images = [image_of(f).resize((len(f[0]) * scale, len(f) * scale), Image.NEAREST) for f in frames]
+    images = [image_of(f).resize((len(f[0]) * scale, len(f) * scale), Image.NEAREST) for f in frames]  # type: ignore[attr-defined]
     gap = 2 * scale
     across = min(columns, len(images))
     down = -(-len(images) // across)
@@ -598,9 +598,9 @@ def tiled_3x3(pixels: Sequence[Sequence[Pixel]], scale: int) -> Image.Image:
     for ty in range(3):
         for tx in range(3):
             tiled.paste(tile, (tx * tile.width, ty * tile.height))
-    return tiled.resize((tiled.width * scale, tiled.height * scale), Image.NEAREST)
+    return tiled.resize((tiled.width * scale, tiled.height * scale), Image.NEAREST)  # type: ignore[attr-defined]
 
 
 def save_gif(frames: Sequence[Sequence[Sequence[Pixel]]], scale: int, path: Path, duration_ms: int, *, loop: int | None = 0) -> None:
-    images = [image_of(f).resize((len(f[0]) * scale, len(f) * scale), Image.NEAREST) for f in frames]
+    images = [image_of(f).resize((len(f[0]) * scale, len(f) * scale), Image.NEAREST) for f in frames]  # type: ignore[attr-defined]
     save_clean_gif(images, path, duration_ms=duration_ms, loop=loop)

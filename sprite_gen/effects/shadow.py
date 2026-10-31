@@ -49,10 +49,10 @@ def _anchor(value) -> tuple[float, float]:
 def _rgb(value) -> tuple[int, int, int]:
     if not isinstance(value, (tuple, list)) or len(value) != 3:
         raise ValueError("color must contain three RGB integers in [0, 255]")
-    if any(isinstance(v, bool) or not isinstance(v, Integral) or not 0 <= v <= 255
+    if any(isinstance(v, bool) or not isinstance(v, Integral) or not 0 <= v <= 255  # type: ignore[operator]
            for v in value):
         raise ValueError("color must contain three RGB integers in [0, 255]")
-    return tuple(int(v) for v in value)
+    return tuple(int(v) for v in value)  # type: ignore[return-value]
 
 
 def _parameters(squash, shear, opacity, blur, color):
@@ -219,7 +219,7 @@ def run(
     # All rendering, encoding and validation precede directory/lock creation.
     # No failed projection can leave a partially published frame sequence.
     sheet = Image.new("RGBA", strip_size)
-    payloads = {}
+    payloads: dict[Path, bytes | str] = {}
     for index, (frame, target) in enumerate(zip(asset.frames, targets)):
         rendered, _ = project_shadow(
             frame, anchor, squash=squash, shear=shear, opacity=opacity, blur=blur, color=color)

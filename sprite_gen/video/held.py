@@ -92,7 +92,7 @@ def measure(steps: Sequence[float], *, fps: float, cyclic: bool = False, span: b
     inner = s[:-1] if cyclic else s
     seconds = frames / fps
     base: dict[str, Any] = {"frames": frames, "fps": fps, "steps": len(s), "contrast": {}}
-    if len(inner) < MIN_STEPS or float(inner.max(initial=0.0)) <= 0:
+    if len(inner) < MIN_STEPS or float(inner.max(initial=0.0)) <= 0:  # type: ignore[call-overload]
         why = "no motion between frames" if len(inner) >= MIN_STEPS else f"{len(inner)} steps, under {MIN_STEPS}: too few to read a rhythm"
         return {**base, "hold": None, "held_steps": None, "drawings": None, "drawings_per_second": None, "why": why}
     found = {h: _contrast(inner, h) for h in HOLDS}

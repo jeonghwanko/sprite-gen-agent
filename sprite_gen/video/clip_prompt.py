@@ -151,10 +151,10 @@ def run(**kwargs: object) -> int:
         direction=str(kwargs["direction"]), state=str(kwargs["state"]), facing=str(kwargs.get("facing") or "right"),
         character=kwargs.get("character"), motion=kwargs.get("motion"),  # type: ignore[arg-type]
         model=str(kwargs.get("model") or DEFAULT_MODEL), last_frame=not kwargs.get("no_last_frame"),
-        unpinned=bool(kwargs.get("unpinned")), duration=(int(kwargs["duration"]) if kwargs.get("duration") else None),  # type: ignore[arg-type]
+        unpinned=bool(kwargs.get("unpinned")), duration=(int(kwargs["duration"]) if kwargs.get("duration") else None),  # type: ignore[call-overload]
         key=str(kwargs.get("key") or "green"),
-        handed=handed_mod.parse_all(list(kwargs.get("handed") or [])) or None,  # type: ignore[arg-type]
-        body_plan=body_mod.parse_all(list(kwargs.get("body_plan") or [])) or None,  # type: ignore[arg-type]
+        handed=handed_mod.parse_all(list(kwargs.get("handed") or [])) or None,  # type: ignore[call-overload]
+        body_plan=body_mod.parse_all(list(kwargs.get("body_plan") or [])) or None,  # type: ignore[call-overload]
     )
     for line in record["warnings"]:
         print(f"video-prompt: warning: {line}", file=sys.stderr)

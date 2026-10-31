@@ -94,7 +94,7 @@ def subject_boxes(frames: list[Image.Image]) -> np.ndarray:
     for frame in frames:
         alpha = np.asarray(frame.getchannel("A")) >= ALPHA_SUBJECT
         ys, xs = np.nonzero(alpha)
-        boxes.append((xs.min(), ys.min(), xs.max() + 1, ys.max() + 1) if len(xs) else (np.nan,) * 4)
+        boxes.append((xs.min(), ys.min(), xs.max() + 1, ys.max() + 1) if len(xs) else (np.nan,) * 4)  # type: ignore[call-overload]
     return np.asarray(boxes, dtype=np.float64)
 
 
@@ -311,7 +311,7 @@ def body_size(frame: Image.Image) -> tuple[float, float, float] | None:
     top, height = int(rows[0]), int(rows[-1]) + 1 - int(rows[0])
     coverage = alpha.sum(axis=1) / 255
     upper = coverage[top: top + max(1, round(BREADTH_PART * height))]
-    return float(height), float(np.sqrt(coverage.sum())), float(upper.max())
+    return float(height), float(np.sqrt(coverage.sum())), float(upper.max())  # type: ignore[call-overload]
 
 
 def size_change(first: tuple[float, float, float] | None, cut: list[tuple[float, float, float] | None]) -> dict:

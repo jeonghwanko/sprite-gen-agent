@@ -55,7 +55,7 @@ def save_settings(kind: str | None, choices: dict, *, expected_revision: str, cl
     `clear` one profile; `general` saves settings every profile shares (no `kind` needed for those alone)."""
     general = validate_general(general or {})
     if kind is not None or choices or clear:
-        choices = validate_choices(kind, choices)
+        choices = validate_choices(kind, choices)  # type: ignore[arg-type]
     if not expected_revision:
         raise ValueError("expected_revision is required; read current settings first")
     if not clear and not choices and not general:

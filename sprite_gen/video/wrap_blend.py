@@ -141,7 +141,7 @@ def _runs(x: np.ndarray, h: int) -> np.ndarray:
     a 1 px line keeps its whole value here, where a 7x7 mean thins it seven times."""
     p = np.pad(x, h, mode="edge")
     rows, cols = x.shape
-    best = None
+    best: Any = None
     for dy, dx in ((0, 1), (1, 0), (1, 1), (1, -1)):
         s = sum(p[h + k * dy:h + k * dy + rows, h + k * dx:h + k * dx + cols] for k in range(-h, h + 1)) / (2 * h + 1)
         best = s if best is None else np.maximum(best, s)

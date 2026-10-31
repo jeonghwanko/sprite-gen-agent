@@ -54,7 +54,7 @@ def guide(kind: str, *, stage: str = "start", base_image: Path | None = None, re
             access.append(state)
             if provider not in required:
                 continue
-            label = FIELDS["image_provider"]["options"].get(provider, provider)
+            label = FIELDS["image_provider"]["options"].get(provider, provider)  # type: ignore[attr-defined]
             if state["login"] == "unavailable":
                 blocked.append({"provider": provider, "reason": state["reason"]})
             elif state["billing"] == "api-credit":
@@ -81,7 +81,7 @@ def guide(kind: str, *, stage: str = "start", base_image: Path | None = None, re
                     "generation_provider": motion["provider"] if motion else selected.get("image_provider"),
                     "steps": motion["steps"] if motion else ["gen"],
                     "doc": motion["doc"] if motion else "docs/gen.md"}
-    labels = [FIELDS[key]["options"][selected[key]] for key in active_fields if key in selected]
+    labels = [FIELDS[key]["options"][selected[key]] for key in active_fields if key in selected]  # type: ignore[index]
     return {"kind": kind, "stage": stage, "status": "blocked" if blocked else "needs-input" if questions else "ready",
             "notice": " / ".join(labels), "selected": selected, "sources": sources,
             "settings_revision": snapshot["revision"], "settings_path": snapshot["path"],

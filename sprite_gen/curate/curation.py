@@ -922,7 +922,7 @@ def anchor_choices(curation: dict[str, Any] | None) -> dict[str, dict[str, Any]]
                 continue
             state = value.get("state")
             try:
-                index = int(value.get("index"))
+                index = int(value.get("index"))  # type: ignore[arg-type]
             except (TypeError, ValueError):
                 continue
             if isinstance(state, str) and state:
@@ -1123,7 +1123,7 @@ def apply_pixel_edits(frame: Image.Image, ops: dict[str, Any] | None) -> Image.I
     if not ops:
         return frame
     edited = frame.convert("RGBA").copy()
-    px = edited.load()
+    px: Any = edited.load()
     for key, value in ops.items():
         try:
             x_str, y_str = str(key).split(",", 1)
@@ -1232,7 +1232,7 @@ def apply_transform(
         # Coverage and colour mapped apart: BICUBIC over the keyed frame drew a light rim and a
         # key tint around the outline (docs/video-pipeline.md "Cells").
         return transform_cell(src, (cw, ch), (ia, ib, c, id_, ie, f))
-    out = src.transform((cw, ch), Image.AFFINE, (ia, ib, c, id_, ie, f), resample=Image.NEAREST)
+    out = src.transform((cw, ch), Image.AFFINE, (ia, ib, c, id_, ie, f), resample=Image.NEAREST)  # type: ignore[attr-defined]
     if snap_scale > 1:
         logical_w, logical_h = max(1, cw // snap_scale), max(1, ch // snap_scale)
         out = out.resize((logical_w, logical_h), Image.Resampling.NEAREST)

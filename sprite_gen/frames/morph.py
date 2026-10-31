@@ -57,7 +57,7 @@ def _table(values: np.ndarray) -> np.ndarray:
     sum fits it: the same sums as float64 holds them, exact either way, at half the memory traffic. Any
     other input is summed in float64, as before."""
     height, width = values.shape[:2]
-    dtype = np.dtype(np.float64)
+    dtype: np.dtype = np.dtype(np.float64)
     if values.dtype == np.bool_ or (values.dtype.kind == "u" and values.dtype.itemsize <= 2):
         top = 1 if values.dtype == np.bool_ else int(np.iinfo(values.dtype).max)
         dtype = np.dtype(np.int32 if top * height * width <= np.iinfo(np.int32).max else np.int64)

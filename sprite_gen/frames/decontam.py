@@ -227,7 +227,7 @@ def learn_palette(samples: np.ndarray, size: int = PALETTE_SIZE) -> np.ndarray:
     weight = counts[used].astype(np.float64)
     points = np.stack([np.bincount(code, weights=samples[:, c].astype(np.float64), minlength=bins)[used]
                        for c in range(3)], axis=-1) / weight[:, None]
-    centres = [(points * weight[:, None]).sum(0) / weight.sum()]
+    centres: Any = [(points * weight[:, None]).sum(0) / weight.sum()]
     nearest = ((points - centres[0]) ** 2).sum(-1)
     for _ in range(1, min(size, len(points))):
         pick = int(np.argmax(weight * nearest))  # greedy weighted farthest point; ties -> lowest bin
@@ -310,7 +310,7 @@ def _fit_colour(obs: np.ndarray, bg: np.ndarray, chosen: np.ndarray, alpha: np.n
     return recolor_to_luma(chosen, target)
 
 
-def _hold(value: np.ndarray, bar: Any, before: np.ndarray, bit: int, *, strict: bool = False) -> tuple[np.ndarray, np.ndarray]:
+def _hold(value: Any, bar: Any, before: np.ndarray, bit: int, *, strict: bool = False) -> tuple[np.ndarray, np.ndarray]:
     """`value <= bar` (`<` when `strict`), with the outcome the last frame recorded under `bit` in `before` (*Hold*):
     a pixel it passed passes up to bar + VIDEO_HOLD, one it failed needs bar - VIDEO_HOLD, and a pixel it did not
     examine takes the plain test. Returns (outcome, held), held where the outcome is not this frame's alone."""
@@ -749,7 +749,7 @@ def decontaminate(source_rgb: np.ndarray, keyed: np.ndarray, keyed_mask: np.ndar
     out[out[..., 3] == 0] = 0
     settled_px = 0
     if fit == "video" and history is not None:
-        def as_map(values: np.ndarray, fill: Any, dtype: Any) -> np.ndarray:
+        def as_map(values: Any, fill: Any, dtype: Any) -> np.ndarray:
             plane = np.full(keyed_mask.shape, fill, dtype=dtype)
             plane[rows, cols] = values
             return plane

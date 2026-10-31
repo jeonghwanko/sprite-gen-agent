@@ -70,7 +70,7 @@ def body_rows(frames: list[Image.Image], box: tuple[int, int, int, int]) -> int:
     """The body's height over the loop inside `box`, px: from the highest row any frame covers to the lowest (alpha over
     a tenth, as the flow reading reads it)."""
     rows = np.where(np.max([np.asarray(f.crop(box).getchannel("A")).max(axis=1) for f in frames], axis=0) > 25)[0]
-    return int(rows.max() - rows.min()) if rows.size else 0
+    return int(rows.max() - rows.min()) if rows.size else 0  # type: ignore[call-overload]
 
 
 def _plane(frame: Image.Image, box: tuple[int, int, int, int], size: tuple[int, int], pad: int) -> tuple[np.ndarray, np.ndarray]:
@@ -81,7 +81,7 @@ def _plane(frame: Image.Image, box: tuple[int, int, int, int], size: tuple[int, 
     luma = (x[..., :3] @ np.array([0.299, 0.587, 0.114], dtype=np.float32)) * alpha + 0.5 * (1 - alpha)
 
     def small(a: np.ndarray) -> np.ndarray:
-        return np.asarray(Image.fromarray(np.ascontiguousarray(a, dtype=np.float32)).resize(size, Image.BOX), dtype=np.float32)
+        return np.asarray(Image.fromarray(np.ascontiguousarray(a, dtype=np.float32)).resize(size, Image.BOX), dtype=np.float32)  # type: ignore[attr-defined]
 
     return np.pad(small(luma), pad, constant_values=0.5), np.pad(small(alpha), pad, constant_values=0.0)
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from typing import Any
 
 from sprite_gen._deps import np
 
@@ -30,7 +31,7 @@ def inspect_scene(scene: Scene, *, renderer=None, frame_dir=None):
     renderer = renderer or Renderer(scene)
     first = previous = None
     green, magenta = 0, 0
-    clipped = {layer.id: {"top_frames": 0, "bottom_frames": 0, "side_frames": 0, "offscreen_frames": 0,
+    clipped: dict[Any, dict[str, Any]] = {layer.id: {"top_frames": 0, "bottom_frames": 0, "side_frames": 0, "offscreen_frames": 0,
                           "empty_frames": 0, "minimum_top_y": None} for layer in scene.layers}
     adjacent = []
     for i in range(scene.frame_count):
@@ -46,7 +47,7 @@ def inspect_scene(scene: Scene, *, renderer=None, frame_dir=None):
         if previous is not None:
             adjacent.append(_mae(pixels, previous))
         previous = pixels
-        by_layer = {}
+        by_layer: dict[Any, list[Any]] = {}
         for entry in placements:
             by_layer.setdefault(entry["id"], []).append(entry)
         for name, stat in clipped.items():
@@ -80,7 +81,7 @@ def inspect_scene(scene: Scene, *, renderer=None, frame_dir=None):
     for name, seq in scene.assets.items():
         contacts = []
         for frame in seq.frames:
-            a = np.asarray(frame)[..., 3] > 128
+            a = np.asarray(frame)[..., 3] > 128  # type: ignore[assignment]
             contacts.append({"top": int(a[0].sum()), "bottom": int(a[-1].sum()), "left": int(a[:,0].sum()), "right": int(a[:,-1].sum())})
         sources[name] = {"edge_contact": contacts, "completeness": "unverified", "note": "Edge contact is a diagnostic; missing artwork inside a source needs visual review."}
     from sprite_gen.background.tile import inspect_tile

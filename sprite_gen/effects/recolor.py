@@ -380,7 +380,7 @@ def _resolve_base_and_manifest(
         return resolved_base, resolved_manifest, resolved_out
     if out_dir is None:
         raise SystemExit("--out-dir is required with --base")
-    return base, manifest, out_dir
+    return base, manifest, out_dir  # type: ignore[return-value]
 
 
 def add_recolor_arguments(p: argparse.ArgumentParser) -> None:

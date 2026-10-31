@@ -30,7 +30,7 @@ def key_frames(files: list[Path], directory: Path) -> dict[str, Any]:
     if not files:
         raise SystemExit("video-frames: no frames to convert")
     directory.mkdir(parents=True, exist_ok=True)
-    rows = []
+    rows: list[dict[str, Any]] = []
     for src in files:
         with Image.open(src) as raw:
             image = brightness_alpha(raw)

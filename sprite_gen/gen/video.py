@@ -602,7 +602,7 @@ def _poll_publish(
         polls += 1
         lost: str | None = None
         try:
-            http, poll = call("GET", f"{API_BASE}/videos/{request_id}", credential.token, None, deadline=deadline)
+            http, poll = call("GET", f"{API_BASE}/videos/{request_id}", credential.token, None, deadline=deadline)  # type: ignore[call-arg]
         except TransportError as failed:
             lost, http, poll = failed.reason, None, None
         poll_status = poll.get("status") if isinstance(poll, dict) else None
@@ -677,13 +677,13 @@ def _poll_publish(
     while True:
         downloads += 1
         said: str | None = None  # what the transport said when the download got no answer it could read
-        refused: int | None = None  # the status the clip's host refused it with
+        refused: int | None = None  # type: ignore[no-redef]  # the status the clip's host refused it with
         try:
             data = download(video_url, credential.token, deadline=deadline)
         except TransportError as failed:
             said = failed.reason
         except DownloadRefused as failed:
-            refused = failed.status
+            refused = failed.status  # type: ignore[assignment]
         else:
             if _is_mp4(data):
                 break
@@ -773,7 +773,7 @@ def generate_video(
             print(f"[video] {line}", file=sys.stderr)
         request = replace(request, prompt=parts.text)
         corrected = out.with_suffix(".facing.png")
-        facing_report = facing_mod.prepare_still(image, corrected, facing=request.facing,
+        facing_report = facing_mod.prepare_still(image, corrected, facing=request.facing,  # type: ignore[arg-type]
                                                  fix=request.facing_fix, credential=credential, call=call)
         image = corrected
     body = _build_generation_body(request, image, last_frame, references)
@@ -1093,7 +1093,7 @@ def _publish_report(args: argparse.Namespace, make: Callable[[], VideoResult], *
                         else {"kind": "sprite-gen-video-report", "verb": verb, "out": str(Path(args.out).expanduser().resolve()),
                               **({"request_id": request_id} if request_id else {})})
                 with outcome.deferred():  # a signal now waits for the report, then ends the run
-                    atomic_write_text(report_path, json.dumps({**body, **fields}, ensure_ascii=False, indent=2) + "\n")
+                    atomic_write_text(report_path, json.dumps({**body, **fields}, ensure_ascii=False, indent=2) + "\n")  # type: ignore[arg-type]
             ending = outcome.ended(exc, code)
             if ending is exc:
                 raise

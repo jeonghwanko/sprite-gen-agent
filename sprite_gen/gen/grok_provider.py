@@ -134,7 +134,7 @@ class GrokProvider:
         # code is all there is to say why.
         refused = refusal.read(self.name, reply) if status != 200 else None
         if status in (401, 403):
-            raise SystemExit(f"grok-gen: credential {credential.source} rejected (HTTP {status}){refused.suffix()}; "
+            raise SystemExit(f"grok-gen: credential {credential.source} rejected (HTTP {status}){refused.suffix()}; "  # type: ignore[union-attr]
                              f"{xai.rejected_fix(credential)}"
                              f"{refusal.said(reply, credential.token)}")
         # The one other thing worth naming is the combination the docs scope to

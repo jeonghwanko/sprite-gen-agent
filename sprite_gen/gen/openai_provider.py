@@ -301,7 +301,7 @@ class OpenAIProvider:
         refused = _refusal(reply) if status != 200 else None
         if status in (401, 403):
             raise SystemExit(
-                f"openai-gen: credential {AUTH_SOURCE_API_KEY} rejected (HTTP {status}){refused.suffix()}; "
+                f"openai-gen: credential {AUTH_SOURCE_API_KEY} rejected (HTTP {status}){refused.suffix()}; "  # type: ignore[union-attr]
                 f"check the key's value and that its project may call {fields['model']}{refusal.said(reply, token)}"
             )
         if refused is not None:
