@@ -8,7 +8,6 @@ PATH or the install root; tests/conftest.py); the locating rules need no binary 
 
 from __future__ import annotations
 
-import os
 import stat
 import sys
 from pathlib import Path
@@ -97,7 +96,7 @@ def test_missing_model_is_refused(monkeypatch, tmp_path):
 def _stand_in(binary: Path, shell: str, python: str) -> Path:
     """A stand-in for the RIFE binary: a shell script, or on Windows, which runs no shebang script
     (WinError 193), the same steps in Python behind a .cmd that hands them to this interpreter."""
-    if os.name != "nt":
+    if sys.platform != "win32":
         binary.write_text(shell)
         binary.chmod(binary.stat().st_mode | stat.S_IXUSR)
         return binary
