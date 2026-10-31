@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 """Measuring a cut on its cells: shifts, held edges, seam flow, ring and drawing steps.
 
-Moved out of `loop.py` unchanged; `loop` re-exports every name, so `loop.<name>` still works."""
+Moved out of `loop.py`; `loop` re-exports every name, so `loop.<name>` still works. `read_steps` and the `view`/`cycles`
+readings of `ring_steps` and `fixed_count` are ported from upstream sprite-gen 3.13/3.14 (the gait witness)."""
 
 from __future__ import annotations
 
@@ -12,8 +13,10 @@ from typing import Any
 from PIL import Image
 
 from sprite_gen._deps import np
+from sprite_gen.gen import handedness as handed_mod
 from sprite_gen.video import auto_motion, local_cycle, motion_anchor
 from sprite_gen.video import crossings as crossings_mod
+from sprite_gen.video import legs as legs_mod
 from sprite_gen.video import repair as repair_mod
 from sprite_gen.video.loop_cycle import _small_features, leg_signals
 from sprite_gen.video.loop_params import STEP_JITTER_PX, STEP_RATIO_MAX
@@ -217,16 +220,45 @@ def wrap_on_cells(frames: list[Image.Image]) -> float:
     return float(np.abs(flat[-1] - flat[0]).mean()) / step if step > 0 else math.inf
 
 
-def ring_steps(frames: list[Image.Image]) -> dict[str, Any]:
+def read_steps(frames: list[Image.Image], D: np.ndarray, *, view: str | None = None, facing: str = "right",
+               signals: dict[str, list[float]] | None = None) -> crossings_mod.Reading:
+    """The clip's crossings (`crossings.read`), and whether they mark its cycles (`local_cycle.read_cycles`, on `D`, the
+    clip's distances, the body's bob read off `signals` — the frames' leg signals, read here where not given, with the
+    body's own (`legs.body_signals`) — the order its feet are drawn in (`legs.feet_order`), and the `view`'s foot cue:
+    `legs.shade_cue` from the side or a diagonal, drawn in tones of `legs.TONE`, `legs.depth_cue` from the front or
+    back, in pixel rows of the body's median height). Every
+    count the clip's steps make is read on it: the search's cut (`loop._by_steps`), a fixed cut (`fixed_count`) and,
+    carried to the loop, the loop as it plays (`ring_steps`)."""
+    signals = leg_signals(frames) if signals is None else signals
+    try:
+        reading = crossings_mod.read(crossings_mod.foot_signals(frames, gap=signals["gap"] if signals else None))
+    except ValueError:
+        return crossings_mod.Reading(len(frames), "gap", [], why="a frame has no solid body to read the feet from")
+    cue = step = None
+    if view is not None:
+        lateral = view in handed_mod.LATERAL_VIEWS
+        cue = [legs_mod.shade_cue(f, facing) if lateral else legs_mod.depth_cue(f) for f in frames]
+        heights = signals["height"] if signals else legs_mod.strike_signals(frames)["height"]
+        step = legs_mod.TONE if lateral else 1.0 / float(np.median(heights))
+    body = {**signals, **legs_mod.body_signals(frames)} if signals else None
+    local_cycle.read_cycles(reading, D, view=view, cue=cue, cue_step=step, signals=body,
+                            order=[legs_mod.feet_order(f) for f in frames])
+    return reading
+
+
+def ring_steps(frames: list[Image.Image], *, cycles: dict[str, Any] | None = None) -> dict[str, Any]:
     """The steps a loop shows as it plays round: the crossings read on its frames played three times over
     (`crossings.read`), the turn in the middle judged (`Reading.judge`) — a two where the loop still walks two steps,
-    joined where the walk goes on."""
+    joined where the walk goes on. `cycles` is what the clip the loop was cut from said of its crossings
+    (`read_steps`): a loop is too short to be read two intervals on, and its crossings mark what the clip's mark."""
     ring = [*frames, *frames, *frames]
     signals = leg_signals(ring)
     try:
         reading = crossings_mod.read(crossings_mod.foot_signals(ring, gap=signals["gap"] if signals else None))
     except ValueError as exc:
         return {"verdict": "uncertain", "code": "unread", "why": str(exc)}
+    if cycles is not None and reading.readable:
+        reading.mark_cycles(cycles)
     return reading.judge(len(frames), len(frames))
 
 
@@ -300,21 +332,13 @@ def drawing_steps(cells: list[Image.Image], pixel: float = 1.0) -> dict[str, Any
             **({"jitter": jitter} if jitter else {})}
 
 
-def fixed_count(frames: list[Image.Image], D: np.ndarray, start: int, length: int) -> dict[str, Any]:
-    """The clip's own count of the steps a fixed cut covers: the crossings of its frames (`crossings.read`), the cut
-    judged (`Reading.judge`), and an odd count the clip may have missed a crossing in asked whether the clip a cut on is
-    the same picture (`local_cycle.same_picture_count`, as `--anchor motion-auto` asks it, on `D`, the clip's distances).
-    Recorded `chosen_by: caller`: the caller named the cut."""
-    signals = leg_signals(frames)
-    try:
-        reading = crossings_mod.read(crossings_mod.foot_signals(frames, gap=signals["gap"] if signals else None))
-    except ValueError:
-        reading = crossings_mod.Reading(len(frames), "gap", [], why="a frame has no solid body to read the feet from")
-    record = {**reading.record(), "chosen_by": "caller"}
-    said, record["cut"] = local_cycle.same_picture_count(reading, D, reading.judge(start, length))
-    if said is not None:
-        record["same_picture"] = said
-    return record
+def fixed_count(frames: list[Image.Image], D: np.ndarray, start: int, length: int, *, view: str | None = None,
+                facing: str = "right") -> dict[str, Any]:
+    """The clip's own count of the steps a fixed cut covers: the crossings of its frames, steps or cycles as the clip
+    says (`read_steps`, on `D`, the clip's distances, as `--anchor motion-auto` reads them), the cut judged
+    (`Reading.judge`). Recorded `chosen_by: caller`: the caller named the cut."""
+    reading = read_steps(frames, D, view=view, facing=facing)
+    return {**reading.record(), "chosen_by": "caller", "cut": reading.judge(start, length)}
 
 
 def odd_count(cycle: dict[str, Any]) -> bool:

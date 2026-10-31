@@ -134,7 +134,7 @@ sprite-gen video-prompt --direction side --state walk --facing right --no-last-f
 # duration, the credits shown to the user and approved, create_generation with that quote, query_zcre
 # status until it succeeds, the output saved as item/clip.mp4
 sprite-gen video-frames --clip item/clip.mp4 --out-dir item/frames --spill auto --reference item/canvas.png
-sprite-gen video-loop --frames-dir item/frames/keyed --out-dir item/loop --fps <fps in item/frames/frames.report.json> --state walk --cycle auto --anchor motion-auto --facing right --name side-walk
+sprite-gen video-loop --frames-dir item/frames/keyed --out-dir item/loop --fps <fps in item/frames/frames.report.json> --state walk --cycle auto --anchor motion-auto --view side --facing right --name side-walk
 # a set, once the walk is cut in every direction (each as above, in its own folder):
 sprite-gen video-cycle-align --loop-dir front/loop --loop-dir side/loop --loop-dir back/loop --view front --view side@right --view back --report walk.cycle-align.json
 ```
@@ -144,7 +144,10 @@ back to its first frame's size, and `motion-auto` is the anchor that measures th
 and holds it before the cycle search
 ([section 4](#4-loop--period-first-seam-second-then-the-gait-floor)); `video-loop`'s own default for a
 walk or run, `body`, does not. A jump takes no `--anchor`: `motion-auto` is refused for a state that
-is not a walk or run. `--fps` is the frames report's own, never a number written in by hand.
+is not a walk or run. `--fps` is the frames report's own, never a number written in by hand. Give the
+clip's view (`--view`) so a front, back or diagonal walk is read for crossings that mark cycles;
+`video-set` passes each item's view and cuts every walk or run whose loop is searched this way by
+default.
 
 The set stage is the same step `video-set` runs after its loops are cut (`--align-cycles auto`, its
 default): one `--loop-dir` per direction of the same walk or run, one `--view` each in the same
@@ -165,6 +168,15 @@ break the beat; where nothing keeps it, the loop is named in the warnings. A loo
 named in the warnings with whether any other cut of its clip would alternate; `--same-foot refuse`
 stops the set before anything is rewritten instead (both are explained in
 [loop repair](loop-repair.md) section 4).
+
+`video-set`'s own alignment (`batch.align_gaits`) leaves out a loop named a take to film again for
+`start-stop`, a loop whose cut nothing witnesses whole cycles (`cycle-unwitnessed`: its crossings
+left on steps unwitnessed, or its cut held by the cut witness), which may hold half a cycle or two,
+or a loop its body rises and falls four times in (`cycle-four-steps`: it holds two cycles where its
+strip counts two steps, and aligned as one cycle it would play twice as fast): its loop is kept as
+cut, the rest are aligned without it, and the state's record names it under `left_out` with its
+reasons. A loop left out whose step screen suspects it is one step is told in its warning what
+settles that (`video-loop --steps 1`), as `video-cycle-align` says when it stops on such a loop.
 
 `video-prompt --json` also gives the duration (the state's own, as `video-set`), whether the clip
 ends on the canvas (`last_frame`), the loop cut (`cycle`) and the canvas, clip, frames and loop

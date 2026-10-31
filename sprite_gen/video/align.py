@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (held and four-step cuts named, ported from upstream 3.13/3.14; see NOTICE).
 """`sprite-gen video-cycle-align` — one cycle length for every direction of a set.
 
 Each direction of a walk is filmed on its own, so its cycle comes out its own length (a Lite
@@ -66,6 +67,13 @@ again (`video-loop --steps 1`) and aligns the set anew, or says it holds a whole
 taken so a held part closes (its strip metadata says `steps: 2`) — returns half way at its second
 step: that return is no suspect (status `steps`), and the loop is aligned as the one cycle it is.
 
+So is a loop whose cut, as the report beside it records (`held_cut`), nothing witnessed whole cycles
+(`cycle-unwitnessed`: the step count left its crossings on steps, or the cut witness held the cut — it may be half a
+cycle, one or two) or that was cut two cycles long where its strip counts two steps (`cycle-four-steps`): `video-set`
+leaves such a loop out of its alignment, and alone this command stops on it the same way, named under `suspects`
+(`held`, with the report), before anything is rewritten. Its return half way is no step then. `--cycles <loop>=1` says
+it holds one cycle, `=2` takes one out of two; one step is cut again (`video-loop --steps 1`).
+
 Where a loop's view cannot tell its feet apart (`start_foot` null, with `foot_why`), it starts on its
 larger strike, and the report names it under `unnamed_feet` with its two strike frames as they now
 stand in `cycle/` (`candidates`, the first being the frame it starts on) — for whoever looks, a
@@ -103,6 +111,7 @@ from sprite_gen.video import sway as sway_mod
 from sprite_gen.video import cadence as cadence_mod
 from sprite_gen.video import held as held_mod
 from sprite_gen.video import legs as legs_mod
+from sprite_gen.video import local_cycle
 from sprite_gen.video import loop as loop_mod
 from sprite_gen.video import period as period_mod
 from sprite_gen.video import rife as rife_mod
@@ -115,9 +124,8 @@ RATE_TOLERANCE = 0.002  # frame rates read back from the strip metadata agree wi
 # The foot-strike turn (docs/loop-repair.md section 4) reads the legs as the two-cycle screen
 # records them (sprite_gen/video/legs.py). With a view the view picks the signal and the swings only
 # say whether there are legs to read (`foot_strike`).
-LOW_ALPHA, STRIDE_MIN, REACH_MIN, BODY_RUN = legs_mod.LOW_ALPHA, legs_mod.STRIDE_MIN, legs_mod.REACH_MIN, legs_mod.BODY_RUN
+STRIDE_MIN, REACH_MIN, BODY_RUN = legs_mod.STRIDE_MIN, legs_mod.REACH_MIN, legs_mod.BODY_RUN
 START_FOOT = "right"  # every loop of a set starts as this own foot lands, where its view can tell
-SHADE_BAND = 0.15  # the shade cue reads the feet and lower legs: the lowest 15 % of the body
 # The two strikes must differ by this to name a foot (`strike_foot`): shade in luma (0..1), depth in
 # body heights. A smaller difference is the drawing as much as the feet, and the foot is left unnamed
 # (`low-margin`) for whoever looks (`unnamed_feet`): a foot named wrong turns the loop half a cycle off
@@ -691,36 +699,7 @@ def _keep_the_beat(frames: list[Image.Image], out: list[Image.Image], provenance
 strike_signals = legs_mod.strike_signals
 
 
-def _feet(frame: Image.Image) -> tuple[np.ndarray, np.ndarray, int]:
-    """(solid mask, the picture's right half of the feet as a column mask, body height): the halves
-    split at the middle of the foot band (the lowest FOOT_BAND of the frame's own height)."""
-    solid = np.asarray(frame.getchannel("A")) >= LOW_ALPHA
-    rows = np.nonzero(solid.any(axis=1))[0]
-    y1, height = int(rows[-1]), int(rows[-1] - rows[0] + 1)
-    xs = np.nonzero(solid[y1 + 1 - max(1, round(height * legs_mod.FOOT_BAND)) : y1 + 1].any(axis=0))[0]
-    return solid, np.arange(solid.shape[1]) >= (xs[0] + xs[-1]) / 2, height
-
-
-def _depth_cue(frame: Image.Image) -> float:
-    """How much lower the picture's right foot is drawn than its left, as a fraction of the body's
-    height (the lowest solid row of each half)."""
-    solid, right, height = _feet(frame)
-    low = [int(np.nonzero(solid[:, half].any(axis=1))[0].max()) if solid[:, half].any() else 0 for half in (~right, right)]  # type: ignore[call-overload]
-    return (low[1] - low[0]) / height
-
-
-def _shade_cue(frame: Image.Image, facing: str) -> float:
-    """How much lighter the front foot is drawn than the back one (mean luma 0..1 of the lowest
-    SHADE_BAND of the body, front half against back half; the front is the side faced)."""
-    solid, right, height = _feet(frame)
-    rows = np.nonzero(solid.any(axis=1))[0]
-    band = np.zeros_like(solid)
-    band[rows[-1] + 1 - max(1, round(height * SHADE_BAND)) : rows[-1] + 1] = True
-    rgb = np.asarray(frame.convert("RGB"), dtype=np.float32) / 255.0
-    luma = rgb @ np.array([0.299, 0.587, 0.114], dtype=np.float32)
-    front = right if facing == "right" else ~right
-    parts = [luma[solid & band & cols[None, :]] for cols in (front, ~front)]
-    return float(parts[0].mean() - parts[1].mean()) if all(p.size for p in parts) else 0.0
+_depth_cue, _shade_cue = legs_mod.depth_cue, legs_mod.shade_cue
 
 
 def strike_foot(frames: list[Image.Image], strikes: tuple[int, int], view: str, facing: str | None) -> dict[str, Any]:
@@ -946,14 +925,38 @@ def one_step(loop_dir: Path, meta_path: Path, meta: dict[str, Any]) -> dict[str,
             "seconds": round(screen["lag"] / float(data["fps"]), 3), "report": str(path)}
 
 
+def held_cut(loop_dir: Path, meta_path: Path, meta: dict[str, Any]) -> dict[str, Any] | None:
+    """A loop whose cut nothing witnessed whole cycles, or that was cut two cycles long where its strip counts two
+    steps, as the cut's report records it (`cut_report`; `local_cycle.unwitnessed`, `local_cycle.four_steps`, which
+    `video-set` leaves out of its alignment): `reason` (local_cycle.UNWITNESSED or local_cycle.FOUR_STEPS) and the
+    `report` it is in. None otherwise — and where no report is found."""
+    found = cut_report(loop_dir, meta_path, meta)
+    if found is None:
+        return None
+    path, data = found
+    cycle = data.get("cycle") or {}
+    reason = (local_cycle.UNWITNESSED if local_cycle.unwitnessed(cycle) else
+              local_cycle.FOUR_STEPS if local_cycle.four_steps(cycle) else None)
+    return {"reason": reason, "report": str(path)} if reason else None
+
+
 def _suspect_line(entry: dict[str, Any]) -> str:
     """One loop's suspects, in words: where it returns, how, and what that would make it."""
+    said = []
+    if "held" in entry:
+        held = entry["held"]
+        said.append(f"nothing witnessed its cut whole cycles ({held['reason']}, in {held['report']}): it may hold half a "
+                    "cycle, one or two — if it is one step, cut it again with `sprite-gen video-loop … --steps 1`"
+                    if held["reason"] == local_cycle.UNWITNESSED else
+                    f"its cut holds four steps ({held['reason']}, in {held['report']}): two cycles where its strip counts "
+                    "two steps, and aligned as one it would play twice as fast")
     if "one_step" in entry:
         step = entry["one_step"]
-        line = (f"{entry['dir']}: may be one step of a cycle {step['lag']} frames long ({step['seconds']:.3f} s) — it repeats "
-                f"{step['ratio']:.2f}x as far two lengths on in its clip as one length on; count its steps, and if it is one, cut it "
-                f"again with `sprite-gen video-loop … --steps 1` (the arguments are in {step['report']}) and align the set anew")
-        return line + ("; it may also hold " + "; or ".join(_returns_said(entry)) if entry["candidates"] else "")
+        said.append(f"may be one step of a cycle {step['lag']} frames long ({step['seconds']:.3f} s) — it repeats "
+                    f"{step['ratio']:.2f}x as far two lengths on in its clip as one length on; count its steps, and if it is one, cut it "
+                    f"again with `sprite-gen video-loop … --steps 1` (the arguments are in {step['report']}) and align the set anew")
+    if said:
+        return f"{entry['dir']}: " + "; ".join(said) + ("; it may also hold " + "; or ".join(_returns_said(entry)) if entry["candidates"] else "")
     return f"{entry['dir']}: may hold " + "; or ".join(_returns_said(entry))
 
 
@@ -1292,21 +1295,23 @@ def align_set(loop_dirs: list[Path], *, length: int | None = None, interpolate: 
     cycle_warnings: list[str] = []
     for i, ((d, meta_path, meta, _), screen) in enumerate(zip(loops, screens)):
         k = given.get(i)
-        # A loop counted two steps long (`steps`) returns half way at its second step: not a second cycle.
-        stepped = [row for row in screen["suspects"] if meta.get("steps") == 2 and row["cycles"] == 2]
+        # A loop counted two steps long (`steps`) returns half way at its second step: not a second cycle — unless nothing
+        # witnessed its cut whole cycles, or it was cut two cycles long (`held`).
+        held = held_cut(d, meta_path, meta)
+        stepped = [row for row in screen["suspects"] if meta.get("steps") == 2 and row["cycles"] == 2 and held is None]
         rows = [row for row in screen["suspects"] if row not in stepped]
         step = one_step(d, meta_path, meta)
-        if rows or step or stepped:
-            status = ("counted" if k is not None else "steps" if not rows and not step
+        if rows or step or stepped or held:
+            status = ("counted" if k is not None else "steps" if not rows and not step and not held
                       else "stopped" if multi_cycle == "fail" else "warned")
             suspects.append({"dir": str(d), "name": meta_path.name[: -len(".strip.json")], "length": len(sources[i]),
                              "status": status, "cycles_given": k,
                              "candidates": [{key: row[key] for key in ("period", "seconds", "divisor", "cycles", "periodicity", "pose",
                                                                        "off_path", "distance", "steps", "follow", "why") if key in row}
                                             for row in (rows or stepped)],
-                             **({"one_step": step} if step else {}),
+                             **({"one_step": step} if step else {}), **({"held": held} if held else {}),
                              **({"steps": meta["steps"]} if stepped else {}),
-                             "settle": [f"--cycles {d}={c}" for c in sorted({1, *(row["cycles"] for row in rows)})]})
+                             "settle": [f"--cycles {d}={c}" for c in sorted({1, *(row["cycles"] for row in rows), *([2] if held else [])})]})
         if k is not None and k > 1:
             if not any(row["cycles"] == k for row in screen["suspects"]):
                 cycle_warnings.append(f"{d}: --cycles {k} given, but the screen found no return at 1/{k} of it; "
@@ -1329,6 +1334,7 @@ def align_set(loop_dirs: list[Path], *, length: int | None = None, interpolate: 
         message = ("video-cycle-align: " + "; ".join(_suspect_line(e) for e in stopped)
                    + ". Stopped before anything was rewritten: pixels cannot tell two cycles from one cycle whose steps look alike"
                    + (", nor one step from a cycle" if any("one_step" in e for e in stopped) else "")
+                   + (", and nothing witnessed some of the cuts whole cycles" if any("held" in e for e in stopped) else "")
                    + ". Count the cycles in each (look at it, or ask a vision model how often each foot lands), then run, with each count "
                    f"filled in (1: it holds one, aligned as it is; more: one cycle is taken out of it): {command}"
                    " — or add --multi-cycle warn to align the set as it is (docs/loop-repair.md section 4)")
@@ -1340,6 +1346,7 @@ def align_set(loop_dirs: list[Path], *, length: int | None = None, interpolate: 
         raise CycleSuspects(message, suspects, command)
     cycle_warnings += [f"{_suspect_line(e)}; aligned as it is (--multi-cycle warn) — at the set's length it plays "
                        + ("one step where the rest play two, if it is one" if "one_step" in e else
+                          "half or twice as fast as the rest, if it is not one cycle" if "held" in e and not e["candidates"] else
                           f"{max(row['cycles'] for row in e['candidates'])} times as fast as the rest if it does")
                        for e in suspects if e["status"] == "warned"]
     lengths = [len(f) for f in sources]
