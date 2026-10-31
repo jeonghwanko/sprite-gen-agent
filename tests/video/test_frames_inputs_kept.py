@@ -22,6 +22,7 @@ from PIL import Image
 from tests.video.test_loop_inputs_kept import _read, _state
 from tests.video.test_source_restoration import frames as figure_frames
 from sprite_gen.video.frames import run_frames
+from conftest import symlink_or_skip
 
 JUNK = b"\x00\x00\x00\x18ftypisom" + b"\x00" * 64  # 클립 이름의 파일 — 거절이 먼저라 ffmpeg 가 읽지 않는다
 
@@ -61,7 +62,7 @@ def _clip_in_keyed(root: Path, clip: Path):
 def _clip_linked_into_keyed(root: Path, clip: Path):
     (root / "out" / "keyed").mkdir(parents=True)
     (root / "out" / "keyed" / "c.mp4").write_bytes(JUNK)
-    (root / "in.mp4").symlink_to(root / "out" / "keyed" / "c.mp4")
+    symlink_or_skip(root / "in.mp4", root / "out" / "keyed" / "c.mp4")
     return root / "in.mp4", {}, r"--clip lies inside keyed in --out-dir"
 
 

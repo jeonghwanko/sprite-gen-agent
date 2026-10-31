@@ -13,6 +13,7 @@ import pytest
 from PIL import Image
 
 from sprite_gen.gen import video
+from conftest import symlink_or_skip
 
 MP4 = b"\x00\x00\x00\x18ftypisom" + b"\x00" * 64
 CRED = video.Credential(token="tok", source=video.AUTH_SOURCE_GROK_LOGIN)
@@ -306,7 +307,7 @@ def test_the_download_is_never_staged_through_a_link_to_the_clip(tmp_path: Path,
     clip, out = tmp_path / "take.mp4", tmp_path / "result.mp4"
     request = _ext(tmp_path, video=clip, out=out) if verb == "extend" else _edit(tmp_path, video=clip, out=out)
     _clip(tmp_path, "take.mp4", given)
-    (tmp_path / "result.mp4.part").symlink_to(clip)
+    symlink_or_skip(tmp_path / "result.mp4.part", clip)
     make = video.extend_video if verb == "extend" else video.edit_video
     try:
         make(request, probe=_probe(5.0, 10.0), **api.kw())

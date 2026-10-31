@@ -754,14 +754,14 @@ def test_a_writer_refuses_a_lock_name_that_is_not_a_lock_file_and_never_follows_
         lock.mkdir()
         _aged(lock)
     elif entry == "absolute-link-to-no-file":  # 운영체제가 읽는 대상 — Windows 의 os.open 은 이 링크를 따라가 그 자리에 만든다
-        lock.symlink_to(outside / "keep.txt")
+        symlink_or_skip(lock, outside / "keep.txt")
     elif entry == "link-to-a-folder":
-        lock.symlink_to(outside, target_is_directory=True)
+        symlink_or_skip(lock, outside, target_is_directory=True)
     else:
         if entry == "link-to-an-old-file":
             (outside / "keep.txt").write_bytes(b"not a lock\n")
             _aged(outside / "keep.txt")
-        lock.symlink_to("../outside/keep.txt")
+        symlink_or_skip(lock, "../outside/keep.txt")
     before = _tree(tmp_path)
     with pytest.raises(SystemExit, match=r"run[/\\]\.sprite-gen\.lock is not a lock file"):
         cli.main(["export-pngs", "--run-dir", str(run)])

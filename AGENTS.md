@@ -82,8 +82,10 @@ If `.claude/worktrees/` exists, it holds other sessions' checkouts: never search
   Add `tests/test_cli_kwargs.py` when `cli.py` or a module's `add_arguments` changes, `tests/packaging` when
   a module is added, moved or removed, and `tests/docs` when a doc is added, renamed or relinked.
   `tests/video` is long; run it in the background.
-- On Windows some tests fail on main too (symlinks; RIFE-dependent tests skip). Compare against main, not
-  against zero.
+- On Windows, tests that make a symlink skip on an account that may not create one (`symlink_or_skip` in
+  `tests/conftest.py`), and RIFE-dependent tests skip. A new test that makes a link uses that helper, and a
+  stand-in executable needs a `.cmd` beside its shebang script (`tests/video/test_rife.py` `_stand_in`). A
+  failure that main also has on Windows is not yours: compare against main, not against zero.
 - Tests monkeypatch functions by module attribute (for example `loop.distance_matrix`). A refactor keeps
   calling them through that name; grep `monkeypatch.setattr(<module>, "…")` before rerouting a call.
 - A speed-up that claims "bytes unchanged" proves it: the pre-change form is kept in a test and compared

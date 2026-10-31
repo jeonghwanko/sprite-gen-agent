@@ -31,6 +31,7 @@ from typing import NamedTuple
 
 import pytest
 from PIL import Image
+from conftest import symlink_or_skip
 
 FRAMES = ["1-a.png", "2-b.png"]
 NOTE = b"source notes, not a frame\n"
@@ -116,7 +117,7 @@ def test_a_source_linked_under_the_old_staging_name_is_kept(tmp_path, kind) -> N
     real = tmp_path / "source"
     link = tmp_path / ".run.sg-staging"
     argv = SOURCES[kind](real, given=link)
-    link.symlink_to(real, target_is_directory=True)
+    symlink_or_skip(link, real, target_is_directory=True)
     before = _tree(real)
     assert _unpack(*argv, "--out-dir", str(tmp_path / "run")) == 0
     assert _tree(real) == before, "링크 너머의 입력이 바뀌었다"
@@ -157,20 +158,20 @@ def _pngs_inside_out(root: Path) -> list[str]:
 
 def _out_links_to_pngs(root: Path) -> list[str]:
     argv = _pngs(root / "pngs")
-    (root / "run").symlink_to(root / "pngs", target_is_directory=True)
+    symlink_or_skip(root / "run", root / "pngs", target_is_directory=True)
     return [*argv, "--out-dir", str(root / "run")]
 
 
 def _out_under_a_link_into_pngs(root: Path) -> list[str]:
     argv = _pngs(root / "pngs")
-    (root / "alias").symlink_to(root / "pngs", target_is_directory=True)
+    symlink_or_skip(root / "alias", root / "pngs", target_is_directory=True)
     return [*argv, "--out-dir", str(root / "alias" / "run")]
 
 
 def _pngs_through_a_link_inside_out(root: Path) -> list[str]:
     _prior(root / "run")
     argv = _pngs(root / "run" / "pngs", given=root / "in")
-    (root / "in").symlink_to(root / "run" / "pngs", target_is_directory=True)
+    symlink_or_skip(root / "in", root / "run" / "pngs", target_is_directory=True)
     return [*argv, "--out-dir", str(root / "run")]
 
 
@@ -189,7 +190,7 @@ def _atlas_inside_out(root: Path) -> list[str]:
 def _atlas_through_a_link_inside_out(root: Path) -> list[str]:
     _prior(root / "run")
     _sheet(root / "run")
-    (root / "sheet.png").symlink_to(root / "run" / "sheet.png")
+    symlink_or_skip(root / "sheet.png", root / "run" / "sheet.png")
     return ["--atlas", str(root / "sheet.png"), "--grid", "2x1", "--out-dir", str(root / "run")]
 
 
@@ -212,7 +213,7 @@ def _manifest_names_an_atlas_inside_out(root: Path) -> list[str]:
 def _out_inside_a_linked_group_folder(root: Path) -> list[str]:
     argv = _pngs(root / "pngs")
     _pngs(root / "elsewhere")
-    (root / "pngs" / "idle").symlink_to(root / "elsewhere", target_is_directory=True)
+    symlink_or_skip(root / "pngs" / "idle", root / "elsewhere", target_is_directory=True)
     return [*argv, "--out-dir", str(root / "elsewhere" / "run")]
 
 
@@ -274,11 +275,11 @@ def _found_input_linked_into_out(root: Path, kind: str, route: str) -> tuple[lis
         if not reach.exists():
             pytest.skip("대소문자를 가리는 볼륨 — 철자가 다르면 다른 폴더다")
     if route == "chain":
-        (root / "hop").symlink_to(reach, target_is_directory=not target)
+        symlink_or_skip(root / "hop", reach, target_is_directory=not target)
         reach = root / "hop"
     link = src / place
     link.parent.mkdir(parents=True, exist_ok=True)
-    link.symlink_to(reach, target_is_directory=not target)
+    symlink_or_skip(link, reach, target_is_directory=not target)
     why = f"{re.escape(place)} in --pngs-dir (lies inside|and) --out-dir"
     return ["--pngs-dir", str(src), "--out-dir", str(root / "run")], why
 
@@ -330,7 +331,7 @@ def test_an_output_link_to_an_empty_folder_publishes_where_it_points(tmp_path) -
     target = tmp_path / "target"
     target.mkdir()
     link = tmp_path / "run"
-    link.symlink_to(target, target_is_directory=True)
+    symlink_or_skip(link, target, target_is_directory=True)
     assert _unpack(*argv, "--out-dir", str(link)) == 0
     assert link.is_symlink() and link.resolve() == target.resolve(), "out 링크가 바뀌었다"
     _published(target)
@@ -380,44 +381,44 @@ def _aged(path: Path) -> None:
 def _pngs_dir_is_a_link_in_out(root: Path) -> Bed:                    # run/input -> external/
     ext, run, _ = _bed(root)
     given = run / "input"
-    given.symlink_to(ext, target_is_directory=True)
+    symlink_or_skip(given, ext, target_is_directory=True)
     return Bed(["--pngs-dir", str(given), "--out-dir", str(run)], [given, given / "original.png"])
 
 
 def _atlas_is_a_link_in_out(root: Path) -> Bed:                       # run/input.png -> external/original.png
     ext, run, _ = _bed(root)
     given = run / "input.png"
-    given.symlink_to(ext / "original.png")
+    symlink_or_skip(given, ext / "original.png")
     return Bed(["--atlas", str(given), "--grid", "1x1", "--out-dir", str(run)], [given])
 
 
 def _frame_through_a_link_in_out(root: Path) -> Bed:                  # incoming/1.png -> run/hop.png -> external/original.png
     ext, run, inc = _bed(root)
-    (run / "hop.png").symlink_to(ext / "original.png")
-    (inc / "1.png").symlink_to(run / "hop.png")
+    symlink_or_skip(run / "hop.png", ext / "original.png")
+    symlink_or_skip(inc / "1.png", run / "hop.png")
     return Bed(["--pngs-dir", str(inc), "--out-dir", str(run)], [inc, inc / "1.png"])
 
 
 def _group_through_a_link_in_out(root: Path) -> Bed:                  # incoming/walk -> run/hop -> external/
     ext, run, inc = _bed(root)
-    (run / "hop").symlink_to(ext, target_is_directory=True)
-    (inc / "walk").symlink_to(run / "hop", target_is_directory=True)
+    symlink_or_skip(run / "hop", ext, target_is_directory=True)
+    symlink_or_skip(inc / "walk", run / "hop", target_is_directory=True)
     return Bed(["--pngs-dir", str(inc), "--out-dir", str(run)], [inc, inc / "walk", inc / "walk" / "original.png"])
 
 
 def _frame_through_three_links_one_in_out(root: Path) -> Bed:         # 1.png -> ../mid/1.png -> ../run/hop.png -> ../external/original.png
     _, run, inc = _bed(root)
-    (run / "hop.png").symlink_to("../external/original.png")
+    symlink_or_skip(run / "hop.png", "../external/original.png")
     (root / "mid").mkdir()
-    (root / "mid" / "1.png").symlink_to("../run/hop.png")
-    (inc / "1.png").symlink_to("../mid/1.png")
+    symlink_or_skip(root / "mid" / "1.png", "../run/hop.png")
+    symlink_or_skip(inc / "1.png", "../mid/1.png")
     return Bed(["--pngs-dir", str(inc), "--out-dir", str(run)], [inc, inc / "1.png"])
 
 
 def _frame_through_a_folder_link_in_out(root: Path) -> Bed:           # 1.png -> ../run/hopdir/original.png, run/hopdir -> ../external
     _, run, inc = _bed(root)
-    (run / "hopdir").symlink_to("../external", target_is_directory=True)
-    (inc / "1.png").symlink_to("../run/hopdir/original.png")
+    symlink_or_skip(run / "hopdir", "../external", target_is_directory=True)
+    symlink_or_skip(inc / "1.png", "../run/hopdir/original.png")
     return Bed(["--pngs-dir", str(inc), "--out-dir", str(run)], [inc, inc / "1.png"])
 
 
@@ -425,8 +426,8 @@ def _frame_through_a_link_in_out_spelt_in_capitals(root: Path) -> Bed:  # 1.png 
     _, run, inc = _bed(root)
     if not (root / "RUN").exists():
         pytest.skip("대소문자를 가리는 볼륨 — 철자가 다르면 다른 폴더다")
-    (run / "hop.png").symlink_to("../external/original.png")
-    (inc / "1.png").symlink_to("../RUN/hop.png")
+    symlink_or_skip(run / "hop.png", "../external/original.png")
+    symlink_or_skip(inc / "1.png", "../RUN/hop.png")
     return Bed(["--pngs-dir", str(inc), "--out-dir", str(run)], [inc, inc / "1.png"])
 
 
@@ -434,8 +435,8 @@ def _base_through_a_link_in_out(root: Path) -> Bed:                   # _base ->
     ext, run, inc = _bed(root)
     (ext / "base").mkdir()
     _cell(1).save(ext / "base" / "identity.png")
-    (run / "hopbase").symlink_to("../external/base", target_is_directory=True)
-    (inc / "_base").symlink_to("../run/hopbase", target_is_directory=True)
+    symlink_or_skip(run / "hopbase", "../external/base", target_is_directory=True)
+    symlink_or_skip(inc / "_base", "../run/hopbase", target_is_directory=True)
     _cell(1).save(inc / "1.png")
     return Bed(["--pngs-dir", str(inc), "--out-dir", str(run)], [inc, inc / "1.png", inc / "_base" / "identity.png"])
 
@@ -444,8 +445,8 @@ def _refs_through_a_link_in_out(root: Path) -> Bed:                   # _refs ->
     ext, run, inc = _bed(root)
     (ext / "refs").mkdir()
     _cell(1).save(ext / "refs" / "anchor-a.png")
-    (run / "hopr").symlink_to("../external/refs", target_is_directory=True)
-    (inc / "_refs").symlink_to("../run/hopr", target_is_directory=True)
+    symlink_or_skip(run / "hopr", "../external/refs", target_is_directory=True)
+    symlink_or_skip(inc / "_refs", "../run/hopr", target_is_directory=True)
     _cell(1).save(inc / "1.png")
     return Bed(["--pngs-dir", str(inc), "--out-dir", str(run)], [inc, inc / "1.png", inc / "_refs" / "anchor-a.png"])
 
@@ -453,8 +454,8 @@ def _refs_through_a_link_in_out(root: Path) -> Bed:                   # _refs ->
 def _meta_through_a_link_in_out(root: Path) -> Bed:                   # meta.json -> ../run/hop.json -> ../external/meta.json
     ext, run, inc = _bed(root)
     (ext / "meta.json").write_text('{"items": {}}\n', encoding="utf-8")
-    (run / "hop.json").symlink_to("../external/meta.json")
-    (inc / "meta.json").symlink_to("../run/hop.json")
+    symlink_or_skip(run / "hop.json", "../external/meta.json")
+    symlink_or_skip(inc / "meta.json", "../run/hop.json")
     _cell(1).save(inc / "1.png")
     return Bed(["--pngs-dir", str(inc), "--out-dir", str(run)], [inc, inc / "1.png", inc / "meta.json"])
 
@@ -462,7 +463,7 @@ def _meta_through_a_link_in_out(root: Path) -> Bed:                   # meta.jso
 def _frame_link_dips_into_a_run_folder(root: Path) -> Bed:            # 1.png -> ../run/sub/../../external/original.png
     _, run, inc = _bed(root)
     (run / "sub").mkdir()
-    (inc / "1.png").symlink_to("../run/sub/../../external/original.png")
+    symlink_or_skip(inc / "1.png", "../run/sub/../../external/original.png")
     return Bed(["--pngs-dir", str(inc), "--out-dir", str(run)], [inc, inc / "1.png"])
 
 
@@ -476,7 +477,7 @@ def _atlas_path_dips_into_a_run_folder(root: Path) -> Bed:            # --atlas 
 def _group_link_dips_into_a_run_folder(root: Path) -> Bed:            # walk -> ../run/sub/../../external
     _, run, inc = _bed(root)
     (run / "sub").mkdir()
-    (inc / "walk").symlink_to("../run/sub/../../external", target_is_directory=True)
+    symlink_or_skip(inc / "walk", "../run/sub/../../external", target_is_directory=True)
     return Bed(["--pngs-dir", str(inc), "--out-dir", str(run)], [inc, inc / "walk", inc / "walk" / "original.png"])
 
 
@@ -508,21 +509,21 @@ def _plain_frames(root: Path) -> Bed:
 
 def _frame_link_loop(root: Path) -> Bed:                              # 1.png -> 1.png
     _, run, inc = _bed(root)
-    (inc / "1.png").symlink_to("1.png")
+    symlink_or_skip(inc / "1.png", "1.png")
     _cell(1).save(inc / "2.png")
     return Bed(["--pngs-dir", str(inc), "--out-dir", str(run)], [inc, inc / "2.png"])
 
 
 def _pngs_dir_link_loop_without_out_dir(root: Path) -> Bed:           # loop -> loop, out 은 입력 옆 기본 자리
     _bed(root)
-    (root / "loop").symlink_to("loop", target_is_directory=True)
+    symlink_or_skip(root / "loop", "loop", target_is_directory=True)
     return Bed(["--pngs-dir", str(root / "loop")], [])
 
 
 def _lock_name_links_to_the_atlas(root: Path) -> Bed:                 # run/.sprite-gen.lock -> ../external/original.png (한 시간 전)
     ext, run, _ = _bed(root)
     _aged(ext / "original.png")
-    (run / ".sprite-gen.lock").symlink_to("../external/original.png")
+    symlink_or_skip(run / ".sprite-gen.lock", "../external/original.png")
     return Bed(["--atlas", str(ext / "original.png"), "--grid", "1x1", "--out-dir", str(run)], [ext / "original.png"])
 
 
@@ -530,7 +531,7 @@ def _lock_name_links_to_a_file_outside(root: Path) -> Bed:            # run/.spr
     ext, run, inc = _bed(root)
     (ext / "keep.txt").write_bytes(b"not the run's\n")
     _aged(ext / "keep.txt")
-    (run / ".sprite-gen.lock").symlink_to("../external/keep.txt")
+    symlink_or_skip(run / ".sprite-gen.lock", "../external/keep.txt")
     _cell(1).save(inc / "1.png")
     return Bed(["--pngs-dir", str(inc), "--out-dir", str(run)], [inc, inc / "1.png"])
 
@@ -538,14 +539,14 @@ def _lock_name_links_to_a_file_outside(root: Path) -> Bed:            # run/.spr
 def _lock_name_links_to_a_fresh_file(root: Path) -> Bed:              # run/.sprite-gen.lock -> ../external/keep.txt (방금)
     ext, run, inc = _bed(root)
     (ext / "keep.txt").write_bytes(b"not the run's\n")
-    (run / ".sprite-gen.lock").symlink_to("../external/keep.txt")
+    symlink_or_skip(run / ".sprite-gen.lock", "../external/keep.txt")
     _cell(1).save(inc / "1.png")
     return Bed(["--pngs-dir", str(inc), "--out-dir", str(run)], [inc, inc / "1.png"])
 
 
 def _rwlock_sidecar_links_to_the_atlas(root: Path) -> Bed:            # .run.sg-rwlock -> external/original.png — 열기만 하고 쓰지 않는다
     ext, run, _ = _bed(root)
-    (root / RWLOCK).symlink_to("external/original.png")
+    symlink_or_skip(root / RWLOCK, "external/original.png")
     return Bed(["--atlas", str(ext / "original.png"), "--grid", "1x1", "--out-dir", str(run)], [ext / "original.png"])
 
 

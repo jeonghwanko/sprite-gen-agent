@@ -10,6 +10,7 @@ import io
 import json
 import os
 import re
+import shlex
 import socket
 import urllib.error
 from datetime import datetime, timedelta, timezone
@@ -549,7 +550,7 @@ def test_polls_refused_until_the_poll_timeout_end_naming_the_request_to_ask_agai
     message = str(unfinished.value)
     assert message == ("video: generation req-1 was accepted, but its polls were refused (last answer 429) until the "
                        "poll timeout (300s, 8 polls); it may still finish and be billed — ask for request_id=req-1 "
-                       f"again with `sprite-gen video-resume --request-id req-1 --out {request.out.resolve()}` "
+                       f"again with `sprite-gen video-resume --request-id req-1 --out {shlex.quote(str(request.out.resolve()))}` "
                        "instead of submitting a new request; nothing was written")
     # No `(HTTP n)`, a refusal line's status: a caller reading `(HTTP 429)` sends the request again.
     assert HTTP_STATUS.search(message) is None
@@ -765,7 +766,7 @@ def test_polls_that_get_no_answer_until_the_poll_timeout_end_unfinished_naming_t
     message = str(unfinished.value)
     assert message == ("video: generation req-1 was accepted, but its polls got no answer (last: timed out) until the "
                        "poll timeout (30s, 3 polls); it may still finish and be billed — ask for request_id=req-1 "
-                       f"again with `sprite-gen video-resume --request-id req-1 --out {request.out.resolve()}` "
+                       f"again with `sprite-gen video-resume --request-id req-1 --out {shlex.quote(str(request.out.resolve()))}` "
                        "instead of submitting a new request; nothing was written")
     assert HTTP_STATUS.search(message) is None
     report = unfinished.value.to_dict()
@@ -805,7 +806,7 @@ def test_a_poll_whose_credential_is_rejected_ends_unfinished_at_once(tmp_path: P
     message = str(unfinished.value)
     assert message == (f"video: generation req-1 was accepted, but xAI rejected the credential ({source}) on poll 2 "
                        f"(answer {status}); it may still finish and be billed — {fix}, then ask for request_id=req-1 "
-                       f"again with `sprite-gen video-resume --request-id req-1 --out {request.out.resolve()}` "
+                       f"again with `sprite-gen video-resume --request-id req-1 --out {shlex.quote(str(request.out.resolve()))}` "
                        "instead of submitting a new request; nothing was written")
     assert HTTP_STATUS.search(message) is None and f"HTTP {status}" not in message
     report = unfinished.value.to_dict()
@@ -849,7 +850,7 @@ def test_a_resume_cut_short_again_is_unfinished_on_the_same_request(tmp_path: Pa
     message = str(unfinished.value)
     assert message.startswith("video-resume: generation req-7 ")
     assert message.endswith("it may still finish and be billed — ask for request_id=req-7 again with "
-                            f"`sprite-gen video-resume --request-id req-7 --out {(tmp_path / 'clip.mp4').resolve()}` "
+                            f"`sprite-gen video-resume --request-id req-7 --out {shlex.quote(str((tmp_path / 'clip.mp4').resolve()))}` "
                             "instead of submitting a new request; nothing was written")
     report = unfinished.value.to_dict()
     assert (report["verb"], report["request_id"], report["model"]) == ("video-resume", "req-7", None)
@@ -1118,7 +1119,7 @@ def test_polls_cut_short_until_the_poll_timeout_leave_an_unfinished_report_namin
     message = str(unfinished.value)
     assert message == (f"video: generation req-1 was accepted, but its polls got no answer (last: {CUT_SAID}) until the "
                        "poll timeout (30s, 3 polls); it may still finish and be billed — ask for request_id=req-1 "
-                       f"again with `sprite-gen video-resume --request-id req-1 --out {out.resolve()}` "
+                       f"again with `sprite-gen video-resume --request-id req-1 --out {shlex.quote(str(out.resolve()))}` "
                        "instead of submitting a new request; nothing was written")
     assert HTTP_STATUS.search(message) is None
     assert _outcome_said(report, submitted=True) == {
@@ -1212,7 +1213,7 @@ def test_a_clip_whose_downloads_get_no_answer_leaves_an_unfinished_report_naming
     message = str(unfinished.value)
     assert message == (f"video: generation req-1 is done, but its download got no answer (last: {said}) after 3 "
                        "attempts; the clip is made and may be billed — ask for request_id=req-1 again with "
-                       f"`sprite-gen video-resume --request-id req-1 --out {out.resolve()}` instead of submitting a "
+                       f"`sprite-gen video-resume --request-id req-1 --out {shlex.quote(str(out.resolve()))}` instead of submitting a "
                        "new request; nothing was written")
     assert HTTP_STATUS.search(message) is None
     assert _outcome_said(report, submitted=True) == {
@@ -1269,7 +1270,7 @@ def test_a_download_refused_ends_unfinished_on_the_same_request(tmp_path: Path, 
     message = str(unfinished.value)
     assert message == (f"video: generation req-1 is done, but its download {said}; the clip is made and may be billed — "
                        f"ask for request_id=req-1 again with `sprite-gen video-resume --request-id req-1 --out "
-                       f"{request.out.resolve()}` instead of submitting a new request; nothing was written")
+                       f"{shlex.quote(str(request.out.resolve()))}` instead of submitting a new request; nothing was written")
     # No `(HTTP n)`: a caller reading `(HTTP 503)` sends the request again and buys the clip twice.
     assert HTTP_STATUS.search(message) is None
     report = unfinished.value.to_dict()
@@ -1292,7 +1293,7 @@ def test_a_download_that_is_not_an_mp4_is_unfinished_on_the_same_request(tmp_pat
     assert str(unfinished.value) == (
         f"video: generation req-1 is done, but its download brought {size} bytes that are not an mp4 (no ftyp box); "
         "the clip is made and may be billed — ask for request_id=req-1 again with `sprite-gen video-resume "
-        f"--request-id req-1 --out {request.out.resolve()}` instead of submitting a new request; nothing was written")
+        f"--request-id req-1 --out {shlex.quote(str(request.out.resolve()))}` instead of submitting a new request; nothing was written")
     report = unfinished.value.to_dict()
     assert (report["downloads"], report["last_download"]) == (
         1, {"http": None, "error": "not an mp4 (no ftyp box)", "bytes": size})
@@ -1363,7 +1364,7 @@ def test_a_download_slower_than_the_time_left_leaves_an_unfinished_report_by_the
     message = str(unfinished.value)
     assert message == ("video: generation req-1 is done, but its download got no answer (last: timed out) until the "
                        f"poll timeout ({BUDGET:g}s, 1 attempt); the clip is made and may be billed — ask for "
-                       f"request_id=req-1 again with `sprite-gen video-resume --request-id req-1 --out {out.resolve()}` "
+                       f"request_id=req-1 again with `sprite-gen video-resume --request-id req-1 --out {shlex.quote(str(out.resolve()))}` "
                        "instead of submitting a new request; nothing was written")
     assert HTTP_STATUS.search(message) is None
     assert _outcome_said(report, submitted=True) == {
@@ -1399,7 +1400,7 @@ def test_a_download_whose_next_wait_would_reach_the_poll_timeout_is_not_tried_ag
     assert str(unfinished.value) == (
         "video: generation req-1 is done, but its download was refused (last answer 503) until the poll timeout "
         "(20s, 2 attempts); the clip is made and may be billed — ask for request_id=req-1 again with `sprite-gen "
-        f"video-resume --request-id req-1 --out {request.out.resolve()}` instead of submitting a new request; "
+        f"video-resume --request-id req-1 --out {shlex.quote(str(request.out.resolve()))}` instead of submitting a new request; "
         "nothing was written")
     report = unfinished.value.to_dict()
     assert (report["downloads"], report["last_download"], report["elapsed_seconds"]) == (2, {"http": 503}, 8.0)
@@ -1420,7 +1421,7 @@ def test_a_download_whose_wait_woke_past_the_poll_timeout_is_not_tried(tmp_path:
     assert str(unfinished.value) == (
         "video: generation req-1 is done, but its download was refused (last answer 503) until the poll timeout "
         "(8.01s, 1 attempt); the clip is made and may be billed — ask for request_id=req-1 again with `sprite-gen "
-        f"video-resume --request-id req-1 --out {request.out.resolve()}` instead of submitting a new request; "
+        f"video-resume --request-id req-1 --out {shlex.quote(str(request.out.resolve()))}` instead of submitting a new request; "
         "nothing was written")
     report = unfinished.value.to_dict()
     assert (report["downloads"], report["last_download"]) == (1, {"http": 503})
@@ -1506,7 +1507,7 @@ def test_a_request_accepted_after_the_whole_poll_timeout_is_unfinished_before_an
     message = str(unfinished.value)
     assert message == ("video: generation req-1 was accepted after the poll timeout (20s) had run out, before any poll; "
                        "it may still finish and be billed — ask for request_id=req-1 again with `sprite-gen video-resume "
-                       f"--request-id req-1 --out {request.out.resolve()}` instead of submitting a new request; "
+                       f"--request-id req-1 --out {shlex.quote(str(request.out.resolve()))}` instead of submitting a new request; "
                        "nothing was written")
     assert HTTP_STATUS.search(message) is None
     report = unfinished.value.to_dict()
@@ -1540,7 +1541,7 @@ def test_a_done_poll_that_names_no_url_leaves_an_unfinished_report_naming_the_re
     message = str(unfinished.value)
     assert message == ("video: generation req-1 is done, but its poll named no video url to download; the clip is made "
                        "and may be billed — ask for request_id=req-1 again with `sprite-gen video-resume --request-id "
-                       f"req-1 --out {out.resolve()}` instead of submitting a new request; nothing was written")
+                       f"req-1 --out {shlex.quote(str(out.resolve()))}` instead of submitting a new request; nothing was written")
     assert HTTP_STATUS.search(message) is None
     assert _outcome_said(report, submitted=True) == {
         "kind": "sprite-gen-video-unfinished",

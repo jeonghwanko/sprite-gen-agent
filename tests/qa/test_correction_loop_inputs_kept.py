@@ -23,6 +23,7 @@ import pytest
 
 from tests.video.test_loop_inputs_kept import _digest, _state
 from sprite_gen.qa.correction_loop import run_loop
+from conftest import symlink_or_skip
 
 
 def _loop(run_dir: Path, out_dir: Path | None) -> str:
@@ -54,14 +55,14 @@ def _run_is_the_out_dir(root: Path, run: Path):
 def _a_link_in_the_run_into_the_best_candidate(root: Path, run: Path):
     (root / "loop" / "best-candidate").mkdir(parents=True)
     (root / "loop" / "best-candidate" / "notes.txt").write_bytes(b"what the run's link reads\n")
-    (run / "notes.txt").symlink_to(root / "loop" / "best-candidate" / "notes.txt")
+    symlink_or_skip(run / "notes.txt", root / "loop" / "best-candidate" / "notes.txt")
     return run, root / "loop", r"notes\.txt in --run-dir lies inside --out-dir"
 
 
 def _an_attempt_linked_to_the_run(root: Path, run: Path):
     (run / "inspect.json").write_bytes(b'{"sentinel":"the original input report"}\n')
     (root / "loop").mkdir()
-    (root / "loop" / "attempt-1").symlink_to(run, target_is_directory=True)
+    symlink_or_skip(root / "loop" / "attempt-1", run, target_is_directory=True)
     return run, root / "loop", r"--run-dir and attempt-1 in --out-dir are the same folder"
 
 
@@ -69,25 +70,25 @@ def _an_attempt_linked_into_the_run(root: Path, run: Path):
     (run / "old-loop" / "attempt-1").mkdir(parents=True)
     (run / "old-loop" / "attempt-1" / "inspect.json").write_bytes(b'{"sentinel":"an earlier loop kept in the run"}\n')
     (root / "loop").mkdir()
-    (root / "loop" / "attempt-1").symlink_to(run / "old-loop" / "attempt-1", target_is_directory=True)
+    symlink_or_skip(root / "loop" / "attempt-1", run / "old-loop" / "attempt-1", target_is_directory=True)
     return run, root / "loop", r"old-loop/attempt-1 in --run-dir and attempt-1 in --out-dir are the same folder"
 
 
 def _the_best_candidate_linked_into_the_run(root: Path, run: Path):
     (root / "loop").mkdir()
-    (root / "loop" / "best-candidate").symlink_to(run / "raw", target_is_directory=True)
+    symlink_or_skip(root / "loop" / "best-candidate", run / "raw", target_is_directory=True)
     return run, root / "loop", r"raw in --run-dir and best-candidate in --out-dir are the same folder"
 
 
 def _an_attempt_file_linked_to_a_run_file(root: Path, run: Path):
     (root / "loop" / "attempt-1").mkdir(parents=True)
-    (root / "loop" / "attempt-1" / "score.json").symlink_to(run / "sprite-request.json")
+    symlink_or_skip(root / "loop" / "attempt-1" / "score.json", run / "sprite-request.json")
     return run, root / "loop", r"sprite-request\.json in --run-dir and attempt-1/score\.json in --out-dir are the same file"
 
 
 def _the_report_linked_to_a_run_file(root: Path, run: Path):
     (root / "loop").mkdir()
-    (root / "loop" / "correction-loop.report.json").symlink_to(run / "sprite-request.json")
+    symlink_or_skip(root / "loop" / "correction-loop.report.json", run / "sprite-request.json")
     return (run, root / "loop",
             r"sprite-request\.json in --run-dir and correction-loop\.report\.json in --out-dir are the same file")
 
@@ -114,7 +115,7 @@ def test_a_candidate_the_provider_would_make_over_the_run_is_refused_before_it_r
     shutil.copytree(fixture_run_dir, made)
     (made / "raw" / "idle.png").write_bytes((made / "raw" / "walk.png").read_bytes())
     (tmp_path / "loop").mkdir()
-    (tmp_path / "loop" / "candidate-2").symlink_to(fixture_run_dir, target_is_directory=True)
+    symlink_or_skip(tmp_path / "loop" / "candidate-2", fixture_run_dir, target_is_directory=True)
     provider = shlex.join([sys.executable, "-c", "import shutil, sys; shutil.copytree(sys.argv[1], sys.argv[2], dirs_exist_ok=True)",
                            str(made), "{next_run_dir}"])
     read, before = _readable(fixture_run_dir), _state(tmp_path)
@@ -137,7 +138,7 @@ def test_an_earlier_candidate_holding_a_link_into_the_run_is_taken_away_before_t
     shutil.copytree(fixture_run_dir, made)
     (made / "raw" / "idle.png").write_bytes((made / "raw" / "walk.png").read_bytes())
     (tmp_path / "loop" / "candidate-2" / "raw").mkdir(parents=True)
-    (tmp_path / "loop" / "candidate-2" / "raw" / "idle.png").symlink_to(fixture_run_dir / "raw" / "idle.png")
+    symlink_or_skip(tmp_path / "loop" / "candidate-2" / "raw" / "idle.png", fixture_run_dir / "raw" / "idle.png")
     provider = shlex.join([sys.executable, "-c", "import shutil, sys; shutil.copytree(sys.argv[1], sys.argv[2], dirs_exist_ok=True)",
                            str(made), "{next_run_dir}"])
     read = _readable(fixture_run_dir)

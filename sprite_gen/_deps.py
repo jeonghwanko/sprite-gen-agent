@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (the venv interpreter path follows the platform; see NOTICE).
 """The one module that imports NumPy — and the one place its absence is reported.
 
 NumPy is a declared runtime dependency (`pyproject.toml`), materialized by the
@@ -27,7 +28,13 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-VENV_PYTHON = REPO_ROOT / ".venv" / "bin" / "python"
+# A Windows venv keeps its interpreter in Scripts/, not bin/ — naming bin/ there
+# hands the reader a command that cannot run.
+VENV_PYTHON = (
+    REPO_ROOT / ".venv" / "Scripts" / "python.exe"
+    if sys.platform == "win32"
+    else REPO_ROOT / ".venv" / "bin" / "python"
+)
 
 
 def _missing_numpy_message() -> str:

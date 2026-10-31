@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (the RIFE stand-ins run on Windows too; see NOTICE).
 """RIFE runner: it is found or refused by name, and a real binary (when one is installed)
 interpolates an RGBA frame that sits between its two neighbours, alpha included.
 
@@ -7,8 +8,8 @@ PATH or the install root; tests/conftest.py); the locating rules need no binary 
 
 from __future__ import annotations
 
-import os
 import stat
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -92,14 +93,31 @@ def test_missing_model_is_refused(monkeypatch, tmp_path):
         rife.locate()
 
 
+def _stand_in(binary: Path, shell: str, python: str) -> Path:
+    """A stand-in for the RIFE binary: a shell script, or on Windows, which runs no shebang script
+    (WinError 193), the same steps in Python behind a .cmd that hands them to this interpreter."""
+    if sys.platform != "win32":
+        binary.write_text(shell)
+        binary.chmod(binary.stat().st_mode | stat.S_IXUSR)
+        return binary
+    script = binary.with_suffix(".py")
+    script.write_text(python, encoding="utf-8")
+    cmd = binary.with_suffix(".cmd")
+    cmd.write_text(f'@"{sys.executable}" "{script}" %*\r\n', encoding="utf-8")
+    return cmd
+
+
 def _recording_binary(tmp_path: Path) -> tuple[Path, Path]:
     """A stand-in binary that logs its arguments and returns its first frame: (binary, log)."""
     log = tmp_path / "argv.txt"
-    binary = tmp_path / rife.BINARY
-    binary.write_text(f'#!/bin/sh\necho "$@" >> "{log}"\n'
-                      'while [ $# -gt 0 ]; do case "$1" in -0) a="$2"; shift;; -o) o="$2"; shift;; esac; shift; done\n'
-                      'cp "$a" "$o"\n')
-    binary.chmod(binary.stat().st_mode | stat.S_IXUSR)
+    binary = _stand_in(
+        tmp_path / rife.BINARY,
+        f'#!/bin/sh\necho "$@" >> "{log}"\n'
+        'while [ $# -gt 0 ]; do case "$1" in -0) a="$2"; shift;; -o) o="$2"; shift;; esac; shift; done\n'
+        'cp "$a" "$o"\n',
+        f"import shutil, sys\nargs = sys.argv[1:]\n"
+        f"with open({str(log)!r}, 'a') as log:\n    log.write(' '.join(args) + '\\n')\n"
+        "shutil.copyfile(args[args.index('-0') + 1], args[args.index('-o') + 1])\n")
     return binary, log
 
 
@@ -130,9 +148,9 @@ def test_sprite_gen_rife_tta_names_another_augmentation_or_none(monkeypatch, tmp
 
 
 def test_a_call_past_its_time_is_a_rife_that_failed(monkeypatch, tmp_path):
-    binary = tmp_path / rife.BINARY
-    binary.write_text("#!/bin/sh\nexec sleep 5\n")  # exec: the stopped process is the one holding the pipes
-    binary.chmod(binary.stat().st_mode | stat.S_IXUSR)
+    # exec: the stopped process is the one holding the pipes. A .cmd cannot exec, so on Windows the
+    # sleeper outlives the stop and the call ends when it does, still refused.
+    binary = _stand_in(tmp_path / rife.BINARY, "#!/bin/sh\nexec sleep 5\n", "import time\ntime.sleep(5)\n")
     monkeypatch.setattr(rife, "CALL_TIMEOUT_SECONDS", 0.2)
     with pytest.raises(rife.RifeUnavailable, match=r"made no frame in 0.2 s .*augmentation -x -z"):
         rife.Rife(binary, tmp_path / rife.MODEL)(_disc(40), _disc(72), 0.5)
