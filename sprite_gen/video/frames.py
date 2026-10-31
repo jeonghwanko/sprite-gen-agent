@@ -64,7 +64,7 @@ import subprocess
 import sys
 from collections import deque
 from collections.abc import Iterator
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import Future, ProcessPoolExecutor, ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -253,13 +253,17 @@ def drop_specks(image: Image.Image, *, alpha_over: int = 0, diagonal: bool = Tru
     if small.any() and apart > 0:
         body = labels == largest
         reach = int(apart * (int(ys[body].max()) - int(ys[body].min()) + 1))
-        near = np.zeros(rgba.shape[:2], dtype=bool)
+        height, width = rgba.shape[:2]
+        # The body's pixels summed over every box from the corner: a run lies within `reach` of the body (each way and
+        # diagonally) where the box `reach` round it, inside the picture, holds a body pixel.
+        total = np.zeros((height + 1, width + 1), dtype=np.int64)
         for y, x0, x1 in zip(ys[body], starts[body], stops[body]):
-            near[y, x0:x1] = True
-        near = _near(near, reach)
-        for y, x0, x1, label in zip(ys, starts, stops, labels):
-            if small[label] and near[y, x0:x1].any():
-                small[label] = False
+            total[y + 1, x0 + 1:x1 + 1] = 1
+        total = total.cumsum(axis=0).cumsum(axis=1)
+        y0, y1 = np.maximum(ys - reach, 0), np.minimum(ys + reach + 1, height)
+        x0, x1 = np.maximum(starts - reach, 0), np.minimum(stops + reach, width)
+        near = total[y1, x1] - total[y0, x1] - total[y1, x0] + total[y0, x0] > 0
+        small[labels[near & small[labels]]] = False
     if not small.any():
         return image, 0
     out = rgba.copy()
@@ -270,13 +274,10 @@ def drop_specks(image: Image.Image, *, alpha_over: int = 0, diagonal: bool = Tru
 
 def edge_contact(image: Image.Image) -> dict[str, int]:
     """Opaque pixels in the top/left/right edge bands (the floor edge is expected contact)."""
-    alpha = image.convert("RGBA").getchannel("A")
-    w, h = alpha.size
-    px = alpha.load()
-    top = sum(1 for y in range(min(EDGE_ROWS, h)) for x in range(w) if px[x, y] > 0)
-    left = sum(1 for x in range(min(EDGE_ROWS, w)) for y in range(h) if px[x, y] > 0)
-    right = sum(1 for x in range(max(0, w - EDGE_ROWS), w) for y in range(h) if px[x, y] > 0)
-    return {"top": top, "left": left, "right": right}
+    opaque = np.asarray(image.convert("RGBA").getchannel("A")) > 0
+    h, w = opaque.shape
+    return {"top": int(np.count_nonzero(opaque[:min(EDGE_ROWS, h)])), "left": int(np.count_nonzero(opaque[:, :min(EDGE_ROWS, w)])),
+            "right": int(np.count_nonzero(opaque[:, max(0, w - EDGE_ROWS):]))}
 
 
 def _bands(h: int, w: int) -> dict[str, np.ndarray]:
@@ -503,8 +504,38 @@ def key_frames(
     return report
 
 
-def _key_chroma(raw_files: list[Path], keyed_dir: Path, *, key: str, check_edges: bool, spill: str, allow_subject: bool,
-                decontam: str) -> dict[str, Any]:
+class _Saver:
+    """Saves the keyed frames on a thread of its own, one after the other in clip order, while the next frame is keyed
+    (a PNG's encoding is a tenth of a frame's keying). `last` is the image last handed over: the frame in hand, not read
+    back from its file. Leaving its `with`, by a refusal or a failure too, waits for every save handed over, so the frames
+    on disk are those the run reached, as when each was saved in turn; a save that failed stops the run at the next."""
+
+    def __enter__(self) -> _Saver:
+        self._pool = ThreadPoolExecutor(1)
+        self._pending: deque[Future] = deque()
+        self.last: Image.Image | None = None
+        return self
+
+    def __call__(self, image: Image.Image, path: Path) -> None:
+        while self._pending and self._pending[0].done():
+            self._pending.popleft().result()
+        self._pending.append(self._pool.submit(image.save, path))
+        self.last = image
+
+    def __exit__(self, kind: type[BaseException] | None, *_: Any) -> None:
+        self._pool.shutdown(wait=True)
+        if kind is None:
+            while self._pending:
+                self._pending.popleft().result()
+
+
+def _key_chroma(raw_files: list[Path], keyed_dir: Path, **options: Any) -> dict[str, Any]:
+    with _Saver() as save:
+        return _key_frames(raw_files, keyed_dir, save=save, **options)
+
+
+def _key_frames(raw_files: list[Path], keyed_dir: Path, *, key: str, check_edges: bool, spill: str, allow_subject: bool,
+                decontam: str, save: _Saver) -> dict[str, Any]:
     clip_palette: dict[str, Any] | None = None
     clip_history: dict[str, Any] = {}  # the last frame's calls, in clip order
     decontam_first: dict[str, Any] | None = None
@@ -562,12 +593,12 @@ def _key_chroma(raw_files: list[Path], keyed_dir: Path, *, key: str, check_edges
         stats = cutout(src, dst, key=key, spill_max_fraction=spill_max, spill_min_tint=spill_tint,
                        spill_require_hue=spill == "full", decontam=decontam, decontam_fit=DECONTAM_FIT,
                        decontam_palette=clip_palette, decontam_edge_band=EDGE_ROWS, decontam_history=clip_history,
-                       prepared=prepared)
-        image = Image.open(dst).convert("RGBA")
+                       prepared=prepared, write=save)
+        image = save.last if save.last.mode == "RGBA" else save.last.convert("RGBA")
         # The specks go before anything reads the frame: the edge band, the coverage, the loop.
         image, specks = drop_specks(image)
         if specks:
-            image.save(dst)
+            save(image, dst)
         hist = image.getchannel("A").histogram()
         w, h = image.size
         alpha_zero_pct = round(100 * hist[0] / (w * h), 2)

@@ -58,3 +58,23 @@ def test_prepared_frames_come_back_in_clip_order(tmp_path: Path, monkeypatch) ->
         here = prepare_cutout(src, key="green", decontam="off")
         assert np.array_equal(prepared["matte"]["data"], here["matte"]["data"])
         assert "source_rgb" not in prepared["matte"]  # the main process reads the frame again rather than receive it
+
+
+def test_a_refusal_leaves_every_frame_handed_to_the_saver_on_disk_and_no_later_one(tmp_path: Path) -> None:
+    images = [Image.new("RGBA", (300, 300), (k, 0, 0, 255)) for k in range(6)]
+    with pytest.raises(RuntimeError, match="refused"):
+        with frames_mod._Saver() as save:
+            for k, image in enumerate(images):
+                save(image, tmp_path / f"{k}.png")
+                assert save.last is image
+                if k == 3:
+                    raise RuntimeError("refused")
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["0.png", "1.png", "2.png", "3.png"]
+    assert all(Image.open(tmp_path / f"{k}.png").tobytes() == images[k].tobytes() for k in range(4))
+
+
+def test_a_frame_saved_again_is_the_last_one_on_disk(tmp_path: Path) -> None:
+    with frames_mod._Saver() as save:
+        for k in range(5):
+            save(Image.new("RGBA", (64, 64), (k, 0, 0, 255)), tmp_path / "frame.png")
+    assert Image.open(tmp_path / "frame.png").getpixel((0, 0)) == (4, 0, 0, 255)

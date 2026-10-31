@@ -19,7 +19,8 @@ from sprite_gen._deps import np
 from sprite_gen.frames import decontam, extract, morph
 from sprite_gen.qa import inspect, preview
 from sprite_gen.serve import serve_curation
-from sprite_gen.video import auto_motion, loop
+from sprite_gen.video import auto_motion, loop, repair
+from sprite_gen.video import frames as frames_mod
 
 
 # --- frozen pre-change forms -------------------------------------------------
@@ -385,3 +386,104 @@ def test_grid_phase_is_the_per_pixel_scan():
         for im in (_random_rgba(rng, w, h), small.resize((small.width * 4, small.height * 4), Image.NEAREST)):
             for pitch in (2, 3, 4, 7, 80):
                 assert extract._grid_phase(im, pitch) == _ref_grid_phase(im, pitch)
+
+
+# --- 2026-10-31: video-loop and video-frames' ordered pass ----------------------
+
+
+def _ref_edge_contact(image):
+    alpha = image.convert("RGBA").getchannel("A")
+    w, h = alpha.size
+    px = alpha.load()
+    top = sum(1 for y in range(min(frames_mod.EDGE_ROWS, h)) for x in range(w) if px[x, y] > 0)
+    left = sum(1 for x in range(min(frames_mod.EDGE_ROWS, w)) for y in range(h) if px[x, y] > 0)
+    right = sum(1 for x in range(max(0, w - frames_mod.EDGE_ROWS), w) for y in range(h) if px[x, y] > 0)
+    return {"top": top, "left": left, "right": right}
+
+
+def _ref_drop_specks(image, *, alpha_over=0, diagonal=True, apart=frames_mod.SPECK_APART):
+    rgba = np.asarray(image.convert("RGBA"))
+    ys, starts, stops, labels, sizes = frames_mod._components(rgba[..., 3] > alpha_over, diagonal=diagonal)
+    if not len(ys):
+        return image, 0
+    largest = int(sizes.argmax())
+    small = sizes < max(frames_mod.SPECK_MIN_PX, int(sizes[largest]) * frames_mod.SPECK_MIN_FRACTION)
+    small[np.setdiff1d(np.arange(len(sizes)), labels)] = False
+    if small.any() and apart > 0:
+        body = labels == largest
+        reach = int(apart * (int(ys[body].max()) - int(ys[body].min()) + 1))
+        near = np.zeros(rgba.shape[:2], dtype=bool)
+        for y, x0, x1 in zip(ys[body], starts[body], stops[body]):
+            near[y, x0:x1] = True
+        near = frames_mod._near(near, reach)
+        for y, x0, x1, label in zip(ys, starts, stops, labels):
+            if small[label] and near[y, x0:x1].any():
+                small[label] = False
+    if not small.any():
+        return image, 0
+    out = rgba.copy()
+    for y, x0, x1 in zip(ys[small[labels]], starts[small[labels]], stops[small[labels]]):
+        out[y, x0:x1] = 0
+    return Image.fromarray(out, "RGBA"), int(small.sum())
+
+
+def _ref_body_wrap_offset(frames, *, band=loop.BODY_ANCHOR_BAND, search=loop.BODY_ANCHOR_SEARCH):
+    if len(frames) < 2:
+        return 0
+    first = np.asarray(frames[0], dtype=np.float32)
+    last = np.asarray(frames[-1], dtype=np.float32)
+    alpha = first[:, :, 3] >= 8
+    rows = np.where(alpha.any(axis=1))[0]
+    cols = np.where(alpha.any(axis=0))[0]
+    if len(rows) == 0 or len(cols) == 0:
+        return 0
+    top, bottom, left, right = rows[0], rows[-1], cols[0], cols[-1]
+    mask = np.zeros_like(alpha)
+    mask[top: top + max(1, int((bottom - top) * band)), left: right + 1] = True
+    ref = first[mask]
+    return min(range(-search, search + 1), key=lambda dx: float(np.abs(ref - np.roll(last, dx, axis=1)[mask]).mean()))
+
+
+def _specked(rng, h, w):
+    a = np.zeros((h, w, 4), np.uint8)
+    by, bx = int(rng.integers(0, h)), int(rng.integers(0, w))
+    a[max(0, by - h // 3):by + h // 3, max(0, bx - w // 4):bx + w // 4] = 200
+    for _ in range(int(rng.integers(0, 40))):
+        y, x = int(rng.integers(0, h)), int(rng.integers(0, w))
+        a[y:y + int(rng.integers(1, 4)), x:x + int(rng.integers(1, 4))] = int(rng.integers(1, 255))
+    return Image.fromarray(a, "RGBA")
+
+
+def test_drop_specks_and_edge_contact_are_the_grown_body_and_the_pixel_scan():
+    rng = np.random.default_rng(23)
+    dropped = 0
+    for _ in range(120):
+        im = _specked(rng, int(rng.integers(1, 200)), int(rng.integers(1, 200)))
+        for options in ({}, {"apart": 0.3}, {"diagonal": False, "apart": 0.05}, {"apart": 0}, {"alpha_over": 100}):
+            got, want = frames_mod.drop_specks(im, **options), _ref_drop_specks(im, **options)
+            assert got[1] == want[1] and got[0].tobytes() == want[0].tobytes(), options
+            dropped += got[1] > 0
+        assert frames_mod.edge_contact(im) == _ref_edge_contact(im)
+    assert dropped > 50
+
+
+def test_body_wrap_offset_is_the_rolled_frame():
+    rng = np.random.default_rng(29)
+    for _ in range(40):
+        h, w = int(rng.integers(8, 90)), int(rng.integers(8, 90))
+        first = _specked(rng, h, w)
+        last = Image.fromarray(np.roll(np.asarray(first), int(rng.integers(-6, 7)), axis=1)
+                               + rng.integers(0, 3, (h, w, 4), dtype=np.uint8), "RGBA")
+        for search in (1, 4, 12):
+            assert loop.body_wrap_offset([first, last], search=search) == _ref_body_wrap_offset([first, last], search=search)
+
+
+def test_flow_states_read_again_is_the_same_path_and_a_copy():
+    rng = np.random.default_rng(31)
+    frames = [_specked(rng, 60, 50) for _ in range(5)]
+    first = repair.flow_states(frames)
+    first[...] = -1  # a reader's own copy: changing it changes nothing remembered
+    again = repair.flow_states([f.copy() for f in frames])
+    repair._flow_memo.clear()
+    assert np.array_equal(again, repair.flow_states(frames))
+    assert (again != -1).any()

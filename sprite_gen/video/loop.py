@@ -37,6 +37,7 @@ import os
 import shutil
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from functools import cache, partial
 from pathlib import Path
@@ -698,12 +699,14 @@ def body_wrap_offset(frames: list[Image.Image], *, band: float = BODY_ANCHOR_BAN
     if len(rows) == 0 or len(cols) == 0:
         return 0
     top, bottom, left, right = rows[0], rows[-1], cols[0], cols[-1]
-    mask = np.zeros_like(alpha)
-    mask[top : top + max(1, int((bottom - top) * band)), left : right + 1] = True
-    ref = first[mask]
+    rows = slice(top, top + max(1, int((bottom - top) * band)))
+    ref = first[rows, left : right + 1].reshape(-1, 4)
+    cols = np.arange(left, right + 1)
+    width = last.shape[1]
 
     def cost(dx: int) -> float:
-        return float(np.abs(ref - np.roll(last, dx, axis=1)[mask]).mean())
+        # The region of `last` rolled by dx, read in place: its columns taken round the frame's edge as np.roll does.
+        return float(np.abs(ref - last[rows][:, (cols - dx) % width].reshape(-1, 4)).mean())
 
     return min(range(-search, search + 1), key=cost)
 
@@ -882,7 +885,7 @@ def write_webp(frames: list[Image.Image], out: Path, *, delay_ms: int, loop: int
         paths = []
         for k, im in enumerate(frames):
             p = workdir / f"webp-{k:03d}.png"
-            im.save(p)
+            im.save(p, compress_level=0)  # read once by img2webp, which encodes the pixels whatever the PNG's level
             paths.append(str(p))
         proc = local_tool.run([img2webp, "-loop", str(loop), "-lossless", "-exact", "-d", str(delay_ms), *paths, "-o", str(out)],
                               seconds=local_tool.TOOL_SECONDS, what="video-loop", capture_output=True, text=True)
@@ -912,7 +915,8 @@ def verify_animation(path: Path, *, expect_frames: int, check_stale: bool, expec
                 background_ok &= all(f.getpixel(c) == background_pixel for c in ((0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)))
                 opaque &= f.getchannel("A").getextrema() == (255, 255)
             if check_stale:
-                stale += sum(1 for p in f.get_flattened_data() if p[3] == 0 and (p[0] or p[1] or p[2]))
+                packed = np.asarray(f).view("<u4")[..., 0]  # RGBA as one word: under 2**24 is alpha 0
+                stale += int(np.count_nonzero(packed < 1 << 24)) - int(np.count_nonzero(packed == 0))
         report = {"file": path.name, "format": im.format, "n_frames": n, "loop": loop, "size": list(im.size), "corners_transparent": corners_ok, "stale_rgb_under_alpha0": stale, "bytes": path.stat().st_size}
         if background is not None:
             report.update(background=background, opaque=opaque)
@@ -2633,9 +2637,18 @@ def _write_previews(pick: list[Image.Image], run: _Run, *, cycle: dict[str, Any]
     gif_background = "#000000" if cycle["kind"] == "lifetime" else None
     gif_pick = [effect.on_black(im) for im in pick] if gif_background is not None else pick
     try:
-        save_clean_gif(gif_pick, gif_path, duration_ms=delay_ms, loop=None if single_play else 0,
-                       alpha_threshold=128, opaque=gif_background is not None)
-        write_webp(pick, webp_path, delay_ms=delay_ms, **({"loop": 1} if single_play else {}))
+        # img2webp runs while the GIF is made, into a folder of its own beside the WebP (`runio.new_stage`), and the WebP
+        # is moved into place only once the GIF is written: a GIF that fails leaves no WebP, as when one ran after the other.
+        stage = new_stage(webp_path, ".webp")
+        try:
+            with ThreadPoolExecutor(1) as pool:
+                webp = pool.submit(write_webp, pick, stage / webp_path.name, delay_ms=delay_ms, **({"loop": 1} if single_play else {}))
+                save_clean_gif(gif_pick, gif_path, duration_ms=delay_ms, loop=None if single_play else 0,
+                               alpha_threshold=128, opaque=gif_background is not None)
+                webp.result()
+            os.replace(stage / webp_path.name, webp_path)
+        finally:
+            shutil.rmtree(stage, ignore_errors=True)
         # A filmed ghost given way to the frame beside it is that frame shown twice in a row: one frame of the GIF or WebP
         shown = shown_runs(pick)
         gif_report = verify_animation(gif_path, expect_frames=shown_runs(gif_pick), check_stale=False,

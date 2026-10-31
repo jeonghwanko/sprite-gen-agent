@@ -42,6 +42,9 @@ It picked the frames until the flow reading did, and names a fast swing a jump; 
 
 from __future__ import annotations
 
+import hashlib
+import threading
+from collections import OrderedDict
 from collections.abc import Callable, Iterable
 from typing import Any
 
@@ -123,6 +126,11 @@ FLOW_CHUNK = 12  # frames a whole clip's path is read in at a time (`clip_flow_s
 # runs are not the hold, and the loop is read a drawing a frame (`flow_drawings`).
 HELD_RUNS = 0.75
 _LUMA = np.array([0.299, 0.587, 0.114])
+# The paths `flow_states` read last, by their frames' pixels and box: a cut's seam, its drawings and its repair read the
+# same frames four or five times in one `video-loop` (8 reads of 3 cuts measured 2026-10-31, a second each).
+FLOW_MEMO = 4
+_flow_memo: OrderedDict[bytes, np.ndarray] = OrderedDict()
+_flow_memo_lock = threading.Lock()
 
 
 def _blur(planes: np.ndarray, sigma: float) -> np.ndarray:
@@ -142,12 +150,27 @@ def _blur(planes: np.ndarray, sigma: float) -> np.ndarray:
 def flow_states(frames: list[Image.Image], box: tuple[int, int, int, int] | None = None) -> np.ndarray:
     """Each frame of the loop as a point of its path, (frames, h, w, 2): its coverage and its shading
     (luma times coverage) inside `box` (the union box), averaged down to a grid of a third of the blur
-    and blurred by FLOW_BLUR of the body height. Raises ValueError for a loop with no body."""
+    and blurred by FLOW_BLUR of the body height. Raises ValueError for a loop with no body. The same frames, pixel for
+    pixel, in the same box are read once (FLOW_MEMO): each read is a copy of that path."""
+    digest = hashlib.sha256(repr(box).encode())
+    for f in frames:
+        digest.update(f"{f.mode}{f.size}".encode())
+        digest.update(f.tobytes())
+    key = digest.digest()
+    with _flow_memo_lock:
+        if key in _flow_memo:
+            _flow_memo.move_to_end(key)
+            return _flow_memo[key].copy()
     pixels = np.stack([np.asarray(f.crop(box or union_box(frames)), dtype=np.float64) / 255.0 for f in frames])
     rows = np.where(pixels[..., 3].max(axis=(0, 2)) > 0.1)[0]
     if rows.size == 0:
         raise ValueError("every loop frame is fully transparent")
-    return _states(pixels, FLOW_BLUR * max(1, int(rows.max() - rows.min())))
+    states = _states(pixels, FLOW_BLUR * max(1, int(rows.max() - rows.min())))
+    with _flow_memo_lock:
+        _flow_memo[key] = states
+        while len(_flow_memo) > FLOW_MEMO:
+            _flow_memo.popitem(last=False)
+    return states.copy()
 
 
 def clip_flow_states(frames: list[Image.Image]) -> np.ndarray:
