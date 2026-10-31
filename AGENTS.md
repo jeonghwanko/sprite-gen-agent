@@ -47,14 +47,14 @@ release lanes.
 
 ## Large files: read by section
 
-Some files are too big to read whole, and a few lines are longer than a reader shows:
+Some files are too big to read whole. No markdown line is over 2,000 characters; keep it that way.
 
 | File | Size | How |
 |---|---|---|
-| `CHANGELOG.md` | ~550 KB, lines up to ~10,000 chars | grep it; read only the `Unreleased` section or the version asked about |
-| `docs/loop-repair.md` | ~280 KB, 2,700+ lines | grep `^#` for the outline, then read one section with an offset |
-| `docs/video-pipeline.md`, `docs/run-contract.md` | ~60 KB each | same |
-| `docs/chroma-alpha.md` | one line of ~8,600 chars | grep for the term rather than relying on a line read |
+| `CHANGELOG.md` | ~170 KB (3.0.0 on, and `Unreleased`) | grep it; read only the `Unreleased` section or the version asked about |
+| `CHANGELOG-before-3.0.md` | ~380 KB (1.x and 2.x) | grep only, for history |
+| `docs/loop-repair.md` | ~290 KB, 2,800+ lines | read its "Reading this doc" table at the top, then only the part it points to |
+| `docs/video-pipeline.md`, `docs/run-contract.md` | ~60 KB each | grep `^#` for the outline, then read one section with an offset |
 | `sprite_gen/frames/extract.py`, `sprite_gen/video/loop.py` | ~200 KB, 3,000+ lines each | grep for the function, read around it |
 | `sprite_gen/video/align.py`, `repair.py`, `batch.py`, `rife.py` | ~100 KB each | same |
 

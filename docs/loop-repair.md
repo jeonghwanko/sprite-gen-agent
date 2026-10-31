@@ -13,6 +13,32 @@ in-between drawn by an image model, where RIFE was retired because it smears a c
 clip's seam). Here RIFE only ever makes a frame between two neighbours of the *same* walk,
 where the appearance does not change and only the motion does — the case optical flow is for.
 
+## Reading this doc
+
+This doc is long (2,700+ lines). Find the question below and read only that part. Section 4 has no
+subheadings: its parts are list items opening with a bold label, so search for the label.
+
+| Question | Where |
+|---|---|
+| Is RIFE installed, which backend runs, which variables set it | [§1](#1-rife--what-runs-where-and-what-it-costs): [the torch backend](#the-torch-backend-sprite_gen_rife_backendtorch), [a GPU elsewhere](#a-gpu-elsewhere-sprite_gen_rife_executor), [install](#install--sprite-gen-rife-install), [without RIFE](#without-rife) |
+| Why these settings: speed and quality measured | [where](#where--measured-2026-10-03), [which setting](#which-setting--measured-2026-10-15), [decision](#decision), [licences](#licences) |
+| A frame of a loop jumps; `--repair`, `--unfixed` | [§2](#2-jump-frames--video-loop---repair-auto), then [the flow reading](#the-flow-reading--a-frame-off-the-walks-way-not-a-large-step) |
+| A part rushes on its way | [the eased retime](#the-eased-retime--a-part-that-rushes-on-its-way) |
+| A part on its own beat at a two-step cut's wrap | [the overlapped wrap](#the-overlapped-wrap--a-part-on-its-own-beat-that-no-cut-of-two-steps-closes) |
+| A hand or a foot pops at the wrap | [the part pop](#the-part-pop-a-hand-or-a-foot-that-jumps-at-the-wrap) |
+| A loop that is not a walk jumps at its wrap | [the seam bridge](#the-seam-bridge-a-loop-that-is-not-a-walk-whose-wrap-jumps) |
+| The jolt index and its gate | [§3](#3-the-jolt-index--reported-on-every-walk-a-gate-only-when-asked), [reference bounds](#where-the-reference-bounds-come-from--46-takes-2026-10-03) |
+| A part held above the head swings on its own beat | [the seam pop](#the-seam-pop--a-part-held-above-the-head-swinging-on-its-own-beat), [its gate](#the-seam-pop-gate), [the held side](#the-held-side--a-staff-that-closes-at-the-top-and-swings-below-the-hand) |
+| How many steps a loop is | [the step count](#the-step-count--two-steps-read-off-the-clips-crossings), [the step gate](#the-step-gate-every-step-between-drawings-and-a-fixed-cuts-count), [the step screen](#the-step-screen--a-slow-walk-cut-one-step-long) |
+| One length for a direction set: `video-cycle-align`, `video-set --align-cycles auto` | [§4](#4-one-cycle-for-a-direction-set--video-cycle-align-video-set---align-cycles-auto); labels **Length**, **Resample, offset 0**, **Between two source frames**, **The beat, read on every aligned loop**, **A frame given way, kept on the beat** |
+| A loop counted as one step or two cycles | §4: **A loop whose steps are counted is one cycle**, **A loop that may be one step is stopped too**, **Two cycles in one loop are stopped** |
+| A take that steps the same foot twice or jumps | §4: **Same foot twice**, **A take that jumps** |
+| The faults read on each frame RIFE made | §4: **Smear and melt**, **The ghost screen**, **A cross-fade inside the silhouette**, **A part torn**, **A hole through a limb**, **A double outline**, **What `auto` costs** |
+| A loop to film again; which foot leads in every view | §4: **Held drawings**, **Foot strike**, **The same foot in every view**, **A foot the engine cannot name** |
+| What the alignment writes and keeps | §4: **Rebuilt in place**, **Where every cell is from**, **The cut as filmed is kept**, **Frames between are kept for later passes** |
+| The regression set this engine is held to | [§5](#5-regression--the-2026-10-03-eight-direction-set-through-this-engine) |
+| A pinned clip whose last frame the model drew again | [§6](#6-the-redrawn-wrap-a-pinned-clip-whose-last-frame-the-model-drew-again) |
+
 ## 1. RIFE — what runs, where, and what it costs
 
 ### What
@@ -1381,7 +1407,36 @@ settles it. Four-legged gaits are read as one foot band (`legs.strike_signals`),
 
 ### The step gate: every step between drawings, and a fixed cut's count
 
-On every walk or run loop that plays round (not a single play cut), after the seam gate passes, the strip cells are read between their drawings: a loop drawn on twos or threes shows each drawing for two or three frames (`repair.flow_drawings` finds them), so read frame by frame it steps nothing and then two or three steps at each drawing, making its largest step two or three times its mean even when playing evenly. Each drawing first cell is read on analysis features the seam gate reads (`loop._small_features`), taking the step from each drawing to the next and from the last drawing into the first across the wrap. The largest of these steps, wrap included, over the mean of the others must be at most `STEP_RATIO_MAX` (2.5) (`loop.drawing_steps`). Because a pixel of jitter can look large against a tiny mean step, a step over 2.5 is exempt from the bound when it is a pixel's jitter (`loop.step_jitter`): the move that aligns its drawing with the previous drawing while producing the least coverage difference (`stop.register`, read on alpha so colour has no effect) is at most `STEP_JITTER_PX` (1.5) pixels of the frames as filmed. Each such pixel is the strip's `scale` in cell pixels, and the allowed move is never less than one cell pixel. With that move taken back, the step must also be within 2.5 of the mean. The gate holds the largest step that is not a pixel's jitter to the bound. On synthetic frames, a walk going away from the camera has a step where the feet rise a whole crop row that measures 2.5 to 3.6 times the mean as drawn, black or grey. Its move is one pixel, the step taken back is at most 1.3 times the mean, and the loop passes. A frame of a walk cut 400 px tall moved 2 px and back moves 6 cell pixels, or 2.0 pixels of the frames as filmed, and fails in every colour. Measured instead as a mean RGBA difference, that jump reads 0.057 in colour, 0.025 in a grey near the backdrop and 0.021 in black. Past the bound, the loop fails with `video-loop: loop step ratio <ratio> exceeds 2.5 (<kind> length <L> frames from <start>, into frame <frame>, read between its <n> drawings); the loop jumps inside — regenerate the clip`. Where jump repair says why the step jumps, the line says it before ` — regenerate the clip`: `: frame <frame> lies off the walk's flow, and the jump repair's frame there was refused (<faults>), so it plays as filmed`, or `: frame <frame> lies off the walk's flow, and no group of up to 2 drawings brings it back`. The report records `step_gate` on every walk or run loop, passed or failed: `read` (`drawings`), `drawings`, `hold`, `mean_step`, `largest_ratio`, `largest_from` and `largest_into` (the cut frames from and into which the largest step that is not a pixel's jitter runs, each the first frame of its drawing), `wrap_ratio`, `max` (the bound used), `jitter` for steps over 2.5 that are a pixel's jitter (each step's `from` and `into` frames, its `ratio`, its `move` in cell pixels and `ratio_moved_back`, with the larger first), `lifted`, and `kept` when a lifted gate kept a loop over 2.5; a loop with fewer than three drawings records `skipped` instead.
+On every walk or run loop that plays round (not a single play cut), after the seam gate passes, the strip
+cells are read between their drawings: a loop drawn on twos or threes shows each drawing for two or three
+frames (`repair.flow_drawings` finds them), so read frame by frame it steps nothing and then two or three
+steps at each drawing, making its largest step two or three times its mean even when playing evenly. Each
+drawing first cell is read on analysis features the seam gate reads (`loop._small_features`), taking the step
+from each drawing to the next and from the last drawing into the first across the wrap. The largest of these
+steps, wrap included, over the mean of the others must be at most `STEP_RATIO_MAX` (2.5)
+(`loop.drawing_steps`). Because a pixel of jitter can look large against a tiny mean step, a step over 2.5 is
+exempt from the bound when it is a pixel's jitter (`loop.step_jitter`): the move that aligns its drawing with
+the previous drawing while producing the least coverage difference (`stop.register`, read on alpha so colour
+has no effect) is at most `STEP_JITTER_PX` (1.5) pixels of the frames as filmed. Each such pixel is the
+strip's `scale` in cell pixels, and the allowed move is never less than one cell pixel. With that move taken
+back, the step must also be within 2.5 of the mean. The gate holds the largest step that is not a pixel's
+jitter to the bound. On synthetic frames, a walk going away from the camera has a step where the feet rise a
+whole crop row that measures 2.5 to 3.6 times the mean as drawn, black or grey. Its move is one pixel, the
+step taken back is at most 1.3 times the mean, and the loop passes. A frame of a walk cut 400 px tall moved 2
+px and back moves 6 cell pixels, or 2.0 pixels of the frames as filmed, and fails in every colour. Measured
+instead as a mean RGBA difference, that jump reads 0.057 in colour, 0.025 in a grey near the backdrop and
+0.021 in black. Past the bound, the loop fails with `video-loop: loop step ratio <ratio> exceeds 2.5 (<kind>
+length <L> frames from <start>, into frame <frame>, read between its <n> drawings); the loop jumps inside —
+regenerate the clip`. Where jump repair says why the step jumps, the line says it before ` — regenerate the
+clip`: `: frame <frame> lies off the walk's flow, and the jump repair's frame there was refused (<faults>), so
+it plays as filmed`, or `: frame <frame> lies off the walk's flow, and no group of up to 2 drawings brings it
+back`. The report records `step_gate` on every walk or run loop, passed or failed: `read` (`drawings`),
+`drawings`, `hold`, `mean_step`, `largest_ratio`, `largest_from` and `largest_into` (the cut frames from and
+into which the largest step that is not a pixel's jitter runs, each the first frame of its drawing),
+`wrap_ratio`, `max` (the bound used), `jitter` for steps over 2.5 that are a pixel's jitter (each step's
+`from` and `into` frames, its `ratio`, its `move` in cell pixels and `ratio_moved_back`, with the larger
+first), `lifted`, and `kept` when a lifted gate kept a loop over 2.5; a loop with fewer than three drawings
+records `skipped` instead.
 
 `--cycle fixed --start S --length L` of a walk or run now reads clip foot crossings (`crossings.read`) and judges the cut (`Reading.judge`), as `--anchor motion-auto` already does for the cut it takes. The report records this as `cycle.step_count` (the reading record, `chosen_by: caller`, and `cut` with `verdict`, `code`, `k`, `phase`, `ring`). A walk loops on two steps; a cut whose crossings count an odd number of steps (one, three) swaps legs at the wrap however close frames look, failing with `video-loop: loop step count refutes the fixed cut <start>/<L> — the clip's crossings count one step, each seen where a walk loops on two, and an odd count swaps the legs at the wrap; cut it again two steps long (about <2 steps> frames)`. An even count of four steps is not refused. The exemption from `--anchor motion-auto` applies (`local_cycle.same_picture_count`, shared by both now): where feet are seen together over half a step at a pass (`crossings.HIDE_SHARE`) and the clip one cut on is the same picture (at most `local_cycle.SAME_PICTURE_MAX`, 1.0 playback steps along the cut), the count missed a crossing; verdict reads `uncertain`, code `same-picture`, recorded with `same_picture`, and the cut is not refused. A fixed cut gets no `steps` field and leaves its strip unchanged.
 

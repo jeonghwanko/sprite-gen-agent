@@ -58,7 +58,7 @@ $SPRITE_GEN_ROOT/.venv/bin/python $SPRITE_GEN_ROOT/scripts/interpolate_frames.py
   overwrites the same take file and does not duplicate the `takes` entry (idempotent).
 - `--extract` — run a **full-batch** re-extraction afterwards. Partial extraction is
   deliberately not offered: the run-wide shared palette is built per extraction batch
-  (CHANGELOG v1.56.17 known limitation), so a single-state extract would shade that row
+  (CHANGELOG-before-3.0.md, v1.56.17 known limitation), so a single-state extract would shade that row
   from a different palette.
 
 In the curator, the row-header **Tween** button does the same thing: open the
