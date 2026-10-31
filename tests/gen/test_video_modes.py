@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -363,7 +364,7 @@ def test_probe_reads_ffprobe_output(tmp_path: Path, monkeypatch) -> None:
         returncode, stdout, stderr = 0, "8.004000\n", ""
 
     monkeypatch.setattr(video.shutil, "which", lambda name: "/usr/bin/ffprobe")
-    monkeypatch.setattr(video.subprocess, "run", lambda *a, **k: Proc())
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: Proc())
     assert video.probe_duration_seconds(_clip(tmp_path), verb="video-edit") == pytest.approx(8.004)
 
 

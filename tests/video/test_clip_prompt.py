@@ -148,12 +148,12 @@ def test_probe_reads_the_picture_past_a_cover_image(monkeypatch) -> None:
     ]
     out = json.dumps({"streams": streams, "format": {"duration": "3.041667"}})
     monkeypatch.setattr(frames_mod, "_require", lambda binary: binary)
-    monkeypatch.setattr(frames_mod.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, 0, out, ""))
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, 0, out, ""))
     meta = frames_mod.probe(Path("clip.mp4"))
     assert meta["stream_index"] == 2 and (meta["width"], meta["height"], meta["fps"], meta["nb_frames"]) == (960, 960, 24.0, 73)
     assert (meta["codec"], meta["pix_fmt"], meta["audio_streams"], meta["cover_streams"]) == ("h264", "yuv420p", 1, 1)
     only_cover = json.dumps({"streams": streams[:2], "format": {}})
-    monkeypatch.setattr(frames_mod.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, 0, only_cover, ""))
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, 0, only_cover, ""))
     with pytest.raises(SystemExit, match="no video stream"):
         frames_mod.probe(Path("clip.mp4"))
 
