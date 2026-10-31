@@ -4,13 +4,16 @@ character (tests/talking_face.py): the pack's sets, entries, own-mouth spans, an
 player's mouth rule and pick against the rules they were moved from; the live player's queue on a fake audio clock; a
 baked line.
 
-The pack is made once for the module. The player's tests run it with node and skip, saying so, where there is none.
+The pack is made once a run, by whichever test worker gets there first (the others wait for it), and each module copies
+it: the player's tests write their jobs beside it. The player's tests run it with node and skip, saying so, where there
+is none.
 """
 from __future__ import annotations
 
 import hashlib
 import json
 import math
+import os
 import shutil
 import subprocess
 import wave
@@ -22,18 +25,51 @@ from PIL import Image
 
 import talking_face as tf
 from sprite_gen.video import face_bake, face_layer as fl, face_pack
+from sprite_gen.spec import runio
 from sprite_gen.video import parts as parts_mod
 
 NODE = shutil.which("node")
 needs_node = pytest.mark.skipif(NODE is None, reason="node is not on PATH: the face player cannot run")
 
 
+# Making the pack is most of this module's time, and its first test's: a run reads every frame's anchor, on a slow
+# Windows laptop 6 minutes on two processes (2026-10-31). Its tests are given that, a hang still a named failure.
+pytestmark = pytest.mark.timeout(900)
+# Processes the pack is read on: one pack a run, so the cores are not shared with other builds (the default, one per
+# core, times each parallel test worker's own pack exhausted memory when every worker made one).
+PACK_JOBS = max(2, min(8, os.cpu_count() or 1))
+
+
+def _built(tmp_path_factory) -> Path:
+    """The case and its pack, made once a run: under the run's temp folder, which pytest-xdist's workers share (one
+    worker's own folder where there is none), by the first to take the lock; a later one finds it made."""
+    worker = os.environ.get("PYTEST_XDIST_WORKER")
+    shared = tmp_path_factory.getbasetemp().parent if worker else tmp_path_factory.getbasetemp()
+    if runio._LOCK_IMPL is None:
+        shared = tmp_path_factory.mktemp("face-built")
+    built = shared / "face-built"
+    fd = os.open(shared / "face-built.lock", os.O_RDWR | os.O_CREAT, 0o666)
+    try:
+        if runio._LOCK_IMPL is not None:
+            runio._lock_fd(fd, exclusive=True)
+        if not (built / "done").is_file():
+            shutil.rmtree(built, ignore_errors=True)
+            request = tf.write_case(built / "case")
+            face_pack.build(request, built / "pack", jobs=PACK_JOBS)
+            (built / "done").write_text("", encoding="utf-8")
+    finally:
+        if runio._LOCK_IMPL is not None:
+            runio._unlock_fd(fd)
+        os.close(fd)
+    return built
+
+
 @pytest.fixture(scope="module")
 def case(tmp_path_factory):
+    built = _built(tmp_path_factory)
     root = tmp_path_factory.mktemp("face")
-    request = tf.write_case(root / "case")
-    # Two workers: the default (one per core) multiplied by parallel test workers exhausts memory.
-    face_pack.build(request, root / "pack", jobs=2)
+    for name in ("case", "pack"):
+        shutil.copytree(built / name, root / name)
     pack = json.loads((root / "pack" / "face-pack.json").read_text(encoding="utf-8"))
     return root, pack
 
