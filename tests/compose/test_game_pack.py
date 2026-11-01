@@ -255,13 +255,13 @@ def test_size_limit_counts_both_images_and_manifest_before_publish(tmp_path):
     with pytest.raises(ValueError, match="byte|MB"):
         game_pack.pack(src, tmp_path / "out", max_bytes=10)
     assert not (tmp_path / "out").exists()
-    for kwargs in ({"page_size": 4097}, {"max_bytes": 50_000_001}):
+    for kwargs in ({"page_size": 4097}, {"max_bytes": game_pack.MAX_INTERMEDIATE_BYTES + 1}):
         with pytest.raises(ValueError):
             game_pack.pack(src, tmp_path / "out", **kwargs)
     # Over the budget on a later page, while that page and the next are encoding: the same error, nothing published.
     game_pack.pack(src, tmp_path / "whole", page_size=12)
     first_page = sum((tmp_path / "whole" / f"atlas-000.{ext}").stat().st_size for ext in ("png", "webp"))
-    with pytest.raises(ValueError, match=r"exceeds \d+ bytes \(50 MB maximum\)$"):
+    with pytest.raises(ValueError, match=r"exceeds \d+ bytes \(configured output budget\)$"):
         game_pack.pack(src, tmp_path / "out", page_size=12, max_bytes=first_page + 1)
     assert not (tmp_path / "out").exists()
 
@@ -294,3 +294,59 @@ def test_staging_write_error_cannot_publish_half_a_pack(tmp_path, monkeypatch):
         game_pack.pack(src, tmp_path / "out")
     assert not (tmp_path / "out").exists()
     assert not list(tmp_path.glob(".out-*"))
+
+
+def test_webp_only_keeps_rgba_frames_and_timing_without_duplicate_pngs(tmp_path):
+    strip(tmp_path)
+    src = request(tmp_path, [{"id": "walk", "source": "walk.strip.json", "display": {"height": 10}}])
+    both = game_pack.pack(src, tmp_path / "both", page_size=12)
+    single = game_pack.pack(src, tmp_path / "single", page_size=12, image_format="webp")
+    assert single["animations"] == both["animations"]
+    assert len(single["textures"]) == len(both["textures"])
+    assert not list((tmp_path / "single").glob("*.png"))
+    for original, actual in zip(both["textures"], single["textures"]):
+        assert actual["image"] == actual["webp"] == actual["meta"]["image"]
+        assert actual["frames"] == original["frames"]
+        assert actual["meta"]["size"] == original["meta"]["size"]
+        with Image.open(tmp_path / "both" / original["image"]) as png, Image.open(tmp_path / "single" / actual["image"]) as webp:
+            assert png.convert("RGBA").tobytes() == webp.convert("RGBA").tobytes()
+        assert (tmp_path / "single" / actual["image"]).read_bytes() == (tmp_path / "both" / original["webp"]).read_bytes()
+    budget = sum(p.stat().st_size for p in (tmp_path / "single").iterdir())
+    assert budget < sum(p.stat().st_size for p in (tmp_path / "both").iterdir())
+    game_pack.pack(src, tmp_path / "fits", page_size=12, image_format="webp", max_bytes=budget)
+    with pytest.raises(ValueError, match="exceeds"):
+        game_pack.pack(src, tmp_path / "too-big", page_size=12, max_bytes=budget)
+    assert not (tmp_path / "too-big").exists()
+    with pytest.raises(ValueError, match="exceeds"):
+        game_pack.pack(src, tmp_path / "too-small", page_size=12, image_format="webp", max_bytes=budget-1)
+    assert not (tmp_path / "too-small").exists()
+
+
+def test_explicit_intermediate_budget_and_webp_cli_preserve_immutable_output(tmp_path):
+    strip(tmp_path)
+    src = request(tmp_path, [{"id": "walk", "source": "walk.strip.json", "display": {"height": 10}}])
+    call = subprocess.run([sys.executable, "-m", "sprite_gen.cli", "game-pack", "--request", str(src),
+                           "--out-dir", str(tmp_path / "out"), "--image-format", "webp", "--max-bytes", "200000000"],
+                          capture_output=True, encoding="utf-8")
+    assert call.returncode == 0, call.stderr
+    manifest = json.loads((tmp_path / "out" / "game-pack.json").read_text())
+    assert all(t["image"].endswith(".webp") for t in manifest["textures"])
+    with pytest.raises(ValueError, match="different content"):
+        game_pack.pack(src, tmp_path / "out")
+    with pytest.raises(ValueError, match="image format"):
+        game_pack.pack(src, tmp_path / "invalid", image_format="jpeg")
+    assert not (tmp_path / "invalid").exists()
+
+
+def test_webp_only_tiles_preserve_transparent_rgb_and_every_alpha_value(tmp_path):
+    image = Image.new("RGBA", (16, 16))
+    image.putdata([(i, 255-i, (i*17) % 256, i) for i in range(256)])
+    image.save(tmp_path / "tile.png")
+    src = tmp_path / "tiles.json"
+    src.write_text(json.dumps({"version": 2, "tiles": [{"id": "ground", "source": "tile.png", "display": {"width": 16}}]}))
+    result = game_pack.pack(src, tmp_path / "out", image_format="webp")
+    tile = result["tiles"]["ground"]
+    assert tile["image"] == tile["webp"] == "tile-ground.webp"
+    assert not list((tmp_path / "out").glob("*.png"))
+    with Image.open(tmp_path / "out" / tile["image"]) as packed:
+        assert packed.convert("RGBA").tobytes() == image.tobytes()

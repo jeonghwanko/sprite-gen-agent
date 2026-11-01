@@ -6,6 +6,8 @@ All notable public changes to `sprite-gen` are recorded here. Versions track the
 
 These are the fork's additions on top of 3.4.0, first written for the AI Fighter creator kit ([NOTICE](NOTICE)). The version stays 3.4.0 until a release is cut.
 
+- **New: `game-pack --image-format webp`** omits duplicate PNG files while preserving every RGBA pixel, frame, timing and anchor. The default remains PNG plus WebP. Explicit `--max-bytes` budgets may reach 200 MB for intermediate packs; the default remains 50 MB and all output bytes are counted. Downstream upload limits are unchanged.
+
 - **New: `gen-motion`, pose-plan GPT motion.** It makes one pose at a time from an authored pose plan with joint guides, reviewed anchors, a fixed canvas and a cycle review. It also measures each pose's body and foot geometry and adds `gait-guide` and the gait-motion bridge with per-stance contact coverage. See [pose-motion](docs/pose-motion.md) and [gait-guide](docs/gait-guide.md).
   - An attempt whose `gen` sent nothing is `not-started`. `gen-motion` exits 3, and the next `--frame` runs again in the same attempt folder; this does not count as one of the two attempts.
   - `workflow` offers it as the `pose-plan` motion method (experimental, codex).

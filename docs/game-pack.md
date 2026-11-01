@@ -14,10 +14,17 @@ sprite-gen game-pack --request game.json --out-dir game-assets
 
 * `--request <path>`: Path to the request JSON file. Paths within the request resolve relative to the request file directory.
 * `--out-dir <path>`: Target output directory. Must be a new directory path.
+* `--image-format both|webp`: Defaults to `both` (PNG plus lossless WebP). `webp` writes one lossless WebP per atlas or tile; `image`, `meta.image` and `webp` point to that file. Every RGBA pixel, including transparent RGB, is preserved; frame count, order, timings, dimensions and anchors are unchanged.
 * `--page-size <int>`: Maximum page dimension in pixels. Defaults to `4096`. Lower bound is `1`; cannot exceed `4096`.
-* `--max-bytes <int>`: Total encoded byte budget for all output files (PNG, WebP, JSON, JS modules, OGG, and M4A combined). Defaults to `50000000` (50 MB). Lower bound is `1`; configurable downward only.
+* `--max-bytes <int>`: Total encoded byte budget for all output files (PNG, WebP, JSON, JS modules, OGG, and M4A combined). Defaults to `50000000` (50 MB). Lower bound is `1`; explicit budgets up to `200000000` (200 MB) are supported for intermediate packs. This does not raise a downstream game or upload limit.
 
 Invalid arguments, missing files, frame dimension overflows, or budget violations exit with a non-zero status.
+
+For an intermediate pack exceeding the budget because both encodings are present, use `--image-format webp`
+with the same request and a new output directory. If that intermediate alone still needs more room, choose an
+explicit `--max-bytes` budget (up to 200 MB). The command never raises it automatically, drops frames, changes
+playback or lowers the requested resolution to fit. All actual output bytes, including the manifest, still count.
+Keep final package size and file checks in the downstream packer.
 
 ## Filesystem safety and determinism
 
