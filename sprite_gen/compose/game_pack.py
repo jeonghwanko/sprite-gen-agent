@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Modified for sprite-gen-agent (scale-check corrections; see NOTICE).
+# Modified for sprite-gen-agent (scale-check corrections and single-format packs; see NOTICE).
 """Resize finished assets and publish an immutable game atlas pack.
 
 Request version 2 adds painted scene art (docs/game-pack.md "Version 2"): single images with
@@ -36,6 +36,7 @@ from sprite_gen.util.console import utf8_streams
 
 MAX_PAGE_SIZE = 4096
 MAX_BYTES = 50_000_000
+MAX_INTERMEDIATE_BYTES = 200_000_000
 # Both copies are lossless, so their pixels are the source's (measured 2026-10-31; CHANGELOG has the numbers). WebP at
 # method 4, not 6: about the same size (atlases -4 to +1.4 %, single images -8 to +6 %) in 40 to 75 % of the time.
 # Method 0 was ten times faster still on hosted fighters' packs but up to eight times larger on other art. PNG stays at
@@ -425,7 +426,7 @@ def _encode_image(image, fmt):
     return buffer.getvalue()
 
 
-def _prepare_scene(request, base, page_size):
+def _prepare_scene(request, base, page_size, image_format="both"):
     """The version 2 sections: manifest entries, atlas frames, tile files and the sources they read."""
     frames, files, sources = [], {}, set()
     images = {}
@@ -449,8 +450,10 @@ def _prepare_scene(request, base, page_size):
         target = _integer(value, f"display {dimension}")
         scale = target / (image.width if dimension == "width" else image.height)
         png, webp = f"tile-{entry['id']}.png", f"tile-{entry['id']}.webp"
-        files[png], files[webp] = _encode_image(image, "PNG"), _encode_image(image, "WEBP")
-        tiles[entry["id"]] = {"image": png, "webp": webp, "size": {"w": image.width, "h": image.height},
+        if image_format == "both":
+            files[png] = _encode_image(image, "PNG")
+        files[webp] = _encode_image(image, "WEBP")
+        tiles[entry["id"]] = {"image": png if image_format == "both" else webp, "webp": webp, "size": {"w": image.width, "h": image.height},
                               "display_size": {"w": max(1, round(image.width * scale)),
                                                "h": max(1, round(image.height * scale))}}
         sources.update(sequence.source_files)
@@ -515,7 +518,7 @@ def _paste_extruded(sheet, image, x, y):
             sheet.putpixel((x + dx, y + dy), image.getpixel((sx, sy)))
 
 
-def _encode(pages, animations, max_bytes, sections=None, files=None):
+def _encode(pages, animations, max_bytes, sections=None, files=None, image_format="both"):
     """Pages, then any version 2 files, then the manifest; ``sections`` makes it a version 2 manifest."""
     payloads, textures = {}, []
     total = 0
@@ -528,7 +531,7 @@ def _encode(pages, animations, max_bytes, sections=None, files=None):
             payloads[name] = future.result()
             total += len(payloads[name])
             if total > max_bytes:
-                raise ValueError(f"game pack exceeds {max_bytes} bytes (50 MB maximum)")
+                raise ValueError(f"game pack exceeds {max_bytes} bytes (configured output budget)")
 
     pool = ThreadPoolExecutor(max_workers=ENCODE_JOBS)
     try:
@@ -545,11 +548,16 @@ def _encode(pages, animations, max_bytes, sections=None, files=None):
                                  "pivot": {"x": anchor[0]/image.width, "y": anchor[1]/image.height}}
             png_name, webp_name = f"atlas-{index:03d}.png", f"atlas-{index:03d}.webp"
             # Nothing touches a page once its saves are submitted; the WebP gets its own copy (ENCODE_JOBS above).
-            webp_sheet = sheet.copy()
-            encoding.append([(png_name, pool.submit(_encode_image, sheet, "PNG")),
-                             (webp_name, pool.submit(_encode_image, webp_sheet, "WEBP"))])
-            textures.append({"image": png_name, "webp": webp_name, "frames": records,
-                             "meta": {"image": png_name, "format": "RGBA8888", "size": {"w": width, "h": height}, "scale": "1"}})
+            if image_format == "both":
+                webp_sheet = sheet.copy()
+                encoding.append([(png_name, pool.submit(_encode_image, sheet, "PNG")),
+                                 (webp_name, pool.submit(_encode_image, webp_sheet, "WEBP"))])
+                image_name = png_name
+            else:
+                encoding.append([(webp_name, pool.submit(_encode_image, sheet, "WEBP"))])
+                image_name = webp_name
+            textures.append({"image": image_name, "webp": webp_name, "frames": records,
+                             "meta": {"image": image_name, "format": "RGBA8888", "size": {"w": width, "h": height}, "scale": "1"}})
         while encoding:
             collect()
     finally:
@@ -558,14 +566,14 @@ def _encode(pages, animations, max_bytes, sections=None, files=None):
         payloads[name] = data
         total += len(data)
         if total > max_bytes:
-            raise ValueError(f"game pack exceeds {max_bytes} bytes (50 MB maximum)")
+            raise ValueError(f"game pack exceeds {max_bytes} bytes (configured output budget)")
     result = {"kind": "sprite-gen-game-pack", "version": 1, "textures": textures, "animations": animations}
     if sections is not None:
         result["version"] = 2
         result.update(sections)
     payloads["game-pack.json"] = (json.dumps(result, ensure_ascii=False, separators=(",", ":"), allow_nan=False) + "\n").encode()
     if total + len(payloads["game-pack.json"]) > max_bytes:
-        raise ValueError(f"game pack exceeds {max_bytes} bytes (50 MB maximum, including its manifest)")
+        raise ValueError(f"game pack exceeds {max_bytes} bytes (including its manifest)")
     return result, payloads
 
 
@@ -598,9 +606,11 @@ def _publish(out_dir, payloads):
             shutil.rmtree(stage)
 
 
-def pack(request: Path, out_dir: Path, *, page_size=MAX_PAGE_SIZE, max_bytes=MAX_BYTES):
+def pack(request: Path, out_dir: Path, *, page_size=MAX_PAGE_SIZE, max_bytes=MAX_BYTES, image_format="both"):
     page_size = _integer(page_size, "page size", maximum=MAX_PAGE_SIZE)
-    max_bytes = _integer(max_bytes, "max bytes", maximum=MAX_BYTES)
+    max_bytes = _integer(max_bytes, "max bytes", maximum=MAX_INTERMEDIATE_BYTES)
+    if image_format not in ("both", "webp"):
+        raise ValueError("image format must be both or webp")
     request, out_dir = Path(request).expanduser().resolve(), Path(out_dir).expanduser().resolve()
     document = json.loads(request.read_text(encoding="utf-8"))
     version = _version(document)
@@ -608,7 +618,7 @@ def pack(request: Path, out_dir: Path, *, page_size=MAX_PAGE_SIZE, max_bytes=MAX
     # `files` is the audio loop's name below; the version 2 tile files must not share it.
     sections = tile_files = None
     if version == 2:
-        sections, scene_frames, tile_files, scene_sources = _prepare_scene(document, request.parent, page_size)
+        sections, scene_frames, tile_files, scene_sources = _prepare_scene(document, request.parent, page_size, image_format)
         frames = sorted(frames + scene_frames, key=lambda f: f[0])
         sources |= scene_sources
         names = [name for name, _image, _anchor in frames]
@@ -639,7 +649,7 @@ def pack(request: Path, out_dir: Path, *, page_size=MAX_PAGE_SIZE, max_bytes=MAX
         raise ValueError("game pack request declares nothing to pack: give it an asset, a scene entry or a sound")
     if any(same_folder(path, out_dir) or inside_folder(path, out_dir) for path in sources | {request}):
         raise ValueError("output directory must not contain any source file")
-    result, payloads = _encode(_layout(frames, page_size) if frames else [], animations, max_bytes, sections, tile_files)
+    result, payloads = _encode(_layout(frames, page_size) if frames else [], animations, max_bytes, sections, tile_files, image_format)
     if audio:
         helper, module = audio_player()
         audio_payloads[helper["path"]] = module
@@ -660,12 +670,14 @@ def add_arguments(parser):
     parser.add_argument("--out-dir", type=Path, required=True, help="new directory for the immutable pack")
     parser.add_argument("--page-size", type=int, default=MAX_PAGE_SIZE)
     parser.add_argument("--max-bytes", type=int, default=MAX_BYTES)
+    parser.add_argument("--image-format", choices=("both", "webp"), default="both",
+                        help="both writes PNG and lossless WebP; webp writes only lossless WebP, preserving all RGBA pixels")
 
 
 def run(**kwargs):
     try:
         result = pack(kwargs["request"], kwargs["out_dir"], page_size=kwargs.get("page_size", MAX_PAGE_SIZE),
-                      max_bytes=kwargs.get("max_bytes", MAX_BYTES))
+                      max_bytes=kwargs.get("max_bytes", MAX_BYTES), image_format=kwargs.get("image_format", "both"))
     except (ValueError, OSError) as exc:
         raise SystemExit(f"game-pack: {exc}") from exc
     print(json.dumps({"ok": True, "manifest": str(Path(kwargs["out_dir"]) / "game-pack.json"),
