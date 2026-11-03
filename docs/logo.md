@@ -141,7 +141,8 @@ over the login's own `config.toml` (`facing_vision.CODEX_READ_MODEL` and
 it runs on: left to each login's config, the same picture could be read on another model
 and effort on each machine, and the report could not say which. These are the model and
 effort the measurement above ran on. The report names the model and effort of every
-reading. `--model` names the images' model only; the facing check still runs on the login's
+reading. `--model` names the images' model only. The codex facing check names its own model,
+`gpt-6.1-sol` (`facing_vision.CODEX_FACING_MODEL`), with its reasoning effort left to the login's
 config. The xAI and OpenAI checks read on their own fixed models, as the facing check does.
 
 ## Which key

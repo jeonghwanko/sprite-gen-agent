@@ -555,8 +555,8 @@ class CodexProvider:
         self.keep_session = keep_session
 
     def inspect_facing(self, path: Path, workdir: Path) -> tuple[str, dict]:
-        from .facing_vision import codex_inspect
-        return codex_inspect(path, workdir)
+        from .facing_vision import CODEX_FACING_MODEL, codex_inspect
+        return codex_inspect(path, workdir, model=CODEX_FACING_MODEL)
 
     def inspect_image(self, path: Path, workdir: Path, prompt: str, *, label: str = "vision check") -> tuple[str, dict]:
         from .facing_vision import CODEX_READ_EFFORT, CODEX_READ_MODEL, codex_inspect
