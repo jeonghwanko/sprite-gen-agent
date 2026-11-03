@@ -6,6 +6,7 @@ All notable public changes to `sprite-gen` are recorded here. Versions track the
 
 These are the fork's additions on top of 3.4.0, first written for the AI Fighter creator kit ([NOTICE](NOTICE)). The version stays 3.4.0 until a release is cut.
 
+- **Changed: the codex facing check names its model.** `inspect_facing` runs `codex exec --model gpt-6.1-sol` (`facing_vision.CODEX_FACING_MODEL`) instead of the login's `config.toml` or codex's own default, so a codex update or another machine's config no longer changes the model the facing verdict is read on. Its reasoning effort still follows the login's config. The report's metadata names the model. The logo text checks keep `CODEX_READ_MODEL` (`gpt-6-sol`, `high`).
 - **New: `game-pack --image-format webp`** omits duplicate PNG files while preserving every RGBA pixel, frame, timing and anchor. The default remains PNG plus WebP. Explicit `--max-bytes` budgets may reach 200 MB for intermediate packs; the default remains 50 MB and all output bytes are counted. Downstream upload limits are unchanged.
 
 - **New: `gen-motion`, pose-plan GPT motion.** It makes one pose at a time from an authored pose plan with joint guides, reviewed anchors, a fixed canvas and a cycle review. It also measures each pose's body and foot geometry and adds `gait-guide` and the gait-motion bridge with per-stance contact coverage. See [pose-motion](docs/pose-motion.md) and [gait-guide](docs/gait-guide.md).

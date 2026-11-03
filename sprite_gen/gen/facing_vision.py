@@ -22,10 +22,13 @@ from .facing import INSPECTION_PROMPT
 OPENAI_MODEL = "gpt-4.1-mini"
 GROK_MODEL = "grok-4.6"
 # What codex reads lettering on (`inspect_image`), named on the call over the login's own config, so a logo's text
-# check reads on the same model and effort on every machine (docs/logo.md, the text check). The facing check still
-# runs on the login's config.
+# check reads on the same model and effort on every machine (docs/logo.md, the text check).
 CODEX_READ_MODEL = "gpt-6-sol"
 CODEX_READ_EFFORT = "high"
+# What codex checks facing on (`inspect_facing`), named on the call so the verdict does not follow each machine's
+# login config or codex's own default, which a codex update can change. Only the model: the reasoning effort still
+# follows the login's config.
+CODEX_FACING_MODEL = "gpt-6.1-sol"
 FACING_LABEL = "facing vision check"
 
 

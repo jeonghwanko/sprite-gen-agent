@@ -116,5 +116,9 @@ def test_the_facing_check_still_asks_the_facing_question(monkeypatch, tmp_path) 
     assert text == "left"
     assert [prompt for _command, prompt in seen] == [facing.INSPECTION_PROMPT]
     command = seen[0][0]
-    assert "--model" not in command and "-c" not in command  # the facing check runs on the login's config, as before
-    assert "model" not in metadata and "effort" not in metadata
+    # The facing check names its model on the call (not the login's config or codex's default); its effort still
+    # follows the login's config.
+    assert command[command.index("--model") + 1] == facing_vision.CODEX_FACING_MODEL == "gpt-6.1-sol"
+    assert command.index("--model") < command.index("-i")  # before the image list, which takes every path after it
+    assert "-c" not in command
+    assert metadata["model"] == facing_vision.CODEX_FACING_MODEL and "effort" not in metadata
