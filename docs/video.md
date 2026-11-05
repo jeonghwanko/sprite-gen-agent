@@ -162,6 +162,17 @@ retryable: false}]`. When SIGTERM arrives after xAI took the request, the report
 `request_id`, and its `interrupted` error carries the `resume` command. A stopped run asks for
 the clip with that command instead of sending a new request.
 
+### Which model made the clip
+
+A finished report and an unfinished one name the model under three keys:
+
+- `model` is what it always was: the model xAI's done poll named, else the one the run asked
+  for. It cannot say which of the two it holds.
+- `requested_model` is the model the run sent: `--model`, or the classic model that `video-extend`
+  and `video-edit` force. It is null for `video-resume`, which sends none.
+- `model_reported` is the model xAI's polls named (the last answered poll that named one). It is
+  null when none did and is never a copy of the one asked for.
+
 ## Quotas and limits
 
 - Imagine quota is a weekly SuperGrok allowance; when it is exhausted the API

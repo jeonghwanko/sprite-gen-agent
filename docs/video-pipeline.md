@@ -519,6 +519,14 @@ The set report is then written and the set exits 143
 A front or back walk films from its base redrawn mid-step (`--walk-start redraw`, default; one
 image generation each, `--still-provider` picks the provider; see §2). See [loop repair](loop-repair.md) section 4.
 
+`--model` names the clip model every item asks for (`video --model`; without it, `video`'s own
+default, `grok-imagine-video-1.5`). A Lite model gets the calmer walk sentences that
+`video-prompt --model` writes. A clip already in an item's folder is reused only when its report
+says it was asked for with the same model. A report from before `requested_model` was written
+counts as the default, the only model `video-set` asked for until then. Each item's `clip` carries
+`requested_model` and `model_reported` as its clip report gives them, null where it gives none
+([video](video.md#which-model-made-the-clip)).
+
 ### Play modes
 
 `--play` gives how a motion plays as a value of the request, and `--motion` gives the

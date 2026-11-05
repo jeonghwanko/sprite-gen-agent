@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # Modified for sprite-gen-agent (machine-readable outcomes; reports read as UTF-8; the gait witness's
-# anchor_for and left_out ported from upstream 3.13/3.14; see NOTICE).
+# anchor_for and left_out ported from upstream 3.13/3.14; the clip model named and recorded; see NOTICE).
 """`sprite-gen video-set` — directions x states, end to end, one report per item.
 
 For every (direction, state) pair: canvas -> `sprite-gen video` -> frames -> loop.
@@ -36,6 +36,7 @@ from sprite_gen.gen.facing import FACINGS, validate as validate_facing
 from sprite_gen.gen import handedness as handed_mod
 from sprite_gen.gen import prompt_parts
 from sprite_gen.gen.handedness import Handed
+from sprite_gen.gen.video import DEFAULT_MODEL as VIDEO_DEFAULT_MODEL
 from sprite_gen.video import facing as facing_mod
 from sprite_gen.video import canvas as canvas_mod
 from sprite_gen.video import frames as frames_mod
@@ -658,11 +659,22 @@ def walk_start_prompt(direction: str, key: str | None = None, handed: list[Hande
     return parts.text
 
 
-def run_video_cli(image: Path, prompt: str, out: Path, report: Path, *, duration: int, resolution: str, log: Path, last_frame: Path | None = None) -> int:
+def run_video_cli(image: Path, prompt: str, out: Path, report: Path, *, duration: int, resolution: str, log: Path, last_frame: Path | None = None,
+                  model: str | None = None) -> int:
     cmd = [sys.executable, "-m", "sprite_gen.gen.video", "--image", str(image), "--prompt", prompt, "--out", str(out), "--duration", str(duration), "--resolution", resolution, "--no-audio", "--report", str(report)]
     if last_frame is not None:
         cmd += ["--last-frame", str(last_frame)]
+    if model is not None:
+        cmd += ["--model", model]
     return run_logged(cmd, log)
+
+
+def cached_clip_model(previous: dict[str, Any]) -> Any:
+    """The model a cached clip was asked for, as its report says (`requested_model`). A report from before that key
+    was written came from a video-set that named no model, so `sprite-gen video`'s default filmed it: that default
+    has been `grok-imagine-video-1.5` since the verb was written (2026-09-08). Only the reuse check reads this
+    inference; the item's result says what the report recorded."""
+    return previous["requested_model"] if "requested_model" in previous else VIDEO_DEFAULT_MODEL
 
 
 def run_redraw_cli(base: Path, prompt: str, out: Path, report: Path, *, log: Path, provider: str | None = None) -> int:
@@ -736,10 +748,13 @@ def run_item(
     end_frame: Path | None = None,
     play: str | None = None,
     motion: str | None = None,
+    model: str | None = None,
 ) -> dict[str, Any]:
     """One (direction, state) item, canvas to loop. `play` is the request's play mode for it (`play.MODES`; None, the
     state's preset) and `motion` the caller's own motion text in place of the state's sentence. `anchor` is the
-    request's `--anchor`; None cuts the loop with the item's own (`anchor_for`)."""
+    request's `--anchor`; None cuts the loop with the item's own (`anchor_for`). `model` is the clip model
+    (`video --model`; None, video's own default): the prompt is written for it (a Lite walk's calm, `is_lite`), and a
+    cached clip is reused only when it was asked for with the same one (`cached_clip_model`)."""
     mode = play_mod.resolve(state, play, prog="video-set")
     if end_frame is not None and mode != play_mod.ONCE_HOLD:
         raise SystemExit("video-set: --end-frame requires a once-hold item (a non-loop state, or --play once-hold)")
@@ -787,7 +802,7 @@ def run_item(
     if direction in handed_mod.LATERAL_VIEWS:
         result["turned"] = facing
     try:
-        parts = clip_prompt_parts(direction, state, character, facing=facing, motion=motion, handed=handed,
+        parts = clip_prompt_parts(direction, state, character, facing=facing, motion=motion, model=model, handed=handed,
                                   body_plan=body_plan, play=play)
         prompt = parts.text
         if parts.notes:
@@ -809,6 +824,9 @@ def run_item(
                 raise SystemExit("cached clip end frame differs; use --force to regenerate")
             if not isinstance(previous, dict) or previous.get("prompt") != prompt:
                 raise SystemExit("cached clip prompt differs (including facing); use --force to regenerate")
+            asked, filmed = model or VIDEO_DEFAULT_MODEL, cached_clip_model(previous)
+            if filmed != asked:
+                raise SystemExit(f"cached clip was asked for with {filmed}, not {asked}; use --force to regenerate")
         canvas_png = item_dir / "canvas.png"
         canvas_report_path = item_dir / "canvas.report.json"
         if reuse_clip:
@@ -852,19 +870,23 @@ def run_item(
             result["facing"] = canvas_report["facing_check"]
 
         if reuse_clip:
-            result["clip"] = {"reused": True}
+            # what the cached clip's report recorded: None where it records nothing (a report from before these keys)
+            result["clip"] = {"reused": True, "requested_model": previous.get("requested_model"),
+                              "model_reported": previous.get("model_reported")}
             clip_made = True
         else:
             # One run of `sprite-gen video`: a 429 is sent again inside it (`gen.retry`), so a second run here
             # would be a second retry loop on top of the first, each of its POSTs a request.
             _staggered_start(gap)
             pin_frame = Path(canvas_report["end_frame"]) if lifetime else canvas_png
-            pin = {"last_frame": pin_frame} if pins else {}
+            pin: dict[str, Any] = {"last_frame": pin_frame} if pins else {}
             if end_frame is not None:
                 with Image.open(end_frame) as final, Image.open(canvas_png) as initial:
                     if final.size != initial.size or canvas_mod.corner_key(final) != canvas_mod.corner_key(initial):
                         raise SystemExit("video-set: end frame must match the start canvas size and background key")
                 pin = {"last_frame": end_frame}
+            if model is not None:  # None leaves the model to `sprite-gen video`'s own default
+                pin["model"] = model
             clip_report.unlink(missing_ok=True)  # what this clip sent is read from its own report, never an earlier run's
             attempts = [video_runner(canvas_png, prompt, clip, clip_report, duration=duration, resolution=resolution,
                                      log=item_dir / "clip.log", **pin)]
@@ -872,10 +894,15 @@ def run_item(
             if attempts[-1] != 0 or not clip.exists():
                 raise SystemExit(f"clip generation failed after {len(attempts)} attempt(s); see {item_dir / 'clip.log'}")
             clip_made = True
-            try:  # what the clip ran on, as its report says: the Grok login or XAI_API_KEY
-                result["clip"]["auth_source"] = json.loads(clip_report.read_text(encoding="utf-8")).get("auth_source")
+            try:
+                filmed_report = json.loads(clip_report.read_text(encoding="utf-8"))
             except (OSError, ValueError):
-                result["clip"]["auth_source"] = None
+                filmed_report = None
+            recorded = filmed_report if isinstance(filmed_report, dict) else {}
+            # What the clip ran on, as its report says: the Grok login or XAI_API_KEY, the model it asked for and the
+            # model xAI's polls named (None when they named none; never a copy of the one asked for).
+            for name in ("auth_source", "requested_model", "model_reported"):
+                result["clip"][name] = recorded.get(name)
             if end_digest is not None:
                 generated = json.loads(clip_report.read_text(encoding="utf-8"))
                 generated["end_frame_sha256"] = end_digest
@@ -1224,6 +1251,7 @@ def run_set(
     end_frames: dict[str, Path] | None = None,
     play: dict[str, str] | None = None,
     motion: dict[str, str] | None = None,
+    model: str | None = None,
 ) -> dict[str, Any]:
     """`bases` maps a view to its still; `facing` is right, left or `right,left` (`facings_of`), and a view filmed
     both ways is keyed `view@right` and `view@left` (`resolve_bases`). `handed` (`handedness.parse`) puts each
@@ -1232,7 +1260,8 @@ def run_set(
     own foot that lands on its loop's first strike (`align_gaits`); any other item is refused up front.
     `play` (`--play`) and `motion` (`--motion`) map a state of the set — every item of it — or one item to its play
     mode (`play.MODES`) and to the caller's motion text (`item_values`): a motion the engine has no state for is
-    filmed under its name in that mode, a named state without one plays as its preset."""
+    filmed under its name in that mode, a named state without one plays as its preset. `model` (`--model`) is the
+    clip model every item asks for (`run_item`); None leaves it to `sprite-gen video`'s default."""
     if align_cycles not in ALIGN_MODES:
         raise SystemExit(f"video-set: --align-cycles must be one of {', '.join(ALIGN_MODES)}")
     if anchor == "motion-auto" and any(not loop_mod.profile_for(state).gait for state in states):
@@ -1292,7 +1321,7 @@ def run_set(
     aligned: dict[str, Any] = {}
     try:
         with ThreadPoolExecutor(max_workers=max(1, concurrency)) as ex:
-            futures = {ex.submit(run_item, item=i, direction=d, state=s, base=b, root=root, character=character, duration=duration, resolution=resolution, key=key, force=force, gap=gap, video_runner=video_runner, shape=shape, anchor=anchor, spill=spill, facing=f, facing_fix=facing_fix, prepare_side=side_preparer(f), body_height=body_height, fit=fit, decontam=decontam, walk_start=walk_start, redraw_runner=redraw_runner, still_provider=still_provider, handed=handed, body_plan=body_plan, **({"end_frame": end_frames[i]} if end_frames and i in end_frames else {}), **({"play": plays[i]} if i in plays else {}), **({"motion": motions[i]} if i in motions else {})): i for i, d, s, f, b in items}  # type: ignore[arg-type]
+            futures = {ex.submit(run_item, item=i, direction=d, state=s, base=b, root=root, character=character, duration=duration, resolution=resolution, key=key, force=force, gap=gap, video_runner=video_runner, shape=shape, anchor=anchor, spill=spill, facing=f, facing_fix=facing_fix, prepare_side=side_preparer(f), body_height=body_height, fit=fit, decontam=decontam, walk_start=walk_start, redraw_runner=redraw_runner, still_provider=still_provider, handed=handed, body_plan=body_plan, **({"end_frame": end_frames[i]} if end_frames and i in end_frames else {}), **({"play": plays[i]} if i in plays else {}), **({"motion": motions[i]} if i in motions else {}), **({"model": model} if model is not None else {})): i for i, d, s, f, b in items}  # type: ignore[arg-type]
             try:
                 for fut in as_completed(futures):
                     r = fut.result()
@@ -1352,7 +1381,7 @@ def run_set(
         # with that question, the way to answer it named as this verb's own flag, once every other item has ended.
         asked = next((codex_unavailable_question(r["asked"]["cause"], r["asked"]["reason"], flag="--still-provider")
                       for r in results if r.get("asked")), None)
-        payload = {"kind": "sprite-gen-video-set-report", "root": str(root), "states": states, "facing": facing, "facing_fix": facing_fix, "directions": list(bases), **({"handed": [vars(h) for h in handed]} if handed else {}), **({"body_plan": [vars(b) for b in body_plan]} if body_plan else {}), **({"play": play} if play else {}), **({"motion": motion} if motion else {}), "body_height": body_height, "ok": sum(1 for r in results if r.get("ok")), "failed": failed, "warnings": warnings, **({"asked": asked} if asked else {}), "all_ok": not errors, "errors": errors, "provider_submitted": any(r.get("provider_submitted") for r in results) or bool(record and record.requests) or crashed is not None, **({"interrupted": str(stopped)} if stopped is not None else {}), "items": results, "cycle_align": aligned}
+        payload = {"kind": "sprite-gen-video-set-report", "root": str(root), "states": states, "facing": facing, "facing_fix": facing_fix, "directions": list(bases), **({"handed": [vars(h) for h in handed]} if handed else {}), **({"body_plan": [vars(b) for b in body_plan]} if body_plan else {}), **({"play": play} if play else {}), **({"motion": motion} if motion else {}), **({"model": model} if model is not None else {}), "body_height": body_height, "ok": sum(1 for r in results if r.get("ok")), "failed": failed, "warnings": warnings, **({"asked": asked} if asked else {}), "all_ok": not errors, "errors": errors, "provider_submitted": any(r.get("provider_submitted") for r in results) or bool(record and record.requests) or crashed is not None, **({"interrupted": str(stopped)} if stopped is not None else {}), "items": results, "cycle_align": aligned}
         atomic_write_text(root / "set.report.json", json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
         print(table)
         if crashed is not None:
@@ -1457,6 +1486,11 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
                         help="which own foot lands on the first strike of an item's loop (e.g. front-walk=left), for a loop the "
                              "alignment report lists under `unnamed_feet` (video-cycle-align --foot; repeatable): that loop starts as "
                              "the set's start foot lands, recorded start_foot_source given")
+    parser.add_argument("--model", default=None,
+                        help=f"the clip model every item asks for (`sprite-gen video --model`; default: video's own, {VIDEO_DEFAULT_MODEL}). "
+                             f"A Lite model ({', '.join(sorted(LITE_VIDEO_MODELS))}) gets its calmer walk sentences; a cached clip is reused "
+                             "only when it was asked for with the same model. Each item's `clip` records the model asked for "
+                             "(`requested_model`) and the one xAI named (`model_reported`)")
     parser.add_argument("--force", action="store_true", help="regenerate clips that already exist")
 
 
@@ -1497,6 +1531,7 @@ def _run_set(kwargs: dict[str, object]) -> dict[str, Any]:
         body_plan=body_mod.parse_all(list(kwargs.get("body_plan") or [])) or None,  # type: ignore[call-overload]
         play=_parse_keyed(list(kwargs.get("play") or []), "--play") or None,  # type: ignore[call-overload]
         motion=_parse_keyed(list(kwargs.get("motion") or []), "--motion") or None,  # type: ignore[call-overload]
+        model=(str(kwargs["model"]).strip() or None) if kwargs.get("model") else None,
     )
 
 

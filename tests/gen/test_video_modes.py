@@ -206,6 +206,8 @@ def test_extend_posts_classic_model_to_extensions_and_inherits_the_rest(tmp_path
     assert payload["mode"] == "extend" and payload["inputs"] == {"video": str((tmp_path / "in.mp4").resolve())}
     assert payload["input_duration"] == 15.04 and payload["output_duration"] == 20.04
     assert payload["duration_reported"] == 5 and payload["duration_requested"] == 5
+    # The model sent and the model xAI's poll named, each under its own key; `model` stays as it was.
+    assert (payload["model"], payload["requested_model"], payload["model_reported"]) == ("grok-imagine-video",) * 3
     assert result.out.read_bytes() == MP4
 
 
@@ -257,6 +259,15 @@ def test_edit_posts_classic_model_to_edits_without_duration(tmp_path: Path) -> N
     payload = result.to_dict()
     assert payload["mode"] == "edit" and payload["input_duration"] == 8.0 and payload["output_duration"] == 7.71
     assert payload["inputs"] == {"video": str((tmp_path / "in.mp4").resolve())}
+    assert (payload["requested_model"], payload["model_reported"]) == ("grok-imagine-video", "grok-imagine-video")
+
+
+def test_an_edit_whose_poll_names_no_model_reports_none_beside_the_model_it_sent(tmp_path: Path) -> None:
+    api = _FakeApi(done={"status": "done", "video": {"url": "https://vidgen.x.ai/v/3.mp4", "duration": 7.71}})
+    payload = video.edit_video(_edit(tmp_path), probe=_probe(8.0, 7.71), **api.kw()).to_dict()
+    # `model` falls back to the one asked for, as it did; `model_reported` never copies it.
+    assert (payload["model"], payload["requested_model"], payload["model_reported"]) == (
+        "grok-imagine-video", "grok-imagine-video", None)
 
 
 @pytest.mark.parametrize(

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Modified for sprite-gen-agent (machine-readable outcomes; see NOTICE).
+# Modified for sprite-gen-agent (machine-readable outcomes; the requested and the reported model apart; see NOTICE).
 """Video generation through Grok Imagine (xAI `/v1/videos/*`).
 
 One call = one verified mp4 on disk. This is the engine module behind the
@@ -38,6 +38,11 @@ HTTP 400 on Zero-Data-Retention teams; this direct call is what works).
 
 Truth is the mp4 bytes on disk (`ftyp` box verified), never the API's status
 string. Tokens and download URLs are never printed or written to the report.
+
+Besides `model`, kept as it was (xAI's, or else the one asked for, so it cannot
+say which), every report names `requested_model`, the model this run sent (null
+for `video-resume`, which sends none), and `model_reported`, the model xAI's
+polls named (null when none named one).
 """
 
 from __future__ import annotations
@@ -141,17 +146,19 @@ class GenerationUnfinished(SystemExit):
     The line names `request_id=<id>` and the `video-resume` command that asks for it again, and
     carries no `(HTTP n)`, a refusal line's status: a caller that reads `(HTTP 429)` there sends the
     request again, unbilled only when it was refused. `to_dict()` is the report the CLI leaves at
-    `--report`."""
+    `--report`. `model` is the model the request was sent with (None for a resume, which sends none),
+    also written as `requested_model`; `model_reported` is the one xAI's polls named, if any did."""
 
     def __init__(self, message: str, *, verb: str, request_id: str, auth_source: str, model: Any, out: Path,
                  polls: int, polls_refused: int, polls_unanswered: int, last_http: int | None, last_status: Any,
                  last_error: str | None, elapsed_seconds: float, downloads: int = 0,
-                 last_download: dict[str, Any] | None = None) -> None:
+                 last_download: dict[str, Any] | None = None, model_reported: str | None = None) -> None:
         super().__init__(message)
         self.verb = verb
         self.request_id = request_id
         self.auth_source = auth_source
         self.model = model
+        self.model_reported = model_reported
         self.out = out
         self.polls = polls
         self.polls_refused = polls_refused
@@ -170,6 +177,8 @@ class GenerationUnfinished(SystemExit):
             "verb": self.verb,
             "auth_source": self.auth_source,
             "model": self.model,
+            "requested_model": self.model,
+            "model_reported": self.model_reported,
             "request_id": self.request_id,
             "out": str(self.out),
             "polls": self.polls,
@@ -348,7 +357,7 @@ class ResumeRequest:
 class VideoResult:
     out: Path
     bytes: int
-    model: str | None  # video-resume: what the poll reported, if it did
+    model: str | None  # what the poll reported, else what was asked for (video-resume: what the poll reported, if it did)
     request_id: str
     auth_source: str
     elapsed_seconds: float
@@ -370,6 +379,8 @@ class VideoResult:
     output_duration: float | None = None  # extend / edit: ffprobe seconds of the published clip
     extra: dict[str, Any] = field(default_factory=dict)
     facing: dict[str, Any] | None = None
+    requested_model: str | None = None  # the model this run sent; video-resume: None, it sent none
+    model_reported: str | None = None  # the model xAI's polls named; None when none named one
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -377,6 +388,8 @@ class VideoResult:
             "provider": "grok-imagine",
             "auth_source": self.auth_source,
             "model": self.model,
+            "requested_model": self.requested_model,
+            "model_reported": self.model_reported,
             "mode": self.mode,
             "request_id": self.request_id,
             "image": str(self.image) if self.image else None,
@@ -477,7 +490,8 @@ def _build_generation_body(request: VideoRequest, image: Path | None, last_frame
 class _Published:
     data: bytes
     request_id: str
-    model: str | None
+    model: str | None  # the done poll's `model` as it came (the reports' `model`, kept as it was)
+    model_reported: str | None  # the model the last poll that named one named (`_named_model`)
     duration_reported: float | None
     host: str | None
     polls: int
@@ -485,6 +499,13 @@ class _Published:
     polls_unanswered: int
     downloads: int
     elapsed_seconds: float
+
+
+def _named_model(poll: Any) -> str | None:
+    """The model a poll's answer names (its `model`, a string with something in it), else None: what xAI said,
+    never a copy of what was asked for."""
+    named = poll.get("model") if isinstance(poll, dict) else None
+    return named.strip() if isinstance(named, str) and named.strip() else None
 
 
 def _ask_again(request_id: str, out: Path) -> str:
@@ -582,7 +603,8 @@ def _poll_publish(
     polls = polls_refused = polls_unanswered = failed_in_a_row = downloads = 0
     video_url: Any = None
     duration_reported: float | None = None
-    model_reported: str | None = None
+    done_model: Any = None  # the done poll's `model` as it came: the reports' `model`, kept as it was
+    model_reported: str | None = None  # the model the last answered poll that named one named
     final: dict[str, Any] = {}
 
     def unfinished(line: str, http: int | None, poll_status: Any, lost: str | None,
@@ -592,6 +614,7 @@ def _poll_publish(
             auth_source=credential.source, model=model, out=out, polls=polls, polls_refused=polls_refused,
             polls_unanswered=polls_unanswered, last_http=http, last_status=poll_status, last_error=lost,
             elapsed_seconds=time.monotonic() - started, downloads=downloads, last_download=last_download,
+            model_reported=model_reported,
         )
 
     if retry.too_late(deadline):
@@ -606,6 +629,8 @@ def _poll_publish(
         except TransportError as failed:
             lost, http, poll = failed.reason, None, None
         poll_status = poll.get("status") if isinstance(poll, dict) else None
+        if http in (200, 202):
+            model_reported = _named_model(poll) or model_reported
         if http in (200, 202) and poll_status in _DONE_STATUSES:
             final = poll
             video = poll.get("video") or {}
@@ -619,7 +644,7 @@ def _poll_publish(
                 )
             video_url = video.get("url") if isinstance(video, dict) else None
             duration_reported = video.get("duration") if isinstance(video, dict) else None
-            model_reported = poll.get("model")
+            done_model = poll.get("model")
             break
         if lost is not None:
             polls_unanswered += 1
@@ -730,7 +755,7 @@ def _poll_publish(
             raise
     os.replace(tmp, out)
     return _Published(
-        data=data, request_id=request_id, model=model_reported, duration_reported=duration_reported,
+        data=data, request_id=request_id, model=done_model, model_reported=model_reported, duration_reported=duration_reported,
         host=_redact_host(video_url), polls=polls, polls_refused=polls_refused, polls_unanswered=polls_unanswered,
         downloads=downloads, elapsed_seconds=elapsed,
     )
@@ -792,6 +817,8 @@ def generate_video(
         out=out,
         bytes=len(published.data),
         model=published.model or request.model,
+        requested_model=request.model,
+        model_reported=published.model_reported,
         request_id=published.request_id,
         auth_source=credential.source,
         elapsed_seconds=published.elapsed_seconds,
@@ -891,7 +918,7 @@ def extend_video(
         polls_refused=published.polls_refused, polls_unanswered=published.polls_unanswered,
         downloads=published.downloads, duration_requested=request.duration, duration_reported=published.duration_reported, host=published.host,
         prompt=request.prompt, mode=MODE_EXTEND, inputs={"video": str(clip)}, input_duration=input_seconds,
-        output_duration=measured.get("output"),
+        output_duration=measured.get("output"), requested_model=request.model, model_reported=published.model_reported,
     )
 
 
@@ -955,7 +982,7 @@ def edit_video(
         polls_refused=published.polls_refused, polls_unanswered=published.polls_unanswered,
         downloads=published.downloads, duration_requested=0, duration_reported=published.duration_reported, host=published.host,
         prompt=request.prompt, mode=MODE_EDIT, inputs={"video": str(clip)}, input_duration=input_seconds,
-        output_duration=measured.get("output"),
+        output_duration=measured.get("output"), requested_model=request.model, model_reported=published.model_reported,
     )
 
 
@@ -993,6 +1020,7 @@ def resume_video(
         auth_source=credential.source, elapsed_seconds=published.elapsed_seconds, polls=published.polls,
         polls_refused=published.polls_refused, polls_unanswered=published.polls_unanswered,
         downloads=published.downloads, duration_requested=None, duration_reported=published.duration_reported, host=published.host, mode=MODE_RESUME,
+        requested_model=None, model_reported=published.model_reported,
     )
 
 

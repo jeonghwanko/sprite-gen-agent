@@ -694,6 +694,8 @@ def test_the_cli_leaves_an_unfinished_report_naming_the_request(tmp_path: Path, 
         "verb": "video",
         "auth_source": "grok-login",
         "model": video.DEFAULT_MODEL,
+        "requested_model": video.DEFAULT_MODEL,
+        "model_reported": None,
         "request_id": "req-1",
         "out": str(out.resolve()),
         "polls": 3,
@@ -905,6 +907,8 @@ def test_the_resume_cli_leaves_an_unfinished_report_on_the_same_request(tmp_path
         "verb": "video-resume",
         "auth_source": "grok-login",
         "model": None,
+        "requested_model": None,
+        "model_reported": None,
         "request_id": "req-7",
         "out": str(out.resolve()),
         "polls": 3,
@@ -1128,6 +1132,8 @@ def test_polls_cut_short_until_the_poll_timeout_leave_an_unfinished_report_namin
         "verb": "video",
         "auth_source": "grok-login",
         "model": video.DEFAULT_MODEL,
+        "requested_model": video.DEFAULT_MODEL,
+        "model_reported": None,
         "request_id": "req-1",
         "out": str(out.resolve()),
         "polls": 3,
@@ -1222,6 +1228,8 @@ def test_a_clip_whose_downloads_get_no_answer_leaves_an_unfinished_report_naming
         "verb": "video",
         "auth_source": "grok-login",
         "model": video.DEFAULT_MODEL,
+        "requested_model": video.DEFAULT_MODEL,
+        "model_reported": "grok-imagine-video-1.5",
         "request_id": "req-1",
         "out": str(out.resolve()),
         "polls": 1,
@@ -1373,6 +1381,8 @@ def test_a_download_slower_than_the_time_left_leaves_an_unfinished_report_by_the
         "verb": "video",
         "auth_source": "grok-login",
         "model": video.DEFAULT_MODEL,
+        "requested_model": video.DEFAULT_MODEL,
+        "model_reported": "grok-imagine-video-1.5",
         "request_id": "req-1",
         "out": str(out.resolve()),
         "polls": 1,
@@ -1549,6 +1559,8 @@ def test_a_done_poll_that_names_no_url_leaves_an_unfinished_report_naming_the_re
         "verb": "video",
         "auth_source": "grok-login",
         "model": video.DEFAULT_MODEL,
+        "requested_model": video.DEFAULT_MODEL,
+        "model_reported": "grok-imagine-video-1.5",
         "request_id": "req-1",
         "out": str(out.resolve()),
         "polls": 1,
@@ -1558,3 +1570,92 @@ def test_a_done_poll_that_names_no_url_leaves_an_unfinished_report_naming_the_re
         "elapsed_seconds": 0.0,
     }
     assert capsys.readouterr().out == "" and not out.exists() and not list(tmp_path.glob("*.part"))
+
+
+# --- the model asked for and the model xAI named, apart --------------------------------
+# `model` stays as it was: the done poll's `model`, else the one asked for, so a reader cannot tell which. Beside it
+# `requested_model` is what this run sent (None for a resume, which sends none) and `model_reported` is what xAI's
+# polls named (None when none named one), never a copy of the one asked for.
+
+def _done(**fields) -> tuple[int, dict]:
+    return (200, {"status": "done", "video": {"url": "https://vidgen.x.ai/v/1.mp4", "duration": 6.0}, **fields})
+
+
+def _models(payload: dict) -> tuple:
+    return payload["model"], payload["requested_model"], payload["model_reported"]
+
+
+def test_a_clip_reports_the_model_it_asked_for_apart_from_the_one_xai_named(tmp_path: Path) -> None:
+    api = _FakeApi(polls=[(200, {"status": "pending"}), _done(model="grok-imagine-video-1.5-20261101")])
+    result = video.generate_video(_request(tmp_path), credential=RESUMED, call=api.call, download=api.download,
+                                  sleep=lambda s: None)
+    assert api.calls[0][3]["model"] == video.DEFAULT_MODEL
+    assert _models(result.to_dict()) == ("grok-imagine-video-1.5-20261101", video.DEFAULT_MODEL, "grok-imagine-video-1.5-20261101")
+
+
+@pytest.mark.parametrize("named", ["", "   ", 15, {"id": "grok-imagine-video-1.5"}], ids=["empty", "blank", "number", "object"])
+def test_a_model_xai_names_as_nothing_readable_is_not_reported(tmp_path: Path, named) -> None:
+    api = _FakeApi(polls=[_done(model=named)])
+    payload = video.generate_video(_request(tmp_path), credential=RESUMED, call=api.call, download=api.download,
+                                   sleep=lambda s: None).to_dict()
+    assert (payload["requested_model"], payload["model_reported"]) == (video.DEFAULT_MODEL, None)
+
+
+def test_a_done_poll_naming_no_model_reports_none_while_model_keeps_the_one_asked_for(tmp_path: Path) -> None:
+    api = _FakeApi(polls=[_done()])
+    lite = "grok-imagine-video-1.5-lite"
+    result = video.generate_video(_request(tmp_path, model=lite), credential=RESUMED, call=api.call,
+                                  download=api.download, sleep=lambda s: None)
+    assert api.calls[0][3]["model"] == lite
+    assert _models(result.to_dict()) == (lite, lite, None)
+
+
+def test_the_last_poll_that_named_a_model_is_the_one_reported(tmp_path: Path) -> None:
+    api = _FakeApi(polls=[(200, {"status": "pending", "model": "grok-imagine-video-1.5"}), (429, {"model": "not-a-poll-answer"}),
+                          _done()])
+    payload = video.generate_video(_request(tmp_path), credential=RESUMED, call=api.call, download=api.download,
+                                   sleep=lambda s: None).to_dict()
+    # A refused poll's body is not xAI's answer about the request; the done poll named none, so the pending one stands.
+    assert _models(payload) == (video.DEFAULT_MODEL, video.DEFAULT_MODEL, "grok-imagine-video-1.5")
+
+
+@pytest.mark.parametrize("polls,reported", [
+    ([(200, {"status": "pending", "model": "grok-imagine-video-1.5"}), (503, {"error": "unavailable"})], "grok-imagine-video-1.5"),
+    ([(200, {"status": "pending"})], None),
+], ids=["a-poll-named-it", "none-named-it"])
+def test_an_unfinished_report_names_the_model_sent_and_the_one_its_polls_named(tmp_path: Path, clock, polls, reported) -> None:
+    lite = "grok-imagine-video-1.5-lite"
+    api = _FakeApi(polls=polls)
+    with pytest.raises(video.GenerationUnfinished) as unfinished:
+        video.generate_video(_request(tmp_path, model=lite), credential=RESUMED, call=api.call, download=api.download,
+                             sleep=clock.sleep, poll_timeout=30)
+    assert _models(unfinished.value.to_dict()) == (lite, lite, reported)
+
+
+def test_an_unfinished_download_reports_the_model_its_done_poll_named(tmp_path: Path, clock) -> None:
+    api = _FakeApi(polls=[_done(model="grok-imagine-video-1.5")])
+    api.payload = b"not an mp4"
+    with pytest.raises(video.GenerationUnfinished) as unfinished:
+        video.generate_video(_request(tmp_path), credential=RESUMED, call=api.call, download=api.download,
+                             sleep=clock.sleep, poll_timeout=30)
+    assert _models(unfinished.value.to_dict()) == (video.DEFAULT_MODEL, video.DEFAULT_MODEL, "grok-imagine-video-1.5")
+
+
+@pytest.mark.parametrize("fields,expected", [
+    ({"model": "grok-imagine-video-1.5"}, ("grok-imagine-video-1.5", None, "grok-imagine-video-1.5")),
+    ({}, (None, None, None)),
+], ids=["named", "not-named"])
+def test_a_resume_sends_no_model_and_reports_the_one_its_poll_named(tmp_path: Path, fields, expected) -> None:
+    assert _models(_resume(tmp_path, _FakeApi(polls=[_done(**fields)])).to_dict()) == expected
+
+
+def test_the_cli_report_carries_both_models(tmp_path: Path, monkeypatch, clock, capsys) -> None:
+    api = _FakeApi(polls=[_done(model="grok-imagine-video-1.5")])
+    monkeypatch.setattr(video, "resolve_credential", lambda **_: RESUMED)
+    monkeypatch.setattr(video, "http_json", api.call)
+    monkeypatch.setattr(video, "http_download", api.download)
+    report = tmp_path / "clip.report.json"
+    assert video.run(image=_still(tmp_path), prompt="sway", out=tmp_path / "clip.mp4", report=report,
+                     model="grok-imagine-video-1.5-lite") == 0
+    written = json.loads(report.read_text(encoding="utf-8"))
+    assert _models(written) == ("grok-imagine-video-1.5", "grok-imagine-video-1.5-lite", "grok-imagine-video-1.5")
