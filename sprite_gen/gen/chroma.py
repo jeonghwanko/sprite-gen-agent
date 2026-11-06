@@ -1,10 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
-# Modified for sprite-gen-agent (Pillow get_flattened_data in place of the deprecated getdata; see NOTICE).
+# Modified for sprite-gen-agent (Pillow get_flattened_data in place of the deprecated getdata; the opt-in
+# dominance matte; see NOTICE).
 """Transparent-PNG contracts for generated images — one per strategy.
 
 - `key_transparent` (strategy `chroma`): the model cannot return alpha, so the
   generated key background is routed through the same YCbCr matte used by frame
-  extraction.
+  extraction, or, opted into with `method="dominance"`, through a matte that keys
+  only pixels where the key's channels dominate (`_dominance_matte`).
 - `verify_native_alpha` (strategy `native`): the model returned its own alpha
   channel (codex `image_gen`, 2026-09-08); the raw alpha is measured, transparent
   pixels are scrubbed of stale RGB, and the stats are published.
@@ -21,7 +23,7 @@ import re
 from pathlib import Path
 from typing import Any, cast
 
-from PIL import Image
+from PIL import Image, ImageFilter
 
 from sprite_gen._deps import np
 from sprite_gen.frames.extract import remove_chroma_background_ycbcr
@@ -190,6 +192,70 @@ def write_white_check(image: Image.Image, path: Path) -> None:
     bg.convert("RGB").save(path)
 
 
+# The matte a still is keyed with (`key_transparent(method=…)`, `gen --chroma-method`). `ycbcr` is the
+# frame extractor's matte and the default. `dominance` is opt-in (2026-11-06): Grok paints its "pure green
+# #00FF00" field as a desaturated green, about (30, 188, 35) lit and (31, 82, 37) dark. Every neutral (white,
+# black, grey) sits 83 from the lit green on the CbCr plane, inside the YCbCr border flood's 88, and 26 from the
+# dark one, at the foot of the soft matte's 24 to 72 ramp, so that matte erases a character's white and black.
+CHROMA_METHOD_YCBCR = "ycbcr"
+CHROMA_METHOD_DOMINANCE = "dominance"
+CHROMA_METHODS = (CHROMA_METHOD_YCBCR, CHROMA_METHOD_DOMINANCE)
+
+# `_dominance_matte`. A pixel's dominance is how far the key's channels stand above the others: green
+# `g - max(r, b)`, magenta `min(r, b) - g`; `rel` divides it by the key's level (green `g`, magenta
+# `max(r, b)`). Neutral ink and paper have none, whatever their luma.
+#
+# The background is every strongly dominant pixel, wherever it is, so a gap enclosed by the subject (between an
+# arm and the body) is keyed with the field. There is no border flood. The 2026-11-06 probe this matte comes from
+# was written with one (from border pixels with dom > 14 and rel > 0.18), but it flooded a read-only `fromarray`
+# image and changed nothing, so the three fighters it keyed cleanly were keyed by the strong pixels alone. Made to
+# work, that flood erased a fighter's lime tie where it touches the field (13,874 more pixels on a nine-face
+# expression sheet) and the green-blended outer pixel of dark outlines, which this matte gives a soft alpha.
+DOMINANCE_STRONG = 40.0  # dom above this, with rel above DOMINANCE_STRONG_REL: background
+DOMINANCE_STRONG_REL = 0.35
+DOMINANCE_EDGE_PX = 5  # the edge is the background grown by this square max filter, less the background
+DOMINANCE_EDGE_FLOOR = 6.0  # edge alpha = clip(1 - (dom - FLOOR) / RAMP, 0, 1)
+DOMINANCE_EDGE_RAMP = 30.0
+DOMINANCE_DESPILL_MARGIN = 4.0  # an edge pixel's key channels are capped at the others plus this
+
+
+def _dominance_matte(source: Image.Image, target: tuple[int, int, int]) -> Image.Image:
+    """Key ``source`` by the dominance of ``target``'s channels (`--chroma-method dominance`); a new RGBA image.
+
+    The background, every strongly dominant pixel (DOMINANCE_STRONG), gets alpha 0 and RGB 0. The edge, the
+    DOMINANCE_EDGE_PX ring around it, gets alpha from its own dominance and, where the key dominates it at all,
+    loses the key's spill. A pixel ``source`` already had partly or wholly transparent keeps that share of its
+    alpha. White, black and grey have no dominance, so they stay opaque."""
+    rgba = np.asarray(source.convert("RGBA"))
+    rgb = rgba[..., :3].astype(np.float32)
+    red, green, blue = rgb[..., 0], rgb[..., 1], rgb[..., 2]
+    green_key = target[1] >= max(target[0], target[2])
+    if green_key:
+        dom, level = green - np.maximum(red, blue), green
+    else:
+        dom, level = np.minimum(red, blue) - green, np.maximum(red, blue)
+    rel = dom / np.maximum(level, 1.0)
+    background = (dom > DOMINANCE_STRONG) & (rel > DOMINANCE_STRONG_REL)
+    grown = Image.frombytes("L", source.size, np.where(background, 255, 0).astype(np.uint8).tobytes())
+    edge = (np.asarray(grown.filter(ImageFilter.MaxFilter(DOMINANCE_EDGE_PX))) > 0) & ~background
+
+    alpha = np.ones(dom.shape, np.float32)
+    alpha[edge] = np.clip(1.0 - (dom[edge] - DOMINANCE_EDGE_FLOOR) / DOMINANCE_EDGE_RAMP, 0.0, 1.0)
+    alpha[background] = 0.0
+    out = rgb.copy()
+    spill = edge & (dom > 0)
+    if green_key:
+        out[..., 1] = np.where(spill, np.minimum(green, np.maximum(red, blue) + DOMINANCE_DESPILL_MARGIN), green)
+    else:
+        cap = green + DOMINANCE_DESPILL_MARGIN
+        out[..., 0] = np.where(spill, np.minimum(red, cap), red)
+        out[..., 2] = np.where(spill, np.minimum(blue, cap), blue)
+    out[background] = 0.0
+    keyed = np.dstack([out, alpha * rgba[..., 3].astype(np.float32)]).clip(0, 255).astype(np.uint8)
+    # frombytes makes an image of its own: the caller writes into the result
+    return Image.frombytes("RGBA", source.size, keyed.tobytes())
+
+
 def key_transparent(
     input_path: Path,
     out_path: Path,
@@ -197,18 +263,27 @@ def key_transparent(
     key: str = "magenta",
     white_check: Path | None = None,
     decontam: str = "off",
+    method: str = CHROMA_METHOD_YCBCR,
 ) -> dict[str, Any]:
     """Key a chroma-background PNG to a clean transparent RGBA PNG.
 
-    Returns a stats dict (keyed/fringe/cleaned pixel counts, alpha_zero_pct).
-    `decontam` is the edge decontamination pass after the matte, reported under
+    Returns a stats dict (keyed/fringe/cleaned pixel counts, alpha_zero_pct, and `method`, the matte that ran).
+    `method` is the matte: "ycbcr" (the default) is the frame extractor's YCbCr matte, "dominance" keys only
+    pixels where the key's channels dominate (`_dominance_matte`), so white and black stay on a desaturated key.
+    `decontam` is the edge decontamination pass after the YCbCr matte, reported under
     `decontam`: "off" (the default) publishes the matte as it is, "auto" runs it where
-    it applies, "palette" demands it. Raises SystemExit before publishing if no
+    it applies, "palette" demands it; the dominance matte has none, and refuses any but "off".
+    Raises SystemExit before publishing if no
     measurable transparent area was made, or if a transparent pixel keeps non-zero RGB, and
     before keying if the background is a painted transparency checkerboard (`painted_checkerboard`).
     """
     if key not in KEYS:
         raise SystemExit(f"chroma: unknown key {key!r}; expected one of {sorted(KEYS)}")
+    if method not in CHROMA_METHODS:
+        raise SystemExit(f"chroma: unknown method {method!r}; expected one of {', '.join(CHROMA_METHODS)}")
+    if method == CHROMA_METHOD_DOMINANCE and decontam != "off":
+        raise SystemExit(f"chroma: --decontam {decontam} re-explains the YCbCr matte's edge, and --chroma-method "
+                         "dominance has no such pass; pass --decontam off, or --chroma-method ycbcr to decontaminate")
     source = Image.open(input_path).convert("RGBA")
     # The matte reads its key off the borders: on a painted checkerboard it reads the checkerboard and keys the
     # whole image away, so the image is refused before keying and the caller generates it again.
@@ -222,9 +297,12 @@ def key_transparent(
     source_pixels: Any = source.load()
     warnings: list[str] = []
     decontam_stats: dict[str, Any] = {}
-    # the default call keeps its pre-decontam signature, so a caller's matte stand-in still fits
-    extra: dict[str, Any] = {} if decontam == "off" else {"decontam": decontam, "decontam_stats": decontam_stats}
-    image = remove_chroma_background_ycbcr(source, KEYS[key]["target"], warnings, **extra)
+    if method == CHROMA_METHOD_DOMINANCE:
+        image = _dominance_matte(source, KEYS[key]["target"])
+    else:
+        # the default call keeps its pre-decontam signature, so a caller's matte stand-in still fits
+        extra: dict[str, Any] = {} if decontam == "off" else {"decontam": decontam, "decontam_stats": decontam_stats}
+        image = remove_chroma_background_ycbcr(source, KEYS[key]["target"], warnings, **extra)
     pixels: Any = image.load()
     width, height = image.size
     total = width * height
@@ -252,7 +330,7 @@ def key_transparent(
     stats: dict[str, Any] = {
         "out": str(out_path),
         "mode": "RGBA",
-        "method": "ycbcr",
+        "method": method,
         "size": f"{width}x{height}",
         "key": key,
         "keyed_pixels": keyed,

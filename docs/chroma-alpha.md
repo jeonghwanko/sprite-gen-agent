@@ -160,6 +160,18 @@ Port of perfectpixel-studio's `chroma.go` (MIT, see NOTICE). The default RGB pat
 
 Select with request `chroma.mode: "ycbcr"` or `--chroma-mode ycbcr`. **The default stays `"rgb"`**: on clean flat-key raws the RGB path's exact-solve unmix already removes key tint completely, while ycbcr's fixed-scale despill leaves a small tinted soft-edge halo — ycbcr is for degraded sources (shaded/gradient backgrounds, JPEG chroma noise), not a general upgrade.
 
+## `gen --chroma-method dominance` — keying a still by the key's dominance (opt-in)
+
+`gen` keys a chroma-strategy still with the ycbcr matte above (`chroma.key_transparent`). Grok paints the `#00FF00` it is asked for as a desaturated green, about (30, 188, 35) lit and (31, 82, 37) dark. Every neutral sits 83 from the lit green on the CbCr plane, inside the border flood's 88, and 26 from the dark one, at the foot of the soft matte's ramp, so the ycbcr matte takes a character's white and black with the field. `--chroma-method dominance` (`key_transparent(method="dominance")`) keys by how far the key's channels stand above the others instead:
+
+1. **Dominance** — green: `dom = g − max(r, b)`, level `g`; magenta: `dom = min(r, b) − g`, level `max(r, b)`; `rel = dom / level`. White, black and grey have none, whatever their luma.
+2. **Background** — every pixel with `dom > 40` and `rel > 0.35`, wherever it is, so a gap the subject encloses (between an arm and the body) goes with the field: alpha 0, RGB 0.
+3. **Edge** — the background grown by a 5×5 max filter, less the background: alpha `clip(1 − (dom − 6) / 30, 0, 1)`, and where `dom > 0` the spill is capped (green `g ≤ max(r, b) + 4`, magenta `r, b ≤ g + 4`). A pixel the raw already had transparent keeps that share of its alpha.
+
+There is no border flood. The 2026-11-06 probe this matte comes from was written with one (from border pixels with `dom > 14` and `rel > 0.18`), but it flooded a read-only image and changed nothing. Made to work, it erased a fighter's lime tie where the tie touches the field, and the green-blended outer pixel of dark outlines, which step 3 gives a soft alpha instead. The cost: a background darker or greyer than step 2's bar stays opaque, and the white check shows it. A subject part in the key's own strong colour is keyed wherever it is, as the ycbcr soft matte keys it; pick the key by subject colour as before.
+
+The dominance matte has no `decontam` pass: `--decontam auto|palette` with it is refused before the provider is called. The 0 % transparent and stale-RGB refusals hold for both methods, and the report's `method` names the matte that ran. **The default stays `ycbcr`**, called exactly as before. On eight Grok raws of three fighters (front, side, nine-face expression sheet), ycbcr erased every white and black pixel of the penguin and 34,223 of the granny sheet's 35,278 near-white pixels; dominance erased none on any of the eight, and its output is the probe's, pixel for pixel.
+
 ## `decontam` — give the edge the subject's own colour back
 
 The unmix above separates a blend by its key-tint score, and that assumes the subject's own colour carries no tint (grey, white). A saturated subject breaks the assumption. A crimson hair strand blended a third of the way into green scores as barely tinted, so it stays opaque and olive; where the full spill pass does reach it, the `1/(1-k)` gain of `despill_color` turns it orange. Video adds a second loss: H.264 4:2:0 has already averaged the key into the chroma of every strand one or two pixels wide. Its luma survives at full resolution.
