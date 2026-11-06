@@ -63,6 +63,14 @@ across Windows and Unix checkouts, and keeps a stable Python API for embedding p
 (sprite_gen.api). Source files it changed carry a "Modified for
 sprite-gen-agent" line; the files it added carry their own SPDX header.
 
+It keeps rife-ncnn-vulkan's own RIFE open across frames (sprite_gen/video/rife.py
+`Served`): native/rife-serve/serve.cpp is a main of its own for the RIFE class of
+rife-ncnn-vulkan 20221029 (https://github.com/nihui/rife-ncnn-vulkan, src/rife.cpp,
+warp.cpp and their shaders, unchanged), Copyright (c) 2020 nihui, MIT License, built
+with that release's tree and its ncnn (https://github.com/Tencent/ncnn), BSD
+3-Clause License (native/rife-serve/build.py). sprite-gen-agent ships the source
+only, not a built binary.
+
 The walk and run gait witness (sprite_gen/video/local_cycle.py, legs.py,
 crossings.py, loop.py `_witnessed`, loop_cells.py `read_steps`, loop_words.py
 `stand_retake`, batch.py `anchor_for` and `left_out`, align.py `held_cut`, and

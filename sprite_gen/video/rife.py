@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (the resident binary, `Served`; see NOTICE).
 """RIFE in-betweens for RGBA sprite frames, through the external `rife-ncnn-vulkan` binary or, where SPRITE_GEN_RIFE_BACKEND
 names it, the same rife-v4.6 in PyTorch (`rife_torch`).
 
@@ -28,6 +29,13 @@ Linux (measured 2026-10-03: mean error 39 against 3.3 through Vulkan), so it is 
 a machine without a GPU runs the Vulkan path on Mesa's llvmpipe, which gives the GPU's frame.
 Every call asks for the binary's test-time augmentation, spatial and temporal (`-x -z`, `TTA`;
 docs/loop-repair.md section 1, "Which setting"); SPRITE_GEN_RIFE_TTA names another (`tta()`).
+
+Each call of the binary opens the GPU and loads the model again — about 1.2 s on an RTX 4060 before a ~0.45 s frame
+(docs/loop-repair.md section 1, "The resident binary"). Where `rife-ncnn-vulkan-serve` is found — SPRITE_GEN_RIFE_SERVE,
+else beside the binary (`serve_executable`) — the binary's own RIFE, built from the same release tree with a main of its
+own (native/rife-serve/serve.cpp), is opened once and kept, each run a request to it (`Served`); each augmentation it is
+asked for is checked against the binary on a check pair first, byte for byte, and a resident binary whose frame differs
+is refused, not run. SPRITE_GEN_RIFE_SERVE set empty calls the binary once per run.
 
 The binary is found by SPRITE_GEN_RIFE, then on PATH, then where `sprite-gen rife install`
 puts it (`install_root()`, docs/loop-repair.md section 1). A RIFE that cannot be found is
@@ -71,9 +79,12 @@ import json
 import os
 import platform
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
+import threading
+import weakref
 import zipfile
 from pathlib import Path
 from typing import Any, Callable, Iterator
@@ -216,6 +227,15 @@ TORN_WINDOW = 0.10
 # 960 x 960 frame on Modal's CPU, took about 30 s, and Modal's hosts differ by up to 2.5 times on one frame
 # (2026-10-15, docs/loop-repair.md section 1).
 CALL_TIMEOUT_SECONDS = 600
+# `Served`: the resident binary's name (native/rife-serve/serve.cpp, built beside the binary from the same release tree),
+# the protocol it speaks, how long it may take to open the GPU and say it is ready, and the check pair each augmentation
+# is checked on against the binary — two noise images with a disc that moves between them, and a fraction off the middle,
+# so the flow, the warp and the augmentation all move pixels a build of other code would put elsewhere.
+SERVE = "rife-ncnn-vulkan-serve"
+SERVE_PROTOCOL = 1
+SERVE_START_SECONDS = 120
+CHECK_SIZE = (72, 56)
+CHECK_T = 0.375
 # `Cache`: the first thing a kept frame's key is made from — another way of keying or keeping frames is another
 # name, so no frame kept the old way is taken — and the PNG text a kept frame names its own pixels' sha256 under.
 CACHE_FORMAT = "sprite-gen frame between, 1"
@@ -1249,6 +1269,252 @@ class Binary:
             raise RifeUnavailable(f"{self.binary.name}: the binary or model it runs from could not be read: {exc}") from exc
 
 
+def serve_executable(binary: Path) -> Path | None:
+    """The resident binary (`Served`) for a located `binary`: SPRITE_GEN_RIFE_SERVE, its path, where it is set — set empty,
+    None, the binary called once per run; else SERVE beside the binary where it is there; else None. One named that is not
+    an executable file is refused (`RifeNotInstalled`), never passed over for the binary."""
+    named = os.environ.get("SPRITE_GEN_RIFE_SERVE")
+    if named is not None and not named:
+        return None
+    if named:
+        found = Path(named).expanduser()
+    else:
+        found = binary.parent / (SERVE + (".exe" if sys.platform == "win32" else ""))
+        if not found.exists():
+            return None
+    if not found.is_file() or not os.access(found, os.X_OK):
+        raise RifeNotInstalled(f"{found} is not an executable file ({'SPRITE_GEN_RIFE_SERVE' if named else f'beside {binary}'}); "
+                               "build it from the binary's release tree (native/rife-serve/build.py, docs/loop-repair.md "
+                               f"section 1), or set SPRITE_GEN_RIFE_SERVE= (empty) to call {BINARY} once per run")
+    return found.resolve()
+
+
+def check_pair() -> tuple[np.ndarray, np.ndarray]:
+    """The two images (CHECK_SIZE, H x W x 3 uint8) a resident binary's frame is checked on against the binary's (`Served`):
+    the same noise under each, and a light disc that moves eleven pixels right and four down between them."""
+    w, h = CHECK_SIZE
+    noise = np.random.default_rng(20221029).integers(0, 256, size=(h, w, 3), dtype=np.uint8)
+    ys, xs = np.mgrid[0:h, 0:w]
+    pair = []
+    for cx, cy in ((24, 24), (35, 28)):
+        image = noise.copy()
+        image[(xs - cx) ** 2 + (ys - cy) ** 2 <= 12 ** 2] = (240, 200, 60)
+        pair.append(image)
+    return pair[0], pair[1]
+
+
+def _stop(proc: subprocess.Popen, log: Any) -> None:
+    """A resident binary's process ended: its stdin closed, so it ends between requests, and stopped where it does not."""
+    if proc.poll() is None:
+        with contextlib.suppress(OSError):
+            proc.stdin.close()  # type: ignore[union-attr]
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                proc.wait(timeout=10)
+    for pipe in (proc.stdin, proc.stdout):
+        with contextlib.suppress(OSError):
+            pipe.close()  # type: ignore[union-attr]
+    with contextlib.suppress(OSError):
+        log.close()
+
+
+class _Process:
+    """One running resident binary, of one augmentation: its process, the file its stderr goes to, and its stop, at exit
+    or once its `Served` is gone."""
+
+    def __init__(self, proc: subprocess.Popen, log: Any, owner: object):
+        self.proc, self.log = proc, log
+        self.stopper = weakref.finalize(owner, _stop, proc, log)
+
+    def alive(self) -> bool:
+        return self.proc.poll() is None
+
+    def tail(self) -> str:
+        """The last of what it wrote on stderr, for a failure's message."""
+        with contextlib.suppress(OSError, ValueError):
+            self.log.flush()
+            self.log.seek(0)
+            return self.log.read().decode("utf-8", "replace").strip()[-300:]
+        return ""
+
+    def close(self, *, kill: bool = False) -> None:
+        """Ended between requests, its stdin closed; or `kill`ed, where a request may still hold its pipes, which close
+        with it."""
+        if not kill:
+            self.stopper()
+            return
+        self.stopper.detach()
+        with contextlib.suppress(OSError):
+            self.proc.kill()
+        with contextlib.suppress(OSError):
+            self.log.close()
+
+
+class Served:
+    """rife-ncnn-vulkan-serve as the runner of a `Rife` (`serve_executable`): the binary's own RIFE — its rife.cpp, warp
+    and shaders, built from the same release tree with a main of its own (native/rife-serve/serve.cpp) — opened once and
+    kept. A call of the binary spends about 1.2 s opening the GPU and loading the model before its frame
+    (docs/loop-repair.md section 1, "The resident binary"); here that is spent once per augmentation, and each run is a
+    request on its stdin: the two images and the float the binary's `atof` reads from the `-s` it is given
+    (`f"{t:.4f}"`), as raw pixels, and the frame back on its stdout.
+
+    One process makes one augmentation's frames, as one call of the binary does (RIFE::load shares the shaders it
+    compiles across a process), so a frame and the passes of a read run in two. Each process, as it starts, is checked
+    against the binary: one frame of `check_pair()` at CHECK_T through both, byte for byte. One whose frame differs —
+    another tree, another ncnn — is stopped and refused (`RifeUnavailable`), never run: a frame it makes is the binary's.
+
+    What a frame depends on (`identity`) — the resident binary's and the binary's files and the model's, by sha256 — is
+    read as its first process starts and held while one runs, as the torch backend holds what it loaded; a process
+    started later that reads other files stops the rest first. While none runs it is read anew. A run that fails, or a
+    process that ends, is a RIFE that fails (`RifeUnavailable`, its stderr's tail); the next run starts it again, as the
+    next call starts the binary again. Counts its starts (`starts`) and the binary's calls its checks made (`checks`)."""
+
+    def __init__(self, serve: Path, binary: Path, model: Path):
+        self.serve, self.binary, self.model = serve, binary, model
+        self.starts = self.checks = 0
+        self.gpu: str | None = None
+        self.running: dict[tuple[str, ...], _Process] = {}
+        self.held: dict[str, object] | None = None
+
+    def frame(self, colour: list[np.ndarray], cover: list[np.ndarray], t: float) -> tuple[np.ndarray, np.ndarray]:
+        return frame_runs(self._run, colour, cover, t)
+
+    def read(self, colour: list[np.ndarray], cover: list[np.ndarray], t: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        return (*frame_runs(self._run, colour, cover, t), pass_runs(self._run, colour, cover, t))
+
+    def describe(self) -> dict[str, str]:
+        return {"kind": SERVE, "serve": str(self.serve), "binary": str(self.binary), "model": self.model.name,
+                **({"gpu": self.gpu} if self.gpu else {})}
+
+    def identity(self) -> dict[str, object]:
+        """The resident binary's, the binary's (its frames are checked against the binary's) and the model's files by
+        sha256, and the model's path: held while a process runs, read now while none does."""
+        if self.held is not None and any(p.alive() for p in self.running.values()):
+            return dict(self.held)
+        return self._files()
+
+    def close(self) -> None:
+        """Ends its processes, between requests; the next run starts one again."""
+        for process in self.running.values():
+            process.close()
+        self.running.clear()
+        self.held = None
+
+    def _files(self) -> dict[str, object]:
+        try:
+            model = sorted(p for p in self.model.iterdir() if p.is_file())
+            return {"backend": "ncnn", "serve": _file_sha256(self.serve), "binary": _file_sha256(self.binary),
+                    "model": str(self.model), "model_files": {p.name: _file_sha256(p) for p in model}}
+        except OSError as exc:
+            raise RifeUnavailable(f"{self.serve.name}: the files it runs from could not be read: {exc}") from exc
+
+    def _failed(self, modes: tuple[str, ...], why: str) -> RifeUnavailable:
+        process = self.running.pop(modes)
+        tail = process.tail()
+        process.close(kill=True)
+        return RifeUnavailable(f"{self.serve.name} {why}" + (f": {tail}" if tail else ""))
+
+    def _exchange(self, modes: tuple[str, ...], request: bytes | None, timeout: float, *, reply: bytes) -> tuple[int, bytes]:
+        """`request` written whole to the process of `modes` (None: nothing) and its next message read back, its header
+        `reply` (b"SGRA": status, n, n bytes; b"SGRS": version, n, n bytes), within `timeout` s; a message that is not
+        one, the process ending, or the time running out is a RIFE that fails, the process stopped."""
+        proc = self.running[modes].proc
+        got: dict[str, Any] = {}
+
+        def talk() -> None:
+            try:
+                if request is not None:
+                    proc.stdin.write(request)  # type: ignore[union-attr]
+                    proc.stdin.flush()  # type: ignore[union-attr]
+                head = proc.stdout.read(12)  # type: ignore[union-attr]
+                if len(head) == 12 and head[:4] == reply:
+                    word, n = struct.unpack("<iI", head[4:])
+                    body = proc.stdout.read(n)  # type: ignore[union-attr]
+                    if len(body) == n:
+                        got["answer"] = (word, body)
+                        return
+                got["error"] = "ended" if len(head) < 12 or head[:4] == reply else f"answered {head[:4]!r}, not {reply!r}"
+            except (OSError, ValueError) as exc:
+                got["error"] = f"could not be reached ({exc})"
+
+        worker = threading.Thread(target=talk, daemon=True)
+        worker.start()
+        worker.join(timeout)
+        if worker.is_alive():
+            raise self._failed(modes, f"made no frame in {timeout:g} s and was stopped")
+        if "answer" not in got:
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                proc.wait(timeout=5)  # its pipes close as it ends: its exit, where it has one
+            code = proc.poll()
+            raise self._failed(modes, f"{got['error']}" + (f" (exit {code})" if code is not None else ""))
+        return got["answer"]
+
+    def _ask(self, modes: tuple[str, ...], x: np.ndarray, y: np.ndarray, t: float) -> np.ndarray:
+        h, w = x.shape[:2]
+        flags = (1 if "-x" in modes else 0) | (2 if "-z" in modes else 0)
+        at = np.float32(float(f"{t:.4f}"))  # the float the binary's atof reads from its -s
+        request = b"SGRQ" + struct.pack("<II", w, h) + at.tobytes() + struct.pack("<I", flags) + x.tobytes() + y.tobytes()
+        status, body = self._exchange(modes, request, CALL_TIMEOUT_SECONDS, reply=b"SGRA")
+        if status != 0:
+            raise RifeUnavailable(f"{self.serve.name} failed: {body.decode('utf-8', 'replace')[-300:]}")
+        if len(body) != w * h * 3:
+            raise self._failed(modes, f"answered {len(body)} bytes for a {w} x {h} frame")
+        return np.frombuffer(body, np.uint8).reshape(h, w, 3).copy()
+
+    def _start(self, modes: tuple[str, ...]) -> None:
+        """The process of `modes` running: started where it is not, and checked against the binary as it starts."""
+        process = self.running.get(modes)
+        if process is not None:
+            if process.alive():
+                return
+            self.running.pop(modes).close()
+        files = self._files()
+        if self.held != files:  # another binary or model under the processes running: they stop, what is held is read anew
+            self.close()
+            self.held = files
+        log = tempfile.TemporaryFile()
+        try:
+            proc = subprocess.Popen([str(self.serve), "-m", str(self.model), *modes], stdin=subprocess.PIPE,
+                                    stdout=subprocess.PIPE, stderr=log)
+        except OSError as exc:
+            log.close()
+            raise RifeUnavailable(f"{self.serve.name} could not be started: {exc}") from exc
+        self.running[modes] = _Process(proc, log, self)
+        self.starts += 1
+        version, name = self._exchange(modes, None, SERVE_START_SECONDS, reply=b"SGRS")
+        if version != SERVE_PROTOCOL:
+            raise self._failed(modes, f"speaks protocol {version}, this engine {SERVE_PROTOCOL}: build it again from "
+                                      "native/rife-serve (docs/loop-repair.md section 1)")
+        self.gpu = name.decode("utf-8", "replace")
+        self._check(modes)
+
+    def _check(self, modes: tuple[str, ...]) -> None:
+        """The process of `modes` checked against the binary: `check_pair()` at CHECK_T through both, byte for byte; one
+        whose frame differs is stopped and refused."""
+        a, b = check_pair()
+        made = self._ask(modes, a, b, CHECK_T)
+        with tempfile.TemporaryDirectory(prefix="sprite-gen-rife-") as td:
+            self.checks += 1
+            want = np.asarray(_call(self.binary, self.model, Image.fromarray(a, "RGB"), Image.fromarray(b, "RGB"), CHECK_T,
+                                    Path(td), modes))
+        if not np.array_equal(made, want):
+            apart = np.abs(made.astype(np.int16) - want.astype(np.int16)).max(axis=-1)
+            self.running.pop(modes).close(kill=True)
+            raise RifeUnavailable(f"{self.serve.name}'s check frame (augmentation {' '.join(modes) or 'none'}) differs from "
+                                  f"{self.binary.name}'s on {int((apart > 0).sum())} of {apart.size} pixels, by up to "
+                                  f"{int(apart.max())}: it is not built from {BINARY} {RELEASE}'s tree "
+                                  "(native/rife-serve/build.py), or runs on another GPU; rebuild it, or set "
+                                  f"SPRITE_GEN_RIFE_SERVE= (empty) to call {BINARY} once per run")
+
+    def _run(self, x: np.ndarray, y: np.ndarray, t: float, modes: tuple[str, ...] | None) -> np.ndarray:
+        modes = tta() if modes is None else modes
+        self._start(modes)
+        return self._ask(modes, x, y, t)
+
+
 class Unreadable(ValueError):
     """Bytes that are not a request or an answer between a `RemoteRunner` and its executor (`unpack`), or a request or an
     answer that is not what it is to be (`_asked`, `RemoteRunner`): the message names why, and where reading the bytes
@@ -1497,9 +1763,11 @@ class Rife:
     times it ran RIFE (`calls`): the binary's calls, or the torch backend's runs.
 
     What runs it is its runner, which makes a frame whole from what `inputs` gives it (`frame`: two runs; `read`: two
-    runs and the sixteen passes) and names what its frames depend on (`identity`): `Binary` for the binary,
-    `rife_torch.TorchRunner`, or `RemoteRunner` for the torch backend on a GPU elsewhere. `Rife()` takes the one
-    `backend()` and `executor()` name; `Rife(binary, model)` is the binary at those paths; `Rife(runner=...)` any other."""
+    runs and the sixteen passes) and names what its frames depend on (`identity`): `Binary` for the binary, `Served` for
+    the binary's RIFE kept open, `rife_torch.TorchRunner`, or `RemoteRunner` for the torch backend on a GPU elsewhere.
+    `Rife()` takes the one `backend()` and `executor()` name — for the binary, the resident one where
+    `serve_executable()` finds it; `Rife(binary, model)` is the binary at those paths, called once per run;
+    `Rife(runner=...)` any other."""
 
     def __init__(self, binary: Path | None = None, model: Path | None = None, *, runner: object | None = None):
         if runner is None:
@@ -1508,7 +1776,9 @@ class Rife:
             elif (named := executor()) is not None:
                 runner = RemoteRunner(executor_send(named), named)
             elif backend() == "ncnn":
-                runner = Binary(*locate())
+                binary, model = locate()
+                serve = serve_executable(binary)
+                runner = Binary(binary, model) if serve is None else Served(serve, binary, model)
             else:
                 runner = torch_runner()
         self.runner = runner
@@ -1537,9 +1807,13 @@ class Rife:
         return {**self.runner.describe(), "tta": " ".join(self.tta)}  # type: ignore[attr-defined]
 
     def counts(self) -> dict[str, int]:
-        """The runs it made, as a report names them: the binary's calls (`binary_calls`), or the torch backend's runs
-        (`runs`) and, on an executor, the calls of its send (`executor_calls`, the probe one of them)."""
+        """The runs it made, as a report names them: the binary's calls (`binary_calls`), or the runs (`runs`) of the
+        resident binary — with the times it started (`serve_starts`) and the binary's calls its checks made
+        (`binary_calls`) — or of the torch backend, and, on an executor, the calls of its send (`executor_calls`, the probe
+        one of them)."""
         counted = {"binary_calls" if isinstance(self.runner, Binary) else "runs": self.calls}
+        if isinstance(self.runner, Served):
+            counted.update(serve_starts=self.runner.starts, binary_calls=self.runner.checks)
         if isinstance(self.runner, RemoteRunner):
             counted["executor_calls"] = self.runner.calls
         return counted
