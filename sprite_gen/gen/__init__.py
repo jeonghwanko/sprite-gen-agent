@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Modified for sprite-gen-agent (pose-plan GPT motion; machine-readable outcomes; see NOTICE).
+# Modified for sprite-gen-agent (pose-plan GPT motion; machine-readable outcomes; --chroma-method; see NOTICE).
 """Unified image generation layer for sprite-gen.
 
 Single source of truth for provider-backed image generation: codex (`image_gen`,
@@ -30,7 +30,8 @@ strategy unless `--alpha-mode` overrides it.
 CLI:
     sprite-gen gen --provider codex|grok|openai --prompt "..." --out DEST.png
         [--ref REF.png ...] [--transparent [--alpha-mode auto|native|chroma]
-        [--chroma-key magenta|green]] [--white-check CHECK.png] [--model ID]
+        [--chroma-key magenta|green] [--chroma-method ycbcr|dominance]]
+        [--white-check CHECK.png] [--model ID]
         [--aspect-ratio 1:1] [--quality low|medium|high|xhigh|max|auto]
         [--resolution 1k|1.5k|2k] [--layout-guide [figure|ui-kit]]
         [--report REPORT.json] [--keep-session]
@@ -454,10 +455,12 @@ def generate_image(
     workdir: Path | None = None,
     decontam: str = "off",
     layout_guide: bool | str | None = False,
+    chroma_method: str = chroma_mod.CHROMA_METHOD_YCBCR,
 ) -> GenResult:
     """Generate one image and return a GenResult. Raises SystemExit on any failure.
 
-    `layout_guide`: "figure" (or True) attaches the one-slot figure guide, "ui-kit" the UI kit layout."""
+    `layout_guide`: "figure" (or True) attaches the one-slot figure guide, "ui-kit" the UI kit layout.
+    `chroma_method`: the matte a chroma-keyed image is keyed with (`chroma.key_transparent`'s `method`)."""
     guide_kind = layout_guide_kind(layout_guide)
     if guide_kind == "ui-kit":
         ui_kit_guide_size(aspect_ratio)
@@ -465,6 +468,13 @@ def generate_image(
         raise SystemExit(f"gen: unknown --decontam {decontam!r}; expected off|auto|palette")
     if decontam == "palette" and not transparent:
         raise SystemExit("gen: --decontam applies to the chroma key of a --transparent image; add --transparent")
+    if chroma_method not in chroma_mod.CHROMA_METHODS:
+        raise SystemExit(f"gen: unknown --chroma-method {chroma_method!r}; "
+                         f"expected {'|'.join(chroma_mod.CHROMA_METHODS)}")
+    if chroma_method == chroma_mod.CHROMA_METHOD_DOMINANCE and decontam != "off":
+        # before the provider is called: the two can never run together, and a paid generation must not end here
+        raise SystemExit(f"gen: --decontam {decontam} re-explains the YCbCr matte's edge, and --chroma-method "
+                         "dominance has no such pass; pass --decontam off, or --chroma-method ycbcr to decontaminate")
     prompt = (prompt or "").strip()
     if not prompt:
         raise SystemExit("gen: empty prompt; pass --prompt or --prompt-file")
@@ -616,7 +626,7 @@ def generate_image(
             }
         elif strategy == TRANSPARENCY_CHROMA:
             chroma_stats = chroma_mod.key_transparent(raw, out, key=chroma_key, white_check=white_check,
-                                                      decontam=decontam)
+                                                      decontam=decontam, method=chroma_method)
             alpha_stats = {"strategy": TRANSPARENCY_CHROMA, "strategy_source": strategy_source,
                            **ref_stats, **chroma_stats}
         else:
@@ -787,6 +797,7 @@ def _generate(args: argparse.Namespace) -> dict[str, Any]:
         workdir=args.workdir,
         decontam=str(getattr(args, "decontam", None) or "off"),
         layout_guide=getattr(args, "layout_guide", None),
+        chroma_method=str(getattr(args, "chroma_method", None) or chroma_mod.CHROMA_METHOD_YCBCR),
     ))
     payload = result.to_dict()
     # `provider` in the payload is always the backend that actually generated the
@@ -879,6 +890,15 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
         "applies (chroma strategy, a subject interior); palette demands it",
     )
     parser.add_argument("--chroma-key", choices=sorted(chroma_mod.KEYS), default="magenta")
+    parser.add_argument(
+        "--chroma-method",
+        choices=chroma_mod.CHROMA_METHODS,
+        default=chroma_mod.CHROMA_METHOD_YCBCR,
+        help="the matte a chroma-keyed image is keyed with; it matters only when the chroma strategy runs "
+        "(grok, --alpha-mode chroma, or auto with --ref). ycbcr (default) is the frame extractor's YCbCr matte; "
+        "dominance keys only pixels where the key's channels dominate, so white and black areas stay on "
+        "Grok's desaturated green. dominance has no --decontam pass and refuses one",
+    )
     parser.add_argument("--facing", choices=(*facing_mod.FACINGS, "preserve"), default="preserve", help="with --ref: required direction; preserve (default) leaves prompt and pixels unchanged")
     parser.add_argument("--facing-fix", choices=facing_mod.FIXES, default="none", help="with --ref and --facing: record only (none, default), or opt into mirror / one regen")
     parser.add_argument("--direction", choices=handed_mod.VIEWS, help="draw the still at this sprite view: the engine's view sentence is added to the prompt (side and diagonal views also take --facing right|left)")
