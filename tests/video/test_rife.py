@@ -8,6 +8,7 @@ PATH or the install root; tests/conftest.py); the locating rules need no binary 
 
 from __future__ import annotations
 
+import shutil
 import stat
 import sys
 from pathlib import Path
@@ -246,6 +247,23 @@ def test_real_rife_makes_the_frame_between_in_colour_and_alpha():
     rgb = np.asarray(mid)[..., :3][a > 0.9]
     assert np.abs(rgb.mean(axis=0) - (200, 60, 40)).max() < 12  # unpremultiplied back to the body colour
     assert interpolate.made == 1
+
+
+@pytest.mark.real_rife
+def test_real_rife_reads_the_model_alike_with_crlf_or_lf_line_ends(tmp_path):
+    """The Windows zip ships flownet.param with CRLF line ends, the macOS and Ubuntu zips with LF, and `sprite-gen rife
+    install` installs it with LF everywhere (`rife.pinned_bytes`): the binary makes the same frame from either, byte for
+    byte (measured too on an RTX 4060 under Windows, 2026-11-07, on three of tests/fixtures/rife-walkers)."""
+    binary, model = rife.locate()
+    lf = rife.pinned_bytes("flownet.param", (model / "flownet.param").read_bytes())
+    frames = []
+    for ends in (b"\n", b"\r\n"):
+        copy = tmp_path / ends.hex() / rife.MODEL
+        copy.mkdir(parents=True)
+        (copy / "flownet.param").write_bytes(lf.replace(b"\n", ends))
+        shutil.copyfile(model / "flownet.bin", copy / "flownet.bin")
+        frames.append(rife.Rife(binary, copy)(_disc(40), _disc(72), 0.5).tobytes())
+    assert frames[0] == frames[1]
 
 
 @pytest.mark.slow

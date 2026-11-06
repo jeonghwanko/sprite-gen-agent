@@ -28,7 +28,8 @@ BINARY = rife.installed_binary(Path("."), PLATFORM).name
 MODEL_FILES = {"flownet.param": b"param\n", "flownet.bin": b"bin\n"}
 
 
-def _release_zip(tmp_path: Path, *, model: bool = True, platform: str = PLATFORM) -> Path:
+def _release_zip(tmp_path: Path, *, model: bool = True, platform: str = PLATFORM,
+                 files: dict[str, bytes] = MODEL_FILES) -> Path:
     path = tmp_path / rife_install.zip_name(platform)
     top, binary = f"rife-ncnn-vulkan-{rife.RELEASE}-{platform}", rife.installed_binary(Path("."), platform).name
     with zipfile.ZipFile(path, "w") as zf:
@@ -37,7 +38,7 @@ def _release_zip(tmp_path: Path, *, model: bool = True, platform: str = PLATFORM
         zf.writestr(f"{top}/LICENSE", "MIT\n")
         zf.writestr(f"{top}/README.md", "readme\n")
         if model:
-            for name, data in MODEL_FILES.items():
+            for name, data in files.items():
                 zf.writestr(f"{top}/{rife.MODEL}/{name}", data)
         zf.writestr(f"{top}/rife-v4/flownet.bin", "another model\n")  # not what the engine runs
         zf.writestr(f"{top}/{rife.MODEL}/../../escape.txt", "outside\n")
@@ -151,6 +152,62 @@ def test_a_zip_whose_model_is_not_the_pinned_one_installs_nothing(pinned, tmp_pa
     monkeypatch.setattr(rife, "MODEL_SHA256", {**rife.MODEL_SHA256, "flownet.bin": "0" * 64}, raising=False)
     with pytest.raises(SystemExit, match=r"flownet.bin has sha256 [0-9a-f]{64}, expected 0{64}.*nothing was installed"):
         rife_install.install(zip_path=pinned, platform=PLATFORM, run_check=False, backend=backend)
+    assert not (tmp_path / "data" / "rife" / TOP).exists()
+
+
+# The fixture model as each release zip ships it: the Windows zip's flownet.param with CRLF line ends, the others' with LF
+# (`rife.MODEL_TEXT`); flownet.bin alike in all three.
+PARAM_LF = b"7767517\n2 2\nInput in0 0 1 in0\nConvolution conv0 1 1 in0 out0 0=8 1=3\n"
+LINE_ENDS = {"lf": PARAM_LF, "crlf": PARAM_LF.replace(b"\n", b"\r\n")}
+
+
+def _pinned_to(monkeypatch, tmp_path: Path, param: bytes, *, bin_: bytes = MODEL_FILES["flownet.bin"]) -> Path:
+    """A release zip whose model is `param` and `bin_`, the zip pinned, the model's pins those of PARAM_LF and
+    MODEL_FILES' flownet.bin."""
+    (tmp_path / "model-zip").mkdir()
+    path = _release_zip(tmp_path / "model-zip", files={"flownet.param": param, "flownet.bin": bin_})
+    monkeypatch.setitem(rife_install.ZIP_SHA256, PLATFORM, hashlib.sha256(path.read_bytes()).hexdigest())
+    monkeypatch.setattr(rife, "MODEL_SHA256", {"flownet.param": hashlib.sha256(PARAM_LF).hexdigest(),
+                                               "flownet.bin": hashlib.sha256(MODEL_FILES["flownet.bin"]).hexdigest()})
+    return path
+
+
+@pytest.mark.parametrize("ends", sorted(LINE_ENDS))
+def test_the_param_installs_as_the_pinned_lf_bytes_from_a_zip_with_either_line_ends(pinned, tmp_path, monkeypatch, ends):
+    """The Windows zip ships flownet.param with CRLF line ends, the macOS and Ubuntu zips with LF (sha256 28df14d5… and
+    72456959…, measured 2026-11-07): the same text, checked with LF ones and installed so — the same bytes on every
+    platform, which the engine reads back as pinned and a second run finds complete. A zip with LF has nothing turned."""
+    zipped = _pinned_to(monkeypatch, tmp_path, LINE_ENDS[ends])
+    report = rife_install.install(zip_path=zipped, platform=PLATFORM, run_check=False)
+    model = tmp_path / "data" / "rife" / TOP / rife.MODEL
+    assert report["installed"] == "now"
+    assert report["line_ends_turned"] == ([f"{rife.MODEL}/flownet.param"] if ends == "crlf" else [])
+    assert (model / "flownet.param").read_bytes() == PARAM_LF
+    assert (model / "flownet.bin").read_bytes() == MODEL_FILES["flownet.bin"]
+    assert rife.model_bytes(model) == {"flownet.param": PARAM_LF, "flownet.bin": MODEL_FILES["flownet.bin"]}
+    assert rife.locate() == ((tmp_path / "data" / "rife" / TOP / BINARY).resolve(), model.resolve())
+    assert rife_install.install(platform=PLATFORM, run_check=False)["installed"] == "already"
+
+
+def test_a_crlf_param_whose_text_is_not_the_pinned_one_installs_nothing(pinned, tmp_path, monkeypatch):
+    """Line ends are all that is turned: a CRLF param of another text is refused, named with the sha256 it has read with LF
+    line ends, the one expected and the file's own."""
+    other = LINE_ENDS["crlf"].replace(b"0=8", b"0=9")
+    zipped = _pinned_to(monkeypatch, tmp_path, other)
+    lf, own = hashlib.sha256(other.replace(b"\r\n", b"\n")).hexdigest(), hashlib.sha256(other).hexdigest()
+    with pytest.raises(SystemExit, match=rf"flownet.param has sha256 {lf}, expected {rife.MODEL_SHA256['flownet.param']} "
+                                         rf"\(.*\), read with its CRLF line ends as LF \(the file as it is: sha256 {own}\).*"
+                                         "nothing was installed"):
+        rife_install.install(zip_path=zipped, platform=PLATFORM, run_check=False)
+    assert not (tmp_path / "data" / "rife" / TOP).exists()
+
+
+def test_flownet_bin_is_weights_and_never_has_its_line_ends_turned(pinned, tmp_path, monkeypatch):
+    """A CR LF pair in flownet.bin is two bytes of a number: a bin that would be the pinned one with CRLF turned to LF is
+    another model, refused as it is."""
+    zipped = _pinned_to(monkeypatch, tmp_path, PARAM_LF, bin_=MODEL_FILES["flownet.bin"].replace(b"\n", b"\r\n"))
+    with pytest.raises(SystemExit, match=r"flownet.bin has sha256 [0-9a-f]{64}, expected [0-9a-f]{64} \([^)]*\); install"):
+        rife_install.install(zip_path=zipped, platform=PLATFORM, run_check=False)
     assert not (tmp_path / "data" / "rife" / TOP).exists()
 
 
