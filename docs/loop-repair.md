@@ -20,7 +20,7 @@ subheadings: its parts are list items opening with a bold label, so search for t
 
 | Question | Where |
 |---|---|
-| Is RIFE installed, which backend runs, which variables set it | [§1](#1-rife--what-runs-where-and-what-it-costs): [the torch backend](#the-torch-backend-sprite_gen_rife_backendtorch), [a GPU elsewhere](#a-gpu-elsewhere-sprite_gen_rife_executor), [install](#install--sprite-gen-rife-install), [without RIFE](#without-rife) |
+| Is RIFE installed, which backend runs, which variables set it | [§1](#1-rife--what-runs-where-and-what-it-costs): [the torch backend](#the-torch-backend-sprite_gen_rife_backendtorch), [a GPU elsewhere](#a-gpu-elsewhere-sprite_gen_rife_executor), [the resident binary](#the-resident-binary-rife-ncnn-vulkan-serve), [install](#install--sprite-gen-rife-install), [without RIFE](#without-rife) |
 | Why these settings: speed and quality measured | [where](#where--measured-2026-10-03), [which setting](#which-setting--measured-2026-10-15), [decision](#decision), [licences](#licences) |
 | A frame of a loop jumps; `--repair`, `--unfixed` | [§2](#2-jump-frames--video-loop---repair-auto), then [the flow reading](#the-flow-reading--a-frame-off-the-walks-way-not-a-large-step) |
 | A part rushes on its way | [the eased retime](#the-eased-retime--a-part-that-rushes-on-its-way) |
@@ -84,6 +84,7 @@ and a GPU offered for compute alone (CUDA with no Vulkan driver) has none. It is
 | `SPRITE_GEN_RIFE_MODEL` | a `rife-v4.6` directory | beside the binary (`ncnn`); the install root's (`torch`) |
 | `SPRITE_GEN_RIFE_TTA` | `-x`, `-z`, both, or empty | `-x -z`, for both backends |
 | `SPRITE_GEN_RIFE_EXECUTOR` | `module:attr`, the host's send to a GPU elsewhere (torch backend; below) | unset: in this process |
+| `SPRITE_GEN_RIFE_SERVE` | the resident binary's path, or empty for none (the binary's backend; below) | `rife-ncnn-vulkan-serve` beside the binary, where it is there |
 
 Nothing falls back. With torch chosen the engine neither looks for the binary nor runs it. A device is
 not chosen for you and not traded for another: `cuda` where PyTorch finds no CUDA is refused, naming
@@ -167,6 +168,73 @@ member of the archive is read whole, so its CRC-32 is checked before its array i
 damaged on the way does not read, and hands on no other pixels. Reports name the executor:
 `interpolator` reads `kind` `rife-torch`, `executor`, and the executor's `device` and `gpu`; the
 overlapped wrap counts `runs` and `executor_calls`.
+
+#### The resident binary: `rife-ncnn-vulkan-serve`
+
+A call of the binary opens the GPU and loads the model before its one frame, and an alignment (section 4) calls it
+twice a frame, one frame at a time. Measured on office-stable (NVIDIA RTX 4060, Linux, driver 580, the release binary,
+2026-11-06):
+
+| One call of the binary | Time |
+|---|---|
+| a 32 × 32 pair, `-x -z` | 1.22 to 1.27 s, 0.95 to 0.99 s of it in the kernel |
+| a 960 × 961 pair, no augmentation | 1.24 to 1.28 s |
+| a 960 × 961 pair, `-x -z` | 1.66 to 1.76 s |
+
+So 1.2 s of every call is its start, and a frame's own work is about 0.45 s with `-x -z` and 0.03 s without; the GPU
+sits near idle. The binary's folder mode (`-i`) loads the model once for a whole folder, but it makes fixed fractions of
+neighbouring files (output i of n at i × files ÷ n), and an alignment asks for its own pairs at its own fractions, each
+after reading the frame before.
+
+`rife-ncnn-vulkan-serve` is the binary with another `main` (`native/rife-serve/serve.cpp`): the release's RIFE class,
+warp and shaders, built as a second executable of the release's own CMake project with its ncnn
+(`native/rife-serve/build.py`, which refuses any commit but the release's a7532fc and its ncnn's b4ba207). It opens the
+GPU and loads the model as it starts, then makes frame after frame sent on its stdin: `RIFE::process`, handed the pixels
+the binary's decoder hands it (RGB; BGR on Windows, as WIC decodes) and the float the binary's `atof` reads from the
+`-s` the engine gives it (`f"{t:.4f}"`). Between frames it gives back what a frame left cached on the GPU, as the
+binary's exit does, and holds the model and its pipelines only. One process makes one augmentation's frames, as one call
+does: `RIFE::load` keeps the shaders it compiles in statics the whole process shares, so a second RIFE of another
+augmentation in the same process would run the first one's shaders. A read's sixteen passes, with no augmentation, run
+in a second process.
+
+The engine takes it where `SPRITE_GEN_RIFE_SERVE` names it, or where `rife-ncnn-vulkan-serve` (`.exe` on Windows) is
+beside the binary; set empty, the binary is called once per run as before. One named and not there is refused, not
+passed over. Its frames are not taken on its word: each process, as it starts, makes one frame of a check pair (72 × 56
+noise with a disc that moves 11 pixels right and 4 down, at 0.375) that the binary makes as well, and one whose bytes
+differ is stopped and refused, naming on how many pixels and by how much; it never runs in the binary's place. That
+costs one call of the binary per process. A frame it refuses (a fraction the binary refuses) is a RIFE that fails, and it
+makes the next; a process that ends, or makes no frame in `CALL_TIMEOUT_SECONDS`, is a RIFE that fails with its stderr's
+last words, and the next run starts it again, as the next call starts the binary again.
+
+What its frames depend on (the RIFE's identity, which `--between-cache` keys frames on) is the resident binary's, the
+binary's and the model's files by SHA-256, read as its first process starts and held while one runs; a process started
+later that reads other files stops the rest first. Reports name it: `interpolator.kind` is `rife-ncnn-vulkan-serve`,
+with its `gpu`; the overlapped wrap counts its `runs`, `serve_starts`, and the checks' `binary_calls`.
+
+Measured on office-stable as above, the release binary against the resident binary built there (2026-11-06):
+
+- **The same bytes.** 78 frames between 13 neighbouring pairs of three filmed walks and runs (960 × 961), at 0.25, 1/3,
+  0.5, 0.5625 and 0.65 with `-x -z` and at 0.375 with none: every colour and coverage run the release binary's, byte for
+  byte. The two alignments below wrote the same frames, strips and animations, pixel for pixel, and the same reports
+  but for what names the interpolator.
+- **Time** (`video-cycle-align --length 16` on a copy of each loop, wall clock; the torch backend on the same GPU, CUDA,
+  for comparison):
+
+| | binary | resident binary | torch backend |
+|---|---|---|---|
+| a walk loop, 20 frames made | 89.6 s, 69.2 s of it in 40 calls | 39.8 s | 47.2 s |
+| a walk cut, `--multi-cycle warn`, 101 frames made | 446.2 s, 349.3 s of it in 202 calls | 182.2 s | 221.2 s |
+
+`sprite-gen rife install` does not install it: no release ships it, and sprite-gen ships no binaries. It is built where
+the release's own build tools are — git, CMake, a C++ compiler, the Vulkan headers and loader (on macOS the Vulkan SDK's
+MoltenVK, `-- -DUSE_STATIC_MOLTENVK=ON`) — and put beside the binary, its check frame made at the end:
+
+```bash
+.venv/bin/python native/rife-serve/build.py                  # beside the binary the engine runs
+.venv/bin/python native/rife-serve/build.py --out DIR -- -DVulkan_INCLUDE_DIR=… -DVulkan_LIBRARY=…
+```
+
+Built and measured on Linux (x86-64, NVIDIA) only, so far.
 
 ### Install — `sprite-gen rife install`
 
@@ -408,6 +476,7 @@ took 8.4 s. The T4 lane runs the torch tests on CUDA for a release (docs/release
 | ncnn | BSD 3-Clause | github.com/Tencent/ncnn |
 
 | sprite-gen's torch backend (`sprite_gen/video/rife_torch.py`) | MIT notices in `NOTICE`: the IFNet written again from Practical-RIFE `IFNet_HDv3.py` and `warplayer.py`, © 2021 hzwer; the augmentation from rife-ncnn-vulkan's `RIFE::process_v4`, © 2020 nihui | Practical-RIFE f6b5132 (2022-09-26); rife-ncnn-vulkan 20221029 |
+| The resident binary (`native/rife-serve/serve.cpp`, Apache-2.0) | built with rife-ncnn-vulkan's RIFE class (MIT, © 2020 nihui) and its ncnn (BSD 3-Clause); notice in `NOTICE` | rife-ncnn-vulkan 20221029 (a7532fc), ncnn b4ba207 |
 | PyTorch (the `torch` extra) | BSD 3-Clause | github.com/pytorch/pytorch |
 
 sprite-gen ships none of the binaries, weights or PyTorch: its torch backend is code written again from
