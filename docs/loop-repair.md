@@ -234,7 +234,83 @@ MoltenVK, `-- -DUSE_STATIC_MOLTENVK=ON`) — and put beside the binary, its chec
 .venv/bin/python native/rife-serve/build.py --out DIR -- -DVulkan_INCLUDE_DIR=… -DVulkan_LIBRARY=…
 ```
 
-Built and measured on Linux (x86-64, NVIDIA) only, so far.
+**On Windows** (x86-64) it builds with Visual Studio's C++ tools and CMake, and needs no Vulkan SDK. The release's
+Windows build compiled against the headers of Vulkan SDK 1.2.162.0, which the tag `v1.2.162` of Vulkan-Headers holds, and
+links the loader every Vulkan driver installs, `vulkan-1.dll`, through an import library made from that DLL. Its shaders
+need no compiler at build time: the release's CMake project puts their GLSL in headers, and ncnn's glslang compiles them
+as the binary runs. In a Developer PowerShell for VS:
+
+```powershell
+git clone --depth 1 --branch v1.2.162 https://github.com/KhronosGroup/Vulkan-Headers.git
+"LIBRARY vulkan-1`nEXPORTS" | Set-Content vulkan-1.def
+(dumpbin /exports C:\Windows\System32\vulkan-1.dll | Select-String '^\s+\d+\s+[0-9A-F]+\s+[0-9A-F]+\s+(\w+)').Matches |
+  ForEach-Object { $_.Groups[1].Value } | Add-Content vulkan-1.def
+lib /nologo /def:vulkan-1.def /machine:x64 /out:vulkan-1.lib
+.venv\Scripts\python native\rife-serve\build.py -- -A x64 "-DVulkan_INCLUDE_DIR=$PWD\Vulkan-Headers\include" "-DVulkan_LIBRARY=$PWD\vulkan-1.lib"
+```
+
+It runs with the OpenMP runtime the release zip puts beside the binary (`vcomp140.dll`); it loads nothing else but
+`vulkan-1.dll`. MSVC does not build it byte for byte the same twice (the executable carries its build time), so a
+build is known by its check frame, not by its hash.
+
+Measured on Windows 11 (NVIDIA RTX 3050 Laptop GPU, 4 GB, driver 545.92; Visual Studio 2026, MSVC 14.51, CMake 4.3; the
+release binary from the Windows zip; 2026-11-07):
+
+- **The same bytes.** Its check frame was the binary's, and a build with the turn to BGR and back taken out of
+  `serve.cpp` was refused (3,395 of 4,032 pixels, by up to 138): Windows needs the turn, and it is right. 66 frames
+  between 11 neighbouring pairs of the two loops below (960 × 961), at the fractions above: every colour and coverage
+  run the release binary's, byte for byte. The two alignments wrote the same frames, strips and animations (49 and 71
+  files), pixel for pixel, and the same reports but for what names the interpolator.
+- **Time** (as above, on copies of the same two loops):
+
+| | binary | resident binary |
+|---|---|---|
+| a walk loop, 20 frames made | 257.4 s, 151.3 s of it in 40 calls | 152.9 s |
+| a walk cut, `--multi-cycle warn`, 101 frames made | 1,075.9 s, 750.1 s of it in 202 calls | 567.0 s |
+
+A call of the binary takes 3.7 to 3.8 s here, twice office-stable's, and a frame through the resident binary 2.6 s
+(`-x -z`, colour and coverage, on this 4 GB laptop GPU): the walk cut's frames took 801.0 s through the binary and
+259.5 s through the resident binary. The rest of the alignment, on this laptop's CPU, took 275 s and 308 s of the two.
+
+**On macOS** (Apple M2 Pro, macOS 26.6, Xcode 26's clang 17; 2026-11-07) it builds, and the engine refuses it: no
+binary built there today makes the release binary's frames. The release's own `rife-ncnn-vulkan`, built from the same
+tree beside it (`cmake --build <work>/build --target rife-ncnn-vulkan`) with the MoltenVK the release linked, differs
+from the release binary as much as the resident binary does — on the check pair, 475 of 4,032 pixels by 1 with
+`-x -z`, 1,105 by up to 2 with none — and the resident binary differs by those 475 whether it links that MoltenVK or
+MoltenVK 1.1.1 built from its tag. Building ncnn without `-Ofast` and `-ffast-math` moves the count (438 and 1,032) and
+closes nothing: the release's own toolchain, Xcode of October 2022, made other bits. A newer
+MoltenVK differs more, since MoltenVK translates the shaders into Metal's language as the binary runs: 1.4.2 differs from
+the release on 856 pixels by up to 2 (895 with `MVK_CONFIG_FAST_MATH_ENABLED=0`, 856 with 1 or 2).
+
+The MoltenVK the release linked is 1.1.1, from Vulkan SDK 1.2.162.0, which LunarG no longer serves; the Internet
+Archive keeps LunarG's image (`web.archive.org/web/20211122084145id_/https://sdk.lunarg.com/sdk/download/1.2.162.0/mac/vulkansdk-macos-1.2.162.0.dmg`,
+317,464,227 bytes, SHA-256 `d5d25d801eb83130db1e41fa6c09f125ba57e7503ae81553182ba7196f32a0a3`, signed by LunarG's
+Developer ID, team 4777T3625D, and notarized: `codesign --verify` and `spctl` accept it). MoltenVK 1.1.1 built from its
+tag (`fetchDependencies --macos`, `make macos`) makes the same frames as the SDK's, once the operators of
+`MVKSmallVector`'s iterators are made `const` for Xcode 26's libc++. Either is linked as the release linked it:
+
+```bash
+.venv/bin/python native/rife-serve/build.py -- -DUSE_STATIC_MOLTENVK=ON -DCMAKE_OSX_ARCHITECTURES=arm64 \
+  -DVulkan_INCLUDE_DIR="$SDK/MoltenVK/include" \
+  -DVulkan_LIBRARY="$SDK/MoltenVK/MoltenVK.xcframework/macos-arm64_x86_64/libMoltenVK.a"
+```
+
+Against a binary built beside it — the same tree, toolchain and MoltenVK, named by `SPRITE_GEN_RIFE` — the resident
+binary makes the same bytes: its check frame, the 66 frames between the probe pairs above (all 132 runs), and two
+alignments that wrote the same 49 and 71 files. Measured that way, on the same two loops:
+
+| | binary built beside it | resident binary |
+|---|---|---|
+| a walk loop, 20 frames made | 60.9 s, 35.2 s of it in 40 calls | 49.0 s |
+| a walk cut, `--multi-cycle warn`, 101 frames made | 303.3 s, 180.9 s of it in 202 calls | 243.0 s |
+
+A call there costs 0.9 s, little of it the start (the check pair's call, 72 × 56: 0.3 s), so a Mac gains a fifth, not a
+half; the release binary took 62.6 s and 307.1 s. A Mac takes the resident binary only with a binary of the same build
+in the release's place, whose frames are not the release's (by a level or two); until that is decided, a Mac calls the
+release binary per run.
+
+Its frames are the release binary's on Linux (x86-64, NVIDIA) and Windows (x86-64, NVIDIA), as measured; on macOS
+(Apple silicon), only a binary built beside it.
 
 ### Install — `sprite-gen rife install`
 
