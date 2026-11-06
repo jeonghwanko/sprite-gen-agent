@@ -232,7 +232,7 @@ sprite-gen gen \
   --prompt "…"            # or --prompt-file PROMPT.txt
   --out DEST.png \
   [--ref REF.png ...]     # repeatable; Grok accepts up to five references, openai up to sixteen
-  [--transparent [--alpha-mode auto|native|chroma] [--chroma-key magenta|green]] \
+  [--transparent [--alpha-mode auto|native|chroma] [--chroma-key magenta|green] [--chroma-method ycbcr|dominance]] \
   [--white-check CHECK.png] \
   [--aspect-ratio 1:1]    # grok and openai, e.g. 1:1 or 16:9; grok single-ref edits inherit the source ratio; openai maps it to a gpt-image size
   [--quality low|medium|high|xhigh|max|auto] # billed effort; openai takes the range, grok takes auto/low/medium
@@ -396,6 +396,12 @@ strategy it can execute, and `--alpha-mode auto` (the default) follows it:
   nothing left to cut. A caller generates again.
 - `--alpha-mode chroma` on codex is for prompts that already carry a key background: the native request is **not** added to the prompt
   and the raw is keyed like a grok run.
+- **`--chroma-method` picks the matte the chroma strategy keys with.** `ycbcr` (the default) is the frame
+  extractor's YCbCr matte. Grok paints the green it is asked for as a desaturated green, and that matte erases a
+  character's white and black areas with it. `dominance` keys only the pixels where the key's channels dominate,
+  so neutrals stay. It has no `--decontam` pass and refuses one before the provider is called. `alpha.method`
+  and `chroma.method` name the matte that ran. A native run ignores the flag. See
+  [chroma-alpha](chroma-alpha.md#gen---chroma-method-dominance--keying-a-still-by-the-keys-dominance-opt-in).
 - `--alpha-mode native` on a `chroma`-only provider **fails loud before any model
   call** — a strategy the backend cannot execute is not a fallback candidate, and
   native → chroma never happens silently either (the prompt shapes are different).
