@@ -352,7 +352,7 @@ def test_cli_writes_element_pngs_and_a_report_the_pack_reads(tmp_path):
     out = tmp_path / "ui"
     assert ui_kit.main(["--sheet", str(sheet), "--out-dir", str(out)]) == 0
     assert sheet.read_bytes() == before
-    report = json.loads((out / "ui-kit.json").read_text())
+    report = json.loads((out / "ui-kit.json").read_text(encoding="utf-8"))
     assert report["kind"] == "sprite-gen-ui-kit" and report["version"] == 1
     assert report["sheet"] == str(sheet.resolve()) and report["sheet_size"] == [SIZE, SIZE]
     assert list(report["elements"]) == FRAMES
@@ -369,7 +369,7 @@ def test_cli_writes_element_pngs_and_a_report_the_pack_reads(tmp_path):
             crop = cleaned.crop((rect["x"], rect["y"], rect["x"] + rect["w"], rect["y"] + rect["h"]))
             assert element.convert("RGBA").tobytes() == crop.tobytes()
     request = tmp_path / "game.json"
-    request.write_text(json.dumps({"version": 2, "ui": {"kit": "ui/ui-kit.json"}}))
+    request.write_text(json.dumps({"version": 2, "ui": {"kit": "ui/ui-kit.json"}}), encoding="utf-8")
     result = game_pack.pack(request, tmp_path / "pack")
     for name, entry in report["elements"].items():
         packed = result["ui"]["nine_slice"][name]
@@ -408,12 +408,12 @@ def test_a_report_anywhere_names_the_written_pngs_and_packs_the_same(tmp_path):
             args += ["--report", str(root / report)]
         assert cli.main(args) == 0
         report_path = root / (report or f"{out_dir}/ui-kit.json")
-        written = json.loads(report_path.read_text())
+        written = json.loads(report_path.read_text(encoding="utf-8"))
         assert written["elements"]["panel"]["file"] == panel
         for name, entry in written["elements"].items():
             assert (report_path.parent / entry["file"]).resolve() == (root / out_dir / f"{name}.png").resolve()
         request = root / "game.json"
-        request.write_text(json.dumps({"version": 2, "ui": {"kit": report_path.relative_to(root).as_posix()}}))
+        request.write_text(json.dumps({"version": 2, "ui": {"kit": report_path.relative_to(root).as_posix()}}), encoding="utf-8")
         assert cli.main(["game-pack", "--request", str(request), "--out-dir", str(root / "pack")]) == 0
         packs.append({path.name: path.read_bytes() for path in (root / "pack").iterdir()})
     assert len(json.loads(packs[0]["game-pack.json"])["ui"]["nine_slice"]) == len(FRAMES)
@@ -711,12 +711,12 @@ def test_a_squeezed_sheet_missing_several_band_elements_names_those_and_cuts_no_
     image.save(sheet)
     out, report_path = tmp_path / "parts", tmp_path / "reports" / "kit.json"
     assert ui_kit.main(["--sheet", str(sheet), "--out-dir", str(out), "--report", str(report_path)]) == 0
-    written = json.loads(report_path.read_text())
+    written = json.loads(report_path.read_text(encoding="utf-8"))
     assert written["missing"] == PROBE_MISSING
     kept = [name for name in FRAMES + BAND if name not in PROBE_MISSING]
     assert sorted(p.stem for p in out.glob("*.png")) == sorted(kept)
     request = tmp_path / "game.json"
-    request.write_text(json.dumps({"version": 2, "ui": {"kit": "reports/kit.json", "scale": 0.5}}))
+    request.write_text(json.dumps({"version": 2, "ui": {"kit": "reports/kit.json", "scale": 0.5}}), encoding="utf-8")
     packed = game_pack.pack(request, tmp_path / "pack")
     assert sorted(packed["ui"]["nine_slice"]) == sorted(kept)
 
@@ -991,7 +991,7 @@ def test_a_sheet_of_small_drawings_that_fits_the_layout_one_way_is_cut_as_drawn(
     sheet, out = tmp_path / "uikit.png", tmp_path / "ui"
     image.save(sheet)
     assert ui_kit.main(["--sheet", str(sheet), "--out-dir", str(out)]) == 0
-    written = json.loads((out / "ui-kit.json").read_text())
+    written = json.loads((out / "ui-kit.json").read_text(encoding="utf-8"))
     assert written["missing"] == report["missing"] and written["elements"] == report["elements"]
     assert sorted(p.name for p in out.iterdir()) == sorted([f"{name}.png" for name in drawn] + ["ui-kit.json"])
 
@@ -1122,7 +1122,7 @@ def test_the_cli_names_the_missing_elements_and_writes_no_png_for_them(tmp_path,
     image.save(sheet)
     out = tmp_path / "ui"
     assert ui_kit.main(["--sheet", str(sheet), "--out-dir", str(out)]) == 0
-    report = json.loads((out / "ui-kit.json").read_text())
+    report = json.loads((out / "ui-kit.json").read_text(encoding="utf-8"))
     assert report["missing"] == ["pip_off", "joystick_knob"]
     kept = [name for name in FRAMES + BAND if name not in report["missing"]]
     assert sorted(p.name for p in out.iterdir()) == sorted([f"{name}.png" for name in kept] + ["ui-kit.json"])
@@ -1183,11 +1183,11 @@ def test_a_kit_is_written_into_a_new_or_empty_out_dir_and_one_that_holds_anythin
         run(tmp_path / "new", missing="panel")
     assert not (tmp_path / "new").exists()
     report = tmp_path / "kit.json"
-    report.write_text("{}\n")
+    report.write_text("{}\n", encoding="utf-8")
     with pytest.raises(SystemExit, match=rf"^ui-kit: --report {re.escape(str(report.resolve()))} already exists; "
                                          "a report outside --out-dir is written to a new path$"):
         run(tmp_path / "elements", report=report)
-    assert report.read_text() == "{}\n" and not (tmp_path / "elements").exists()
+    assert report.read_text(encoding="utf-8") == "{}\n" and not (tmp_path / "elements").exists()
     # no hidden directory or temp file of a run is left anywhere
     assert [path.name for path in tmp_path.rglob(".*") if path.name != ".hidden"] == []
 
@@ -1545,7 +1545,7 @@ def pack_tall_kit(tmp_path, scale, **kwargs):
     image.save(sheet)
     assert ui_kit.main(["--sheet", str(sheet), "--out-dir", str(tmp_path / "ui")]) == 0
     request = tmp_path / "game.json"
-    request.write_text(json.dumps({"version": 2, "ui": {"kit": "ui/ui-kit.json", "scale": scale}}))
+    request.write_text(json.dumps({"version": 2, "ui": {"kit": "ui/ui-kit.json", "scale": scale}}), encoding="utf-8")
     out = tmp_path / "pack"
     return game_pack.pack(request, out), out
 
@@ -1593,7 +1593,7 @@ def test_a_packed_fill_is_stored_as_its_bar_frames_content_area(tmp_path, scale)
         assert np.array_equal(cells[:, :left], ends[:, :left])
         assert np.array_equal(cells[:, rect["w"] - right:], ends[:, resized.width - right:])
     # round parts keep their aspect: scaled by `scale` alone, never stretched
-    report = json.loads((tmp_path / "ui" / "ui-kit.json").read_text())
+    report = json.loads((tmp_path / "ui" / "ui-kit.json").read_text(encoding="utf-8"))
     for name in ("pip_on", "pip_off", "joystick_base", "joystick_knob"):
         entry, source = nine[name], report["elements"][name]["size"]
         assert entry["stretch"] == "none" and set(entry["insets"].values()) == {0}
@@ -1609,7 +1609,7 @@ def test_a_partial_kit_packs_only_the_elements_it_holds(tmp_path, missing):
     assert set(nine) == set(FRAMES + BAND) - gone
     # the manifest names only frames the atlas holds, and the written manifest is the one returned
     assert {name for page in result["textures"] for name in page["frames"]} == {f"ui/{name}" for name in nine}
-    assert json.loads((out / "game-pack.json").read_text())["ui"]["nine_slice"] == nine
+    assert json.loads((out / "game-pack.json").read_text(encoding="utf-8"))["ui"]["nine_slice"] == nine
 
 
 @pytest.mark.parametrize("size", [TALL])
@@ -1620,7 +1620,7 @@ def test_packed_kit_keeps_ornament_fringes_out_of_the_stretched_middle(tmp_path,
     image.save(sheet)
     assert ui_kit.main(["--sheet", str(sheet), "--out-dir", str(tmp_path / "ui")]) == 0
     request = tmp_path / "game.json"
-    request.write_text(json.dumps({"version": 2, "ui": {"kit": "ui/ui-kit.json", "scale": scale}}))
+    request.write_text(json.dumps({"version": 2, "ui": {"kit": "ui/ui-kit.json", "scale": scale}}), encoding="utf-8")
     out = tmp_path / "pack"
     result = game_pack.pack(request, out)
     frames = {name: (page, record) for page in result["textures"] for name, record in page["frames"].items()}
@@ -1695,12 +1695,12 @@ def test_a_square_sheet_is_split_and_packed_as_before_the_tall_sheet(tmp_path):
     sheet = tmp_path / "uikit.png"
     image.save(sheet)
     assert ui_kit.main(["--sheet", str(sheet), "--out-dir", str(tmp_path / "ui")]) == 0
-    text = (tmp_path / "ui" / "ui-kit.json").read_text().replace(json.dumps(str(sheet.resolve())), '"<sheet>"')
+    text = (tmp_path / "ui" / "ui-kit.json").read_text(encoding="utf-8").replace(json.dumps(str(sheet.resolve())), '"<sheet>"')
     assert hashlib.sha256(text.encode()).hexdigest() == SQUARE_FROZEN["report"]
     assert {png.name: pixel_digest(png) for png in sorted((tmp_path / "ui").glob("*.png"))} == SQUARE_FROZEN["elements"]
     for scale, (manifest, pages) in SQUARE_FROZEN["pack"].items():
         request = tmp_path / f"game-{scale}.json"
-        request.write_text(json.dumps({"version": 2, "ui": {"kit": "ui/ui-kit.json", "scale": scale}}))
+        request.write_text(json.dumps({"version": 2, "ui": {"kit": "ui/ui-kit.json", "scale": scale}}), encoding="utf-8")
         out = tmp_path / f"pack-{scale}"
         result = game_pack.pack(request, out)
         assert hashlib.sha256((out / "game-pack.json").read_bytes()).hexdigest() == manifest, scale

@@ -67,9 +67,9 @@ def test_a_loop_whose_foot_is_not_named_is_listed_with_its_two_strike_frames(tmp
     assert all(Path(c["path"]).is_file() for c in entry["candidates"])
     assert entry["settle"] == [f"--foot {dirs[2]}=left", f"--foot {dirs[2]}=right"]
     assert any("cycle/frame-000.png" in w and f"--foot {dirs[2]}=left|right" in w for w in report["warnings"])
-    written = json.loads((tmp_path / "walk.cycle-align.json").read_text())
+    written = json.loads((tmp_path / "walk.cycle-align.json").read_text(encoding="utf-8"))
     assert written["unnamed_feet"] == report["unnamed_feet"]
-    assert json.loads((dirs[2] / "walk.strip.json").read_text())["cycle_align"]["start_foot_source"] is None
+    assert json.loads((dirs[2] / "walk.strip.json").read_text(encoding="utf-8"))["cycle_align"]["start_foot_source"] is None
 
 
 @pytest.mark.slow
@@ -92,7 +92,7 @@ def test_the_foot_given_for_one_loop_turns_that_loop_alone_half_a_cycle(tmp_path
         assert (dirs[2] / "cycle" / f"frame-{k:03d}.png").read_bytes() == before["W"][f"frame-{(k + N // 2) % N:03d}.png"]
     assert report["unnamed_feet"] == [] and report["feet_given"] == {str(dirs[2]): "left"}
     assert not any("foot not named" in line for line in report["warnings"])
-    assert json.loads((dirs[2] / "walk.strip.json").read_text())["cycle_align"]["start_foot_source"] == "given"
+    assert json.loads((dirs[2] / "walk.strip.json").read_text(encoding="utf-8"))["cycle_align"]["start_foot_source"] == "given"
     # told again, the same loop: the answer is about the loop as filmed, so nothing moves
     turned = _bytes(dirs[2])
     align.align_set(dirs, views=VIEWS, feet={"W": "left"})
@@ -166,7 +166,7 @@ def test_a_stopped_set_carries_the_foot_given_into_the_command_that_settles_it(t
     with pytest.raises(align.CycleSuspects) as stop:
         align.align_set(dirs, views=VIEWS, feet={"W": "left"}, report_path=tmp_path / "r.json")
     assert f"--foot {dirs[2]}=left" in stop.value.command
-    assert json.loads((tmp_path / "r.json").read_text())["feet_given"] == {str(dirs[2]): "left"}
+    assert json.loads((tmp_path / "r.json").read_text(encoding="utf-8"))["feet_given"] == {str(dirs[2]): "left"}
 
 
 def _rows_for_set(root: Path) -> list[dict]:

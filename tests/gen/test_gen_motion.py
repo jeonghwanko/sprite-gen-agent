@@ -279,7 +279,7 @@ def test_canvas_reconciliation_preserves_original_and_relative_y_without_generat
     result = motion.generate(run, manifest, "contact-a", reconcile=True, normalize_canvas=True, runner=fake_runner(seen))
     assert len(seen) == 1 and result["status"] == "awaiting_review"
     assert (folder / "source-output.png").read_bytes() == source_bytes
-    receipt = json.loads((folder / "attempt.json").read_text())
+    receipt = json.loads((folder / "attempt.json").read_text(encoding="utf-8"))
     assert receipt["canvas_transform"]["scale"] == 0.5
     assert receipt["canvas_transform"]["translation"] == [0, 0]
     with Image.open(folder / "output.png") as image:
@@ -331,15 +331,15 @@ def test_review_needs_observations_and_exact_binding(tmp_path):
     _, run, manifest = setup_run(tmp_path)
     first = generate_accept(run, manifest, "contact-a")
     path = Path(first["review"])
-    value = json.loads(path.read_text())
+    value = json.loads(path.read_text(encoding="utf-8"))
     value["checks"]["contacts"]["observation"] = ""
-    path.write_text(json.dumps(value))
+    path.write_text(json.dumps(value), encoding="utf-8")
     with pytest.raises(ValueError, match="observations required"):
         motion.generate(run, manifest, "contact-b", runner=fake_runner())
     review(path)
-    value = json.loads(path.read_text())
+    value = json.loads(path.read_text(encoding="utf-8"))
     value["binding"]["output_sha256"] = "wrong"
-    path.write_text(json.dumps(value))
+    path.write_text(json.dumps(value), encoding="utf-8")
     with pytest.raises(ValueError, match="review is stale"):
         motion.generate(run, manifest, "contact-b", runner=fake_runner())
 
@@ -390,15 +390,15 @@ def test_resolution_failure_never_uses_retry_budget_and_stale_review_is_archived
         motion.generate(run, manifest, 'contact-a', runner=fake_runner(seen, size=(256, 256)))
     folder = run / 'poses/pose-contact-a/attempt-01'
     old = {'binding': {'output_sha256': 'old'}, 'reviewer': 'old review'}
-    (folder / 'review.json').write_text(json.dumps(old))
+    (folder / 'review.json').write_text(json.dumps(old), encoding="utf-8")
     with pytest.raises(ValueError, match='structural rejection'):
         motion.generate(run, manifest, 'contact-a', retry=True, runner=fake_runner(seen))
     assert len(seen) == 1 and not (folder.parent / 'attempt-02').exists()
     motion.generate(run, manifest, 'contact-a', reconcile=True, normalize_canvas=True)
     assert len(list(folder.glob('review-before-*.json'))) == 1
-    new = json.loads((folder / 'review.json').read_text())
+    new = json.loads((folder / 'review.json').read_text(encoding="utf-8"))
     assert all(c['status'] == 'unverified' for c in new['checks'].values())
-    assert 'reason' not in json.loads((folder / 'attempt.json').read_text())
+    assert 'reason' not in json.loads((folder / 'attempt.json').read_text(encoding="utf-8"))
 
 
 def test_timeout_does_not_call_provider_twice(tmp_path, monkeypatch):
@@ -423,7 +423,7 @@ def test_tool_trace_preserves_actual_inputs_without_session_context(tmp_path):
         {'type': 'response_item', 'payload': {'type': 'custom_tool_call_output', 'output': 'large base64 image'}},
     ]
     path = tmp_path / 'rollout.jsonl'
-    path.write_text('\n'.join(json.dumps(r) for r in rows))
+    path.write_text('\n'.join(json.dumps(r) for r in rows), encoding="utf-8")
     trace = _image_tool_trace(path)
     assert trace['status'] == 'captured' and trace['calls'][0]['input'] == source
     assert 'private unrelated' not in json.dumps(trace) and 'large base64' not in json.dumps(trace)

@@ -54,7 +54,7 @@ def opaque_box(image) -> tuple[int, int, int, int]:
 
 
 def report(out: Path, prefix: str = "") -> dict:
-    return json.loads((out / f"{prefix}slice-sheet.json").read_text())
+    return json.loads((out / f"{prefix}slice-sheet.json").read_text(encoding="utf-8"))
 
 
 def test_sheet_scale_keeps_the_drawn_heights_relative_and_the_default_still_evens_them(tmp_path):

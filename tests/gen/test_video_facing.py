@@ -95,7 +95,7 @@ def test_video_cli_passes_side_policy(tmp_path, monkeypatch):
     report = tmp_path / "report.json"
     assert video.main(["--image", str(FIXTURE), "--prompt", "idle", "--out", str(tmp_path / "out.mp4"),
                        "--direction", "side", "--facing", "right", "--report", str(report)]) == 0
-    data = json.loads(report.read_text())
+    data = json.loads(report.read_text(encoding="utf-8"))
     assert data["facing"]["requested"] == "right" and "facing right" in data["prompt"]
     assert data["facing"]["fix"] == "none" and data["facing"]["action"] == "none"
     uploaded = base64.b64decode(api.calls[1][3]["image"]["url"].split(",", 1)[1])

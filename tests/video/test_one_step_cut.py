@@ -78,7 +78,7 @@ def _keyed(root: Path, cycle: float = CYCLE, frames: int = FRAMES) -> Path:
 def _cut(out: Path, keyed: Path, *extra: str) -> dict:
     assert loop.main(["--frames-dir", str(keyed), "--out-dir", str(out), "--state", "walk",
                       "--anchor", "motion-auto", "--repair", "off", *extra]) == 0
-    return json.loads((out / "loop.loop.report.json").read_text())
+    return json.loads((out / "loop.loop.report.json").read_text(encoding="utf-8"))
 
 
 def _arm_miss(start: int, length: int, cycle: float = CYCLE) -> float:
@@ -175,7 +175,7 @@ def test_steps_1_cuts_the_walk_again_two_steps_long_where_its_arms_close(slow, t
     assert cycle["step_screen"]["leg_peaks"] == {"by": "stride", "count": 2}
     assert cycle["coverage"] == round((FRAMES - cycle["length"]) / cycle["length"], 4) > loop.COVERAGE_MIN
     assert cycle["choice"] == "closure" and not any("two steps long" in line for line in report["jolt"]["warnings"])
-    strip = json.loads((tmp_path / "out" / "loop.strip.json").read_text())
+    strip = json.loads((tmp_path / "out" / "loop.strip.json").read_text(encoding="utf-8"))
     assert strip["steps"] == 2 and strip["cycle_frames"] == cycle["length"]
 
 
@@ -185,7 +185,7 @@ def test_steps_2_keeps_the_cut_and_records_the_count(slow, tmp_path):
     report = _cut(tmp_path / "out", keyed, "--steps", "2")
     assert {k: report["cycle"][k] for k in ("start", "length")} == {k: first["cycle"][k] for k in ("start", "length")}
     assert report["cycle"]["steps"] == {"count": 2, "by": "given", "given": 2}
-    assert json.loads((tmp_path / "out" / "loop.strip.json").read_text())["steps"] == 2
+    assert json.loads((tmp_path / "out" / "loop.strip.json").read_text(encoding="utf-8"))["steps"] == 2
     for name in ("loop.strip.png", "loop.gif", "loop.webp"):
         assert (tmp_path / "out" / name).read_bytes() == (root / "out" / name).read_bytes()
 

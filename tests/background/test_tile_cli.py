@@ -39,7 +39,7 @@ def test_module_publishes_png_and_report_without_sprite_run(source, tmp_path):
         assert image.mode == "RGBA"
         assert image.size == (8, 13)
         assert image.getpixel((0, 0)) == (32, 71, 117, 97)
-    metrics = json.loads(report.read_text())
+    metrics = json.loads(report.read_text(encoding="utf-8"))
     assert metrics["source"] == str(source)
     assert metrics["output"] == str(out)
     assert metrics["status"] == "pass"
@@ -112,7 +112,7 @@ def test_report_may_not_alias_output(source, tmp_path):
 def test_canonical_publication_stages_complete_set_and_surfaces_failure(source, tmp_path, monkeypatch):
     out, report = tmp_path / "tile.png", tmp_path / "tile.json"
     out.write_bytes(b"previous PNG")
-    report.write_text("previous report")
+    report.write_text("previous report", encoding="utf-8")
     called = []
 
     def fail_second_staging_file(*args, **kwargs):
@@ -130,7 +130,7 @@ def test_canonical_publication_stages_complete_set_and_surfaces_failure(source, 
         runio.release_run_dir_lock(tmp_path)
     assert len(called) == 2
     assert out.read_bytes() == b"previous PNG"
-    assert report.read_text() == "previous report"
+    assert report.read_text(encoding="utf-8") == "previous report"
     assert not list(tmp_path.glob("*.tmp"))
 
 
@@ -147,7 +147,7 @@ def test_partial_lock_acquisition_is_undone_when_the_second_directory_is_held(so
     out, report = tmp_path / "a" / "tile.png", tmp_path / "b" / "tile.json"
     report.parent.mkdir()
     foreign = report.parent / runio.LOCK_FILENAME
-    foreign.write_text(json.dumps({"pid": os.getpid(), "owner": "synthetic-other-writer"}))
+    foreign.write_text(json.dumps({"pid": os.getpid(), "owner": "synthetic-other-writer"}), encoding="utf-8")
     before = foreign.read_bytes()
     with pytest.raises(SystemExit, match="locked by synthetic-other-writer"):
         tile.run(source=source, out=out, report=report, period=8, overlap=3)

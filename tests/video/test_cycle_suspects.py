@@ -182,9 +182,9 @@ def test_video_loop_writes_the_state_and_the_record(tmp_path):
     _clip(keyed, 73, 15, twos=True)
     rep = loop_mod.run_loop(keyed, tmp_path / "out", fps=FPS, state="walk", min_len=None, max_len=None, n_out=None, seam_max=2.0,
                             name="walk", report_path=None, anchor="none", repair="off")
-    saved = json.loads(Path(rep["report"]).read_text())["cycle"]["fundamental"]
+    saved = json.loads(Path(rep["report"]).read_text(encoding="utf-8"))["cycle"]["fundamental"]
     assert saved["period"] == rep["cycle"]["period_global"] == 30 and saved["suspects"][0]["period"] == 15
-    meta = json.loads((tmp_path / "out" / "walk.strip.json").read_text())
+    meta = json.loads((tmp_path / "out" / "walk.strip.json").read_text(encoding="utf-8"))
     assert meta["state"] == "walk" and meta["cycle_frames"] == 30
 
 
@@ -314,8 +314,8 @@ def test_a_set_with_a_suspect_is_stopped_before_anything_is_rewritten(tmp_path, 
     assert stopped.value.command == command and command in message and "--multi-cycle warn" in message
     assert ("video-loop" in message) is kept  # a held cut that may be one step is cut again; a return alone is not
     assert [(d / "walk.strip.png").read_bytes() for d in dirs] == before
-    assert all(not (d / "cycle.json").exists() and "cycle_align" not in json.loads((d / "walk.strip.json").read_text()) for d in dirs)
-    report = json.loads((tmp_path / "align.json").read_text())
+    assert all(not (d / "cycle.json").exists() and "cycle_align" not in json.loads((d / "walk.strip.json").read_text(encoding="utf-8")) for d in dirs)
+    report = json.loads((tmp_path / "align.json").read_text(encoding="utf-8"))
     assert report["applied"] is False and report["refused"] == "cycle-suspects" and report["command"] == command
     [entry] = report["suspects"]
     assert entry["dir"] == str(dirs[2]) and entry["status"] == "stopped" and entry["length"] == 30
@@ -435,5 +435,5 @@ def test_video_set_skips_a_suspect_state_with_a_warning(tmp_path, capsys):
     assert walk["ok"] is True and walk["applied"] is False and walk["reason"] == "cycle-suspects"
     assert "back-walk may hold more than one cycle" in walk["why"] and walk["suspects"][0]["dir"] == str(tmp_path / "back-walk" / "loop")
     assert [r["loop"]["n_out"] for r in rows] == [24, 24, 30]
-    assert json.loads((tmp_path / "walk.cycle-align.json").read_text())["refused"] == "cycle-suspects"
+    assert json.loads((tmp_path / "walk.cycle-align.json").read_text(encoding="utf-8"))["refused"] == "cycle-suspects"
     assert "cycles not aligned" in capsys.readouterr().err

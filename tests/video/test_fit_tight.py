@@ -200,8 +200,8 @@ def test_video_set_fit_tight_reaches_canvas_and_frames(tmp_path: Path, monkeypat
 
     def video(image, prompt, out, report, **kw):
         Path(out).write_bytes(b"x")
-        Path(report).write_text("{}")
-        Path(kw["log"]).write_text("")
+        Path(report).write_text("{}", encoding="utf-8")
+        Path(kw["log"]).write_text("", encoding="utf-8")
         return 0
 
     monkeypatch.setattr(batch_mod.facing_mod.vision, "grok_inspect", lambda *a, **kw: ("right", {}))

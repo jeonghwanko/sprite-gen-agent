@@ -105,11 +105,11 @@ def test_spec_loader_reads_loop_from_the_strip_sidecar(tmp_path: Path) -> None:
                 im.putpixel((x, y), (200, 60, 60, 255))
     strip, meta = loop_mod.build_strip(frames, cycle_seconds=0.2, kind="one-shot")
     strip.save(tmp_path / "jump.strip.png")
-    (tmp_path / "jump.strip.json").write_text(json.dumps(meta))
+    (tmp_path / "jump.strip.json").write_text(json.dumps(meta), encoding="utf-8")
     assert load_asset(tmp_path / "jump.strip.json").metadata["loop"] is False
     # a sidecar from before the key existed is a loop, as it always was
     meta.pop("loop"); meta.pop("kind")
-    (tmp_path / "jump.strip.json").write_text(json.dumps(meta))
+    (tmp_path / "jump.strip.json").write_text(json.dumps(meta), encoding="utf-8")
     assert load_asset(tmp_path / "jump.strip.json").metadata["loop"] is True
 
 

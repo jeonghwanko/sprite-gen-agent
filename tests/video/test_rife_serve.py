@@ -25,7 +25,7 @@ def _stand_in(path: Path, python: str) -> Path:
         cmd = path.with_suffix(".cmd")
         cmd.write_text(f'@"{sys.executable}" "{script}" %*\r\n', encoding="utf-8")
         return cmd
-    path.write_text(f"#!/bin/sh\nexec \"{sys.executable}\" \"{script}\" \"$@\"\n")
+    path.write_text(f"#!/bin/sh\nexec \"{sys.executable}\" \"{script}\" \"$@\"\n", encoding="utf-8")
     path.chmod(path.stat().st_mode | stat.S_IXUSR)
     return path
 
@@ -117,7 +117,7 @@ def _disc(cx: int, size: tuple[int, int] = (64, 48)) -> Image.Image:
 
 
 def _asked(log: Path) -> list[list[str]]:
-    return [line.split() for line in log.read_text().splitlines()] if log.exists() else []
+    return [line.split() for line in log.read_text(encoding="utf-8").splitlines()] if log.exists() else []
 
 
 def test_the_resident_binary_beside_the_binary_is_taken(monkeypatch, tmp_path):

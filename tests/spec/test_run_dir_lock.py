@@ -1021,7 +1021,7 @@ def test_a_holder_killed_inside_the_run_dirs_kernel_lock_leaves_it_to_no_child(t
         holder = subprocess.run([sys.executable, "-c", _KILLED_IN_THE_GUARD, *map(str, (run, marks, dead, mode))],
                                 stdout=said, stderr=said, timeout=60)
     assert holder.returncode == -signal.SIGKILL, (marks / "holder.txt").read_text(encoding="utf-8")
-    child = int((marks / "child").read_text()) if mode == "fork" else None
+    child = int((marks / "child").read_text(encoding="utf-8")) if mode == "fork" else None
     try:
         assert child is None or runio._pid_alive(child), "주인이 fork 한 자식이 writer 보다 먼저 끝났다"
         writer = subprocess.run([sys.executable, "-c", _TIMED_WRITER, str(run)], capture_output=True, encoding="utf-8",
@@ -1083,7 +1083,7 @@ def _writer_after_the_holder_is_killed_with_a_child_alive(run: Path, marks: Path
         while not ((marks / "inside").exists() and (marks / "child").exists()):
             assert holder.poll() is None and time.monotonic() < deadline, (marks / "holder.txt").read_text(encoding="utf-8")
             time.sleep(0.01)
-        child = int((marks / "child").read_text())
+        child = int((marks / "child").read_text(encoding="utf-8"))
         holder.kill()
         holder.wait(timeout=10)
         assert runio._pid_alive(child), "주인이 fork 한 자식이 writer 보다 먼저 끝났다"

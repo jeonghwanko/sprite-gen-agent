@@ -96,7 +96,7 @@ def test_subset_reextract_preserves_other_states(fixture_run_dir: Path) -> None:
 
     run = fixture_run_dir
     assert run_script("extract_sprite_row_frames.py", "--run-dir", str(run)).returncode == 0
-    states = sorted(json.loads((run / "sprite-request.json").read_text())["states"])
+    states = sorted(json.loads((run / "sprite-request.json").read_text(encoding="utf-8"))["states"])
     assert len(states) >= 2
     target, others = states[0], states[1:]
 
@@ -113,7 +113,7 @@ def test_subset_reextract_preserves_other_states(fixture_run_dir: Path) -> None:
     for rel, digest in before.items():                       # non-target frame bytes preserved
         assert (run / rel).is_file(), f"{rel} deleted by subset re-extract"
         assert hashlib.sha256((run / rel).read_bytes()).hexdigest() == digest
-    manifest = json.loads((run / "frames" / "frames-manifest.json").read_text())
+    manifest = json.loads((run / "frames" / "frames-manifest.json").read_text(encoding="utf-8"))
     assert sorted(row["state"] for row in manifest["rows"]) == states  # manifest keeps all rows
     compose = run_script("compose_sprite_atlas.py", "--run-dir", str(run))
     assert compose.returncode == 0, compose.stdout + compose.stderr  # was exit 1 before the fix
@@ -127,7 +127,7 @@ def test_failed_subset_reextract_preserves_prior_generation(fixture_run_dir: Pat
 
     run = fixture_run_dir
     assert run_script("extract_sprite_row_frames.py", "--run-dir", str(run)).returncode == 0
-    target = sorted(json.loads((run / "sprite-request.json").read_text())["states"])[0]
+    target = sorted(json.loads((run / "sprite-request.json").read_text(encoding="utf-8"))["states"])[0]
 
     before = {str(p.relative_to(run)): hashlib.sha256(p.read_bytes()).hexdigest()
               for p in (run / "frames").rglob("frame-*.png")}
@@ -152,7 +152,7 @@ def test_successful_extract_clears_prior_failure_evidence(fixture_run_dir: Path)
 
     run = fixture_run_dir
     assert run_script("extract_sprite_row_frames.py", "--run-dir", str(run)).returncode == 0
-    target = sorted(json.loads((run / "sprite-request.json").read_text())["states"])[0]
+    target = sorted(json.loads((run / "sprite-request.json").read_text(encoding="utf-8"))["states"])[0]
 
     raw = run / "raw" / f"{target}.png"
     saved = raw.read_bytes()
@@ -236,7 +236,7 @@ def test_commit_generation_rolls_back_both_surfaces_on_evidence_failure(tmp_path
 
     assert (run / "frames" / "walk" / "frame-0.png").read_bytes() == b"WALK_OLD"   # not the new gen
     assert (run / "frames" / "idle" / "frame-0.png").read_bytes() == b"IDLE_OLD"
-    assert json.loads((run / "extract-failure.json").read_text()) == prior_evidence  # evidence intact
+    assert json.loads((run / "extract-failure.json").read_text(encoding="utf-8")) == prior_evidence  # evidence intact
     assert not (run / ".frames.sg-backup").exists()                  # no backup leak
     assert not (run / ".extract-failure.sg-backup").exists()
 
@@ -362,7 +362,7 @@ def test_consumer_fails_loud_on_inconsistent_manifest(fixture_run_dir: Path, mut
     run = fixture_run_dir
     assert run_script("extract_sprite_row_frames.py", "--run-dir", str(run)).returncode == 0
     p = run / "frames" / "frames-manifest.json"
-    m = json.loads(p.read_text()); mutate(m); p.write_text(json.dumps(m), encoding="utf-8")
+    m = json.loads(p.read_text(encoding="utf-8")); mutate(m); p.write_text(json.dumps(m), encoding="utf-8")
 
     r = run_script("compose_sprite_atlas.py", "--run-dir", str(run))
     assert r.returncode != 0, f"consumer accepted inconsistent manifest ({expect})"
@@ -418,7 +418,7 @@ def test_empty_files_generation_fails_loud(fixture_run_dir: Path) -> None:
             if d.is_dir():
                 shutil.rmtree(d)                                      # 0 physical frames
         p = run / "frames" / "frames-manifest.json"
-        m = json.loads(p.read_text())
+        m = json.loads(p.read_text(encoding="utf-8"))
         m["rows"] = [{"state": r["state"], "files": [], "ok": True} for r in m["rows"]]
         p.write_text(json.dumps(m), encoding="utf-8")
 
@@ -451,7 +451,7 @@ def test_unknown_state_row_fails_loud(fixture_run_dir: Path) -> None:
     ghost_dir.mkdir()
     shutil.copy(sorted((run / "frames" / "idle").glob("frame-*.png"))[0], ghost_dir / "frame-0.png")
     p = run / "frames" / "frames-manifest.json"
-    m = json.loads(p.read_text())
+    m = json.loads(p.read_text(encoding="utf-8"))
     m["rows"].append({"state": "ghost", "frames": 1, "files": ["frames/ghost/frame-0.png"], "ok": True})
     p.write_text(json.dumps(m), encoding="utf-8")
 
@@ -468,7 +468,7 @@ def test_frame_count_mismatch_fails_loud(fixture_run_dir: Path) -> None:
     run = fixture_run_dir
     assert run_script("extract_sprite_row_frames.py", "--run-dir", str(run)).returncode == 0
     p = run / "frames" / "frames-manifest.json"
-    m = json.loads(p.read_text())
+    m = json.loads(p.read_text(encoding="utf-8"))
     m["rows"][0]["files"] = m["rows"][0]["files"][:-1]               # drop one; physical still has it
     p.write_text(json.dumps(m), encoding="utf-8")
 

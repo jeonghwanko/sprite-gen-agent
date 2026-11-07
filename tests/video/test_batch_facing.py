@@ -37,14 +37,14 @@ def test_set_facing_reaches_both_real_canvas_and_prompt(tmp_path, offline, facin
     def video(image, prompt, out, report, **kw):
         prompts.append(prompt)
         out.write_bytes(b"test-video")
-        report.write_text(json.dumps({"prompt": prompt}))
+        report.write_text(json.dumps({"prompt": prompt}), encoding="utf-8")
         return 0
     result = batch.run_set(bases={direction: FIXTURE}, states=["attack"], root=tmp_path,
                            character=None, duration=3, resolution="720p", key="green",
                            concurrency=1, force=False, gap=0, facing=facing, video_runner=video, **options)
     assert result["ok"] == 1 and result["facing"] == facing
     assert FIXTURE.read_bytes() == source_bytes
-    canvas = json.loads((tmp_path / f"{direction}-attack" / "canvas.report.json").read_text())
+    canvas = json.loads((tmp_path / f"{direction}-attack" / "canvas.report.json").read_text(encoding="utf-8"))
     if direction == "side":
         assert f"facing {facing}" in prompts[0]
         assert result["items"][0]["facing"]["action"] == ("mirror" if facing == "right" and options else "none")
@@ -66,7 +66,7 @@ def test_changed_facing_cannot_reuse_an_opposite_prompt_clip(tmp_path, offline, 
     def video(image, prompt, out, report, **kw):
         calls.append(1)
         out.write_bytes(b"cached")
-        report.write_text(json.dumps({"prompt": prompt}))
+        report.write_text(json.dumps({"prompt": prompt}), encoding="utf-8")
         return 0
     options = dict(item="side-attack", direction="side", state="attack", base=FIXTURE,
                    root=tmp_path, character=None, duration=3, resolution="720p", key="green",
@@ -123,7 +123,7 @@ def test_parallel_states_share_one_inspection_of_the_side_still(tmp_path, offlin
     monkeypatch.setattr(batch.facing_mod.vision, "grok_inspect", inspect)
     def video(image, prompt, out, report, **kw):
         out.write_bytes(b"test-video")
-        report.write_text(json.dumps({"prompt": prompt}))
+        report.write_text(json.dumps({"prompt": prompt}), encoding="utf-8")
         return 0
     source = FIXTURE.with_name("right.png")
     result = batch.run_set(bases={"side": source}, states=["idle", "attack", "walk"], root=tmp_path,

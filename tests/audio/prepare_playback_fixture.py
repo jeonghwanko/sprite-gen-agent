@@ -25,7 +25,7 @@ def prepare(directory):
     details = processing.export(source, directory, target_lufs=-20, loop=True, crossfade=.25)
     manifest = {'kind':'sprite-gen-sound', 'version':playback.VERSION, 'audio_kind':'bgm',
                 'event':'synthetic.loop', 'loop':True, 'target_lufs':-20, **details}
-    (directory/'sound.json').write_text(json.dumps(manifest, indent=2)+'\n')
+    (directory/'sound.json').write_text(json.dumps(manifest, indent=2)+'\n', encoding="utf-8")
     return manifest
 
 

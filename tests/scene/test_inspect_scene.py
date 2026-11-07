@@ -22,7 +22,7 @@ def frames_asset(tmp_path, name, images, duration=0.1):
         image.save(tmp_path / file)
         entries.append({"file": file, "duration": duration})
     path = tmp_path / f"{name}.json"
-    path.write_text(json.dumps({"kind": "sprite-gen-asset", "version": 1, "frames": entries}))
+    path.write_text(json.dumps({"kind": "sprite-gen-asset", "version": 1, "frames": entries}), encoding="utf-8")
     return path
 
 
@@ -30,7 +30,7 @@ def write_scene(tmp_path, assets, layers, *, width=16, height=16, fps=10, durati
     spec = {"kind": "sprite-gen-scene", "version": 1, "canvas": {"width": width, "height": height, "background": list(background)},
             "fps": fps, "duration": duration, "assets": assets, "layers": layers}
     path = tmp_path / name
-    path.write_text(json.dumps(spec))
+    path.write_text(json.dumps(spec), encoding="utf-8")
     return path
 
 
@@ -158,7 +158,7 @@ def test_run_publishes_the_report_under_the_writer_lock_and_releases_it(tmp_path
     monkeypatch.setattr(module, "release_run_dir_lock", release)
     assert run(spec, out=out, require_loop=True) == 1
     assert calls == [("lock", "scene-inspect"), ("write",), ("release",)]
-    assert json.loads(out.read_text()) == json.loads(capsys.readouterr().out)
+    assert json.loads(out.read_text(encoding="utf-8")) == json.loads(capsys.readouterr().out)
     assert not (out.parent / runio.LOCK_FILENAME).exists()
     calls.clear()
     assert run(spec, out=out) == 0
@@ -194,7 +194,7 @@ def test_run_respects_another_writers_live_lock_without_publishing(tmp_path, cap
     reports = tmp_path / "reports"
     reports.mkdir()
     lock = reports / runio.LOCK_FILENAME
-    lock.write_text(json.dumps({"owner": "synthetic-other-writer", "pid": os.getpid()}))
+    lock.write_text(json.dumps({"owner": "synthetic-other-writer", "pid": os.getpid()}), encoding="utf-8")
     before = lock.read_bytes()
     with pytest.raises(SystemExit, match="locked by synthetic-other-writer"):
         run(spec, out=reports / "inspection.json")
@@ -217,6 +217,6 @@ def test_module_entrypoint_reports_and_signals_a_failed_loop(tmp_path):
                             capture_output=True, encoding="utf-8", check=False)
     assert result.returncode == 1, result.stderr
     report = json.loads(result.stdout)
-    assert report == json.loads(out.read_text())
+    assert report == json.loads(out.read_text(encoding="utf-8"))
     assert report["kind"] == "sprite-gen-scene-inspection" and report["loop"]["seam_pass"] is False
     assert not (tmp_path / runio.LOCK_FILENAME).exists()

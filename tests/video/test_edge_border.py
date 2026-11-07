@@ -267,7 +267,7 @@ def test_o1_a_refused_run_hands_over_no_keyed_frames_and_reports_refused(tmp_pat
         _run(_clip(tmp_path, monkeypatch, files), out)
     assert not (out / "keyed").exists()
     assert sorted(p.name for p in (out / "keyed.refused").glob("*.png")) == [f.name for f in files]
-    report = json.loads((out / "frames.report.json").read_text())
+    report = json.loads((out / "frames.report.json").read_text(encoding="utf-8"))
     assert report["status"] == "refused" and report["error"] == str(info.value)
     assert report["keyed_dir"] is None and report["refused_dir"] == str((out / "keyed.refused").resolve())
     assert report["frames"] == 4 and report["edge_border"]["sides"] == ["top", "left"]
@@ -280,7 +280,7 @@ def test_o2_a_pass_after_a_refusal_leaves_keyed_alone(tmp_path: Path, monkeypatc
     passed = _run(_clip(tmp_path, monkeypatch, _raw(tmp_path / "b", lambda k, image: _bust(image))), out)
     assert passed["status"] == "passed" and passed["keyed_dir"] == str((out / "keyed").resolve())
     assert sorted(p.name for p in out.iterdir()) == ["frames.report.json", "keyed"]
-    assert json.loads((out / "frames.report.json").read_text())["status"] == "passed"
+    assert json.loads((out / "frames.report.json").read_text(encoding="utf-8"))["status"] == "passed"
 
 
 def test_o3_a_pass_over_a_longer_one_holds_its_own_frames_only(tmp_path: Path, monkeypatch) -> None:
@@ -298,7 +298,7 @@ def test_a_frame_keyed_to_no_transparency_is_refused_the_same_way(tmp_path: Path
     with pytest.raises(SystemExit, match="keyed to 0% transparency"):
         _run(_clip(tmp_path, monkeypatch, full), out)
     assert not (out / "keyed").exists() and (out / "keyed.refused" / "frame-0000.png").is_file()
-    assert json.loads((out / "frames.report.json").read_text())["status"] == "refused"
+    assert json.loads((out / "frames.report.json").read_text(encoding="utf-8"))["status"] == "refused"
 
 
 def test_an_argument_error_touches_nothing(tmp_path: Path, monkeypatch) -> None:
@@ -351,7 +351,7 @@ def test_o4_a_cut_refused_after_it_was_written_hands_nothing_over(tmp_path: Path
         _cut(_breathing(tmp_path / "moved", end_offset=10), out)
     assert [n for n in HANDED_OVER if (out / n).exists()] == []
     assert len(list((out / "cycle.refused").glob("frame-*.png"))) == 47
-    assert json.loads((out / "idle.loop.report.json").read_text())["status"] == "failed"
+    assert json.loads((out / "idle.loop.report.json").read_text(encoding="utf-8"))["status"] == "failed"
     # and a pass after it clears the refused cut away
     _cut(_breathing(tmp_path / "good2"), out)
     assert not (out / "cycle.refused").exists() and (out / "idle.gif").is_file()
@@ -363,7 +363,7 @@ def test_o5_a_cut_refused_before_it_was_written_hands_nothing_over(tmp_path: Pat
         _cut(_breathing(tmp_path / "short"), out, cycle_mode="fixed", start=40, length=20)
     assert [n for n in HANDED_OVER if (out / n).exists()] == []
     assert not (out / "cycle.refused").exists()
-    assert json.loads((out / "idle.loop.report.json").read_text())["status"] == "failed"
+    assert json.loads((out / "idle.loop.report.json").read_text(encoding="utf-8"))["status"] == "failed"
 
 
 def test_a_loop_argument_error_touches_nothing(tmp_path: Path) -> None:

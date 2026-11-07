@@ -249,14 +249,14 @@ def _row_runner(*, refuse: set[str] = frozenset(), fail: set[str] = frozenset(),
             on_call(out.stem)
         if out.stem in refuse:
             report.write_text(json.dumps({"ok": False, "provider_submitted": False,
-                                          "errors": [outcome.error("preflight", "gen: reference image not found")]}))
+                                          "errors": [outcome.error("preflight", "gen: reference image not found")]}), encoding="utf-8")
             return outcome.NOT_STARTED_EXIT
         if out.stem in fail:
             report.write_text(json.dumps({"ok": False, "provider_submitted": True,
-                                          "errors": [outcome.error("provider-rate-limited", "(HTTP 429)")]}))
+                                          "errors": [outcome.error("provider-rate-limited", "(HTTP 429)")]}), encoding="utf-8")
             return 1
         Image.new("RGB", (256, 64), (255, 0, 255)).save(out)
-        report.write_text(json.dumps({"provider": "codex", "ok": True, "errors": [], "provider_submitted": True}))
+        report.write_text(json.dumps({"provider": "codex", "ok": True, "errors": [], "provider_submitted": True}), encoding="utf-8")
         return 0
 
     return runner
@@ -306,7 +306,7 @@ def test_a_row_whose_gen_said_it_finished_without_its_image_is_a_provider_failur
 
     def no_image(prompt_file, out, refs, report, *, provider, model, log) -> int:
         log.write_text("fake gen\n", encoding="utf-8")
-        report.write_text(json.dumps({"provider": "codex", "ok": True, "errors": [], "provider_submitted": True}))
+        report.write_text(json.dumps({"provider": "codex", "ok": True, "errors": [], "provider_submitted": True}), encoding="utf-8")
         return 0
 
     monkeypatch.setattr(gen_set, "run_gen_cli", no_image)

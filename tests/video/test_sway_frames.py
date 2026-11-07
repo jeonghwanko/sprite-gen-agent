@@ -59,7 +59,7 @@ def cut(tmp_path, frames):
     directory = tmp_path/'loop'
     directory.mkdir()
     strip.save(directory/'walk.strip.png')
-    (directory/'walk.strip.json').write_text(json.dumps(meta))
+    (directory/'walk.strip.json').write_text(json.dumps(meta), encoding="utf-8")
     return directory, meta
 
 
@@ -74,7 +74,7 @@ def test_the_frames_are_swayed_as_the_strip_cut_from_them_at_scale_1(tmp_path):
     assert cli.main(['video-sway', '--frames', str(src), '--out', str(out), '--region', ','.join(f'{v:g}' for v in TORSO),
                      '--fps', '24', '--on-fold', 'lower']) == 0
     assert sorted(p.name for p in out.iterdir()) == sorted([*FILES, 'sway.json'])
-    record = json.loads((out/'sway.json').read_text())
+    record = json.loads((out/'sway.json').read_text(encoding="utf-8"))
     for key in ('gain', 'dx_px', 'dy_px', 'reach_px', 'body_bob_px', 'fold', 'freq_hz', 'zeta'):
         assert record[key] == strip_record[key], key
     assert record['regions'] == [list(TORSO)] and record['frames'] == N and record['frame_ms'] == 41.67
@@ -105,7 +105,7 @@ def test_the_frame_time_is_the_one_a_strip_meta_writes(tmp_path):
 
 def test_a_loops_cycle_folder_carries_its_own_frame_time(tmp_path):
     loop_dir, _ = cut(tmp_path, [frame(k) for k in range(N)])
-    meta = json.loads((loop_dir/'walk.strip.json').read_text())
+    meta = json.loads((loop_dir/'walk.strip.json').read_text(encoding="utf-8"))
     assert (meta['cycle_frames'], meta['cycle_seconds']) == (N, 1.0)
     cycle = frames_dir(loop_dir/'cycle')
     region = ','.join(f'{v:g}' for v in TORSO)
@@ -113,7 +113,7 @@ def test_a_loops_cycle_folder_carries_its_own_frame_time(tmp_path):
     assert cli.main(['video-sway', '--frames', str(cycle), '--out', str(tmp_path/'b'), '--region', region, '--on-fold', 'lower',
                      '--fps', '24']) == 0
     assert all((tmp_path/'a'/name).read_bytes() == (tmp_path/'b'/name).read_bytes() for name in FILES)
-    assert json.loads((tmp_path/'a'/'sway.json').read_text())['frame_ms'] == 41.67
+    assert json.loads((tmp_path/'a'/'sway.json').read_text(encoding="utf-8"))['frame_ms'] == 41.67
     with pytest.raises(SystemExit, match=r'--fps 30 is a frame of 33\.33 ms.*41\.67 ms'):
         cli.main(['video-sway', '--frames', str(cycle), '--out', str(tmp_path/'c'), '--region', region, '--fps', '30'])
     assert not (tmp_path/'c').exists()
@@ -138,7 +138,7 @@ def test_what_the_frames_path_refuses_it_refuses_before_writing_anything(tmp_pat
     region = ','.join(f'{v:g}' for v in TORSO)
     full = tmp_path/'full'
     full.mkdir()
-    (full/'note.txt').write_text('mine\n')
+    (full/'note.txt').write_text('mine\n', encoding="utf-8")
     cases = [
         (['--out', str(src/'out'), '--fps', '24'], 'out 이 frames 안'),
         (['--out', str(tmp_path), '--fps', '24'], 'frames 가 out 안'),

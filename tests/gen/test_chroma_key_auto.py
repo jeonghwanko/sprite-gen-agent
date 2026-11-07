@@ -202,7 +202,7 @@ def test_request_json_records_the_selection_basis(tmp_path: Path) -> None:
         capture_output=True,
     )
 
-    chroma = json.loads((out_dir / "sprite-request.json").read_text())["chroma_key"]
+    chroma = json.loads((out_dir / "sprite-request.json").read_text(encoding="utf-8"))["chroma_key"]
     assert chroma["selection"] == "auto"
     assert chroma["background"]["mode"] == "flat"
     assert chroma["background"]["hex"] == "#FF00FF"

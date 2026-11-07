@@ -35,7 +35,7 @@ def _video(prompts):
     def video(image, prompt, out, report, **kw):
         prompts[out.parent.name] = prompt
         out.write_bytes(b"test-video")
-        report.write_text(json.dumps({"prompt": prompt}))
+        report.write_text(json.dumps({"prompt": prompt}), encoding="utf-8")
         return 0
     return video
 
@@ -59,7 +59,7 @@ def test_both_facings_film_every_turned_view_twice_from_its_own_still(tmp_path, 
                          ("front_diagonal-right-walk", "right"), ("front_diagonal-left-walk", "left")):
         item = next(i for i in result["items"] if i["item"] == name)
         assert item["turned"] == turned
-        canvas = json.loads((tmp_path / name / "canvas.report.json").read_text())
+        canvas = json.loads((tmp_path / name / "canvas.report.json").read_text(encoding="utf-8"))
         assert canvas["facing"] == turned
         direction = item["direction"]
         assert prompts[name] == batch.build_prompt(direction, "walk", None, facing=turned, handed=WATCH)
@@ -73,7 +73,7 @@ def test_both_facings_film_every_turned_view_twice_from_its_own_still(tmp_path, 
     assert (tmp_path / "side-right.facing.png").read_bytes() == (FIXTURES / "right.png").read_bytes()
     assert dict(offline) == {"front-walk": "right", "side-right-walk": "right", "side-left-walk": "left",
                              "front_diagonal-right-walk": "right", "front_diagonal-left-walk": "left"}
-    table = (tmp_path / "table.md").read_text()
+    table = (tmp_path / "table.md").read_text(encoding="utf-8")
     assert "| side (left) | walk |" in table and "| front | walk |" in table
 
 
@@ -84,7 +84,7 @@ def test_one_facing_keeps_the_item_names_and_table(tmp_path, offline) -> None:
                            gap=0, facing="left", video_runner=_video(prompts))
     assert [i["item"] for i in result["items"]] == ["front_diagonal-attack"]
     assert offline == [("front_diagonal-attack", "left")]  # a left diagonal is cut as a left one
-    assert "| front_diagonal | attack |" in (tmp_path / "table.md").read_text()
+    assert "| front_diagonal | attack |" in (tmp_path / "table.md").read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize("bases,facing,error", [
@@ -126,7 +126,7 @@ def test_a_front_walk_redrawn_mid_step_is_told_where_the_item_is(tmp_path, offli
     def paint(base, prompt, out, report, *, log, provider=None):
         redraws.append(prompt)
         out.write_bytes(base.read_bytes())
-        report.write_text(json.dumps({"prompt": prompt, "refs": [str(base)]}))
+        report.write_text(json.dumps({"prompt": prompt, "refs": [str(base)]}), encoding="utf-8")
         return 0
 
     base = Image.new("RGB", (96, 128), (0, 255, 0))

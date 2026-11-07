@@ -66,7 +66,7 @@ class Painter:
     def __call__(self, base, prompt, out, report, *, log, provider=None):
         self.calls.append(prompt)
         Image.open(base).save(out)
-        report.write_text(json.dumps({"prompt": prompt, "refs": [str(base)], "provider": provider or "stub"}))
+        report.write_text(json.dumps({"prompt": prompt, "refs": [str(base)], "provider": provider or "stub"}), encoding="utf-8")
         return 0
 
 

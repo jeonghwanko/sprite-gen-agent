@@ -442,7 +442,7 @@ def test_video_loop_reads_the_rush_refuses_the_stretch_for_the_legs_beat_and_pla
     cut = [Image.open(p).convert("RGBA") for p in sorted((tmp_path / "keyed").glob("*.png"))][:SHORT]
     for cell, frame in zip(cells, cut):
         assert np.array_equal(np.asarray(Image.open(cell)), np.asarray(frame))
-    written = json.loads((tmp_path / "w.json").read_text())["jump_repair"]["rounds"][-1]
+    written = json.loads((tmp_path / "w.json").read_text(encoding="utf-8"))["jump_repair"]["rounds"][-1]
     assert written["why"] == "ease" and written["rejected_for"] == ["the body off its beat"]
 
 

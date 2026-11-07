@@ -34,19 +34,19 @@ ARTIFACTS = {"strip": "walk.strip.png", "meta": "walk.strip.json", "report": "wa
 
 
 def _cells(paths: dict[str, Path]) -> list[Image.Image]:
-    meta = json.loads(paths["meta"].read_text())
+    meta = json.loads(paths["meta"].read_text(encoding="utf-8"))
     strip = Image.open(paths["strip"]).convert("RGBA")
     return [strip.crop((k * meta["w"], 0, (k + 1) * meta["w"], meta["h"])) for k in range(meta["frames"])]
 
 
 def _write(paths: dict[str, Path], cells: list[Image.Image]) -> None:
     """The strip, GIF and WebP of `cells`, as `video-loop` writes them."""
-    meta = json.loads(paths["meta"].read_text())
+    meta = json.loads(paths["meta"].read_text(encoding="utf-8"))
     strip = Image.new("RGBA", (meta["w"] * len(cells), meta["h"]))
     for k, cell in enumerate(cells):
         strip.paste(cell, (k * meta["w"], 0))
     strip.save(paths["strip"])
-    delay = json.loads(paths["report"].read_text())["delay_ms"]
+    delay = json.loads(paths["report"].read_text(encoding="utf-8"))["delay_ms"]
     save_clean_gif(cells, paths["gif"], duration_ms=delay, loop=0, alpha_threshold=128)
     loop_mod.write_webp(cells, paths["webp"], delay_ms=delay)
 
@@ -86,13 +86,13 @@ def held(tmp_path_factory: pytest.TempPathFactory) -> dict:
     w, h = Image.open(files[0]).size
     frames_report = root / "frames.json"
     frames_report.write_text(json.dumps({"kind": "sprite-gen-video-frames-report", "fps": 24.0, "frames": len(files),
-                                         "width": w, "height": h, "stream_index": 0, "key": "green"}))
+                                         "width": w, "height": h, "stream_index": 0, "key": "green"}), encoding="utf-8")
     clip = root / "clip.mp4"
     subprocess.run(["ffmpeg", "-v", "error", "-framerate", "24", "-i", str(keyed / "%04d.png"), "-c:v", "libx264",
                     "-pix_fmt", "yuv420p", str(clip)], check=True)
     manifest = root / "source.json"
     manifest.write_text(json.dumps(source.manifest(clip=clip, canvas=files[0], frames_report=frames_report, files=files,
-                                                   timestamps=source.timestamps(clip, 0))))
+                                                   timestamps=source.timestamps(clip, 0))), encoding="utf-8")
     inputs = {"source_manifest": manifest, "source_frames_dir": keyed, "source_clip": clip, "source_canvas": files[0],
               "source_frames_report": frames_report}
     return {"cut": out, "inputs": inputs, "keyed": [Image.open(f).convert("RGBA") for f in files]}
@@ -105,11 +105,11 @@ def _loop(held: dict, root: Path, edit=None) -> dict[str, Path]:
     paths = {k: root / name for k, name in ARTIFACTS.items()}
     for k, name in ARTIFACTS.items():
         shutil.copy(held["cut"] / name, paths[k])
-    report = json.loads(paths["report"].read_text())
+    report = json.loads(paths["report"].read_text(encoding="utf-8"))
     report["jump_repair"] = {"replaced": [TARGET], "facing": "right"}
     if edit is not None:
         edit(report)
-    paths["report"].write_text(json.dumps(report, indent=2) + "\n")
+    paths["report"].write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     cells = _cells(paths)
     cells[TARGET] = _smear(cells[TARGET])
     _write(paths, cells)
@@ -122,7 +122,7 @@ def _repair(held: dict, paths: dict[str, Path], root: Path) -> dict:
     args += [a for k, p in held["inputs"].items() for a in ("--" + k.replace("_", "-"), str(p))]
     report = root / "repair.json"
     assert main(["video-loop-repair", *args, "--out-dir", str(root / "candidate"), "--report", str(report)]) == 0
-    return json.loads(report.read_text())
+    return json.loads(report.read_text(encoding="utf-8"))
 
 
 @pytest.mark.slow
@@ -132,7 +132,7 @@ def test_a_held_cut_is_restored_from_its_source_frames_held_again(held, tmp_path
     exactly; `video-loop-repair` restores the smeared cell to the held cut's own cell, the body's height and the row
     its feet stand on included, where the source frame as filmed stands smaller and higher. Before: the held cut was
     refused as `source-processing-unsupported`, and nothing was restored."""
-    report = json.loads((held["cut"] / ARTIFACTS["report"]).read_text())
+    report = json.loads((held["cut"] / ARTIFACTS["report"]).read_text(encoding="utf-8"))
     hold = report["size_hold"]
     assert hold["applied"] is True and hold["feet"]["held"] is True
     as_cut = _cells({k: held["cut"] / name for k, name in ARTIFACTS.items()})

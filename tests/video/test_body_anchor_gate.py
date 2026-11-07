@@ -88,7 +88,7 @@ def _cut(root: Path, keyed: Path, name: str, **kw) -> dict:
 def _refused(root: Path, keyed: Path, name: str, **kw) -> tuple[str, dict]:
     with pytest.raises(SystemExit) as exc:
         _cut(root, keyed, name, **kw)
-    return str(exc.value), json.loads((root / f"{name}.json").read_text())
+    return str(exc.value), json.loads((root / f"{name}.json").read_text(encoding="utf-8"))
 
 
 @pytest.mark.slow

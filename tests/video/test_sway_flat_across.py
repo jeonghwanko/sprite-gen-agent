@@ -27,7 +27,7 @@ def files(directory):
 def swayed(tmp_path, name, *args):
     directory = strip_dir(tmp_path/name)
     assert cli.main(['video-sway', '--loop-dir', str(directory), *args]) == 0
-    return directory, json.loads((directory/'walk.strip.json').read_text())['follow']
+    return directory, json.loads((directory/'walk.strip.json').read_text(encoding="utf-8"))['follow']
 
 
 def text(region):

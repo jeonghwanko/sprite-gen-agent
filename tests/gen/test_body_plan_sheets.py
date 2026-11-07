@@ -130,7 +130,7 @@ def test_the_sheet_cli_takes_records_and_carries_the_body_plan(tmp_path) -> None
                           "--request-json", json.dumps({"states": {"walk": {"frames": 6}, "wave": {"frames": 4}}}),
                           "--body-plan", "the man=biped", "--body-plan", "the horse=quadruped")
     assert result.returncode == 0, result.stderr
-    request = json.loads((first / "sprite-request.json").read_text())
+    request = json.loads((first / "sprite-request.json").read_text(encoding="utf-8"))
     assert request["body_plan"] == [{"plan": "biped", "figure": "the man"}, {"plan": "quadruped", "figure": "the horse"}]
     assert request["states"]["wave"]["action"] == prepare.DEFAULT_ACTIONS_ANY_BODY["wave"]
     # the recorded request, reused, carries its body plan: same rows, nothing dropped
@@ -138,17 +138,17 @@ def test_the_sheet_cli_takes_records_and_carries_the_body_plan(tmp_path) -> None
     result = _prepare_cli("--out-dir", str(again), "--character-id", "horse", "--description", "A brown horse",
                           "--request", str(first / "sprite-request.json"))
     assert result.returncode == 0 and "body_plan" not in result.stderr, result.stderr
-    assert json.loads((again / "sprite-request.json").read_text())["body_plan"] == request["body_plan"]
+    assert json.loads((again / "sprite-request.json").read_text(encoding="utf-8"))["body_plan"] == request["body_plan"]
     for prompt in (first / "prompts").rglob("*.txt"):
-        assert (again / "prompts" / prompt.relative_to(first / "prompts")).read_text() == prompt.read_text()
+        assert (again / "prompts" / prompt.relative_to(first / "prompts")).read_text(encoding="utf-8") == prompt.read_text(encoding="utf-8")
     # the CLI's body plan overrides the request's
     legless = tmp_path / "legless"
     prepare.run(out_dir=legless, character_id="slime", request=first / "sprite-request.json", body_plan=["legless"])
-    assert json.loads((legless / "sprite-request.json").read_text())["body_plan"] == [{"plan": "legless", "figure": ""}]
+    assert json.loads((legless / "sprite-request.json").read_text(encoding="utf-8"))["body_plan"] == [{"plan": "legless", "figure": ""}]
     # without one, the request has no body_plan key at all
     plain = tmp_path / "plain"
     prepare.run(out_dir=plain, character_id="fox")
-    assert "body_plan" not in json.loads((plain / "sprite-request.json").read_text())
+    assert "body_plan" not in json.loads((plain / "sprite-request.json").read_text(encoding="utf-8"))
 
 
 # each `body_plan.parse_all` error is tested in-process (tests/video/test_body_plan.py): one of them is enough here

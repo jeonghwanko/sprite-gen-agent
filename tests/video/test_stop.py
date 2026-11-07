@@ -103,7 +103,7 @@ def cut(tmp_path: Path, keyed: Path, start: int, *, name: str = "run") -> Path:
 
 
 def cells_of(meta_path: Path) -> tuple[dict, list[Image.Image]]:
-    meta = json.loads(meta_path.read_text())
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
     strip = Image.open(meta_path.with_name(meta_path.name[:-5] + ".png")).convert("RGBA")
     return meta, [strip.crop((k * meta["w"], 0, (k + 1) * meta["w"], meta["h"])) for k in range(meta["frames"])]
 
@@ -136,7 +136,7 @@ def test_stop_plays_the_start_backwards_from_the_loop_to_the_first_frame(tmp_pat
     assert out["seam"]["steps"] <= stop.SEAM_MAX and out["run_up"]["cycles"] <= stop.RUN_UP_MAX_CYCLES
     # The last cell is the clip's first frame — the still as filmed — at the loop's scale, pixel for pixel.
     smeta, cells = cells_of(tmp_path / "stop" / "stop.strip.json")
-    lmeta = json.loads(meta.read_text())
+    lmeta = json.loads(meta.read_text(encoding="utf-8"))
     first = Image.open(sorted(keyed.glob("*.png"))[0]).convert("RGBA")
     first = resize_cell(first, (round(first.width * lmeta["scale"]), round(first.height * lmeta["scale"])))
     assert cells[-1].crop(cells[-1].getbbox()).tobytes() == first.crop(first.getbbox()).tobytes()
@@ -148,7 +148,7 @@ def test_stop_plays_the_start_backwards_from_the_loop_to_the_first_frame(tmp_pat
     assert out["source"]["same_as_loop"] is True
     with Image.open(tmp_path / "stop" / "stop.gif") as gif:
         assert gif.n_frames == len(shown) and gif.info.get("loop") is None
-    report = json.loads((tmp_path / "stop" / "stop.stop.report.json").read_text())
+    report = json.loads((tmp_path / "stop" / "stop.stop.report.json").read_text(encoding="utf-8"))
     assert report["status"] == "passed" and report["shown"] == shown
 
 
@@ -192,7 +192,7 @@ def test_stop_refuses_a_short_other_motion(tmp_path, other):
     meta = cut(tmp_path, keyed, run_from + PERIOD)
     with pytest.raises(SystemExit, match="another motion"):
         make(tmp_path, keyed, meta)
-    report = json.loads((tmp_path / "stop" / "stop.stop.report.json").read_text())
+    report = json.loads((tmp_path / "stop" / "stop.stop.report.json").read_text(encoding="utf-8"))
     assert report["status"] == "failed" and report["run_up"]["cycles"] <= stop.RUN_UP_MAX_CYCLES
     turn = report["turn_back"]
     # Back at a standing frame where the motion has ended and the setting-off starts, a step and more after leaving it.
@@ -210,7 +210,7 @@ def test_stop_refuses_a_start_that_holds_another_motion(tmp_path):
     meta = cut(tmp_path, keyed, run_from + PERIOD)
     with pytest.raises(SystemExit, match="another motion"):
         make(tmp_path, keyed, meta)
-    report = json.loads((tmp_path / "stop" / "stop.stop.report.json").read_text())
+    report = json.loads((tmp_path / "stop" / "stop.stop.report.json").read_text(encoding="utf-8"))
     assert report["status"] == "failed" and report["turn_back"]["steps"] <= stop.SAME_POSE
     assert report["run_up"]["cycles"] > stop.RUN_UP_MAX_CYCLES
     assert not (tmp_path / "stop" / "stop.strip.png").exists()
@@ -228,7 +228,7 @@ def test_stop_refuses_a_run_up_longer_than_a_setting_off(tmp_path):
     with pytest.raises(SystemExit, match="strides unlike the loop's") as refusal:
         make(tmp_path, keyed, meta)
     assert "another motion" not in str(refusal.value)
-    report = json.loads((tmp_path / "stop" / "stop.stop.report.json").read_text())
+    report = json.loads((tmp_path / "stop" / "stop.stop.report.json").read_text(encoding="utf-8"))
     assert report["status"] == "failed" and report["run_up"]["cycles"] > stop.RUN_UP_MAX_CYCLES
     assert report["turn_back"]["steps"] > stop.SAME_POSE
     out = make(tmp_path, keyed, meta, run_up_max=4.0)
@@ -242,7 +242,7 @@ def test_stop_refuses_a_seam_past_the_jump_line(tmp_path):
     meta = cut(tmp_path, keyed, run_from + PERIOD)
     with pytest.raises(SystemExit, match="jump line"):
         make(tmp_path, keyed, meta)
-    report = json.loads((tmp_path / "stop" / "stop.stop.report.json").read_text())
+    report = json.loads((tmp_path / "stop" / "stop.stop.report.json").read_text(encoding="utf-8"))
     assert report["status"] == "failed" and report["seam"]["steps"] > stop.SEAM_MAX
 
 
@@ -259,7 +259,7 @@ def test_stop_leaves_an_aligned_loop_from_the_cell_nearest_the_entry(tmp_path):
         strip.paste(c, (k * meta["w"], 0))
     aligned = tmp_path / "loop" / "run.aligned.strip.json"
     strip.save(aligned.with_name("run.aligned.strip.png"))
-    aligned.write_text(json.dumps(meta))
+    aligned.write_text(json.dumps(meta), encoding="utf-8")
     plain = make(tmp_path, keyed, meta_path, name="plain")
     turned_out = make(tmp_path, keyed, aligned, name="turned")
     assert turned_out["entry"]["frame"] == plain["entry"]["frame"]
@@ -299,11 +299,11 @@ def test_stop_names_a_filmed_ghost_and_keeps_it(tmp_path):
 def test_stop_refuses_a_loop_it_cannot_leave(tmp_path):
     keyed, run_from = clip(tmp_path, cycles=2)
     meta_path = cut(tmp_path, keyed, run_from + PERIOD)
-    meta = json.loads(meta_path.read_text())
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
     for change, match in (({"state": "idle"}, "walk or run"), ({"loop": False}, "plays once"), ({"source_cut": None}, "source cut")):
         bad = tmp_path / "loop" / "bad.strip.json"
         bad.with_name("bad.strip.png").write_bytes(meta_path.with_name("run.strip.png").read_bytes())
-        bad.write_text(json.dumps({**meta, **change}))
+        bad.write_text(json.dumps({**meta, **change}), encoding="utf-8")
         with pytest.raises(SystemExit, match=match):
             make(tmp_path, keyed, bad, name="bad")
     few = tmp_path / "few"
@@ -321,7 +321,7 @@ def test_game_pack_packs_the_stop_to_play_once(tmp_path):
     request = tmp_path / "game.json"
     request.write_text(json.dumps({"version": 1, "assets": [
         {"id": "hero_run_side", "source": str(meta), "display": {"body_height": 56}},
-        {"id": "hero_stop_side", "source": str(tmp_path / "stop" / "stop.strip.json"), "display": {"body_height": 56}}]}))
+        {"id": "hero_stop_side", "source": str(tmp_path / "stop" / "stop.strip.json"), "display": {"body_height": 56}}]}), encoding="utf-8")
     packed = game_pack.pack(request, tmp_path / "pack")
     run_anim, stop_anim = packed["animations"]["hero_run_side"], packed["animations"]["hero_stop_side"]
     assert run_anim["loop"] is True
@@ -337,4 +337,4 @@ def test_stop_source_identity_is_the_loop_cut_from(tmp_path):
     keyed, run_from = clip(tmp_path, cycles=2)
     meta = cut(tmp_path, keyed, run_from + PERIOD)
     files = sorted(keyed.glob("*.png"))
-    assert json.loads(meta.read_text())["source_cut"]["source"] == evidence.source_identity(files, 24.0)
+    assert json.loads(meta.read_text(encoding="utf-8"))["source_cut"]["source"] == evidence.source_identity(files, 24.0)

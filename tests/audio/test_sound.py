@@ -106,23 +106,23 @@ def test_a_clip_loudnorm_cannot_analyse_is_normalized_by_the_limiter(tmp_path, m
 def test_a_bundle_is_refused_when_its_files_miss_the_rule(tmp_path, monkeypatch):
     bundle(tmp_path, monkeypatch, 'click', .5)
     path = tmp_path/'out'/'sound.json'
-    original = json.loads(path.read_text())
-    headroom = json.loads(path.read_text())
+    original = json.loads(path.read_text(encoding="utf-8"))
+    headroom = json.loads(path.read_text(encoding="utf-8"))
     headroom['normalization']['pcm_true_peak_dbtp'] = -8  # quiet with headroom: the goal is the target
-    hot = json.loads(path.read_text())
+    hot = json.loads(path.read_text(encoding="utf-8"))
     hot['files']['m4a']['true_peak_dbfs'] = -.5
-    old = json.loads(path.read_text())
+    old = json.loads(path.read_text(encoding="utf-8"))
     del old['normalization']
-    relabeled = json.loads(path.read_text())
+    relabeled = json.loads(path.read_text(encoding="utf-8"))
     relabeled['recipe']['processing_version'] = 3  # version 3 had no peak-limited goal; its files measure against -18
-    recipe2 = json.loads(path.read_text())
+    recipe2 = json.loads(path.read_text(encoding="utf-8"))
     recipe2['recipe']['processing_version'] = 2
     for manifest, refusal in ((headroom, 'does not match'), (hot, 'invalid audio true peak'), (old, 'version 4'),
                               (relabeled, 'does not match'), (recipe2, 'version 3 or 4')):
-        path.write_text(json.dumps(manifest))
+        path.write_text(json.dumps(manifest), encoding="utf-8")
         with pytest.raises(ValueError, match=refusal):
             load_sound(path, 50_000_000)
-    path.write_text(json.dumps(original))
+    path.write_text(json.dumps(original), encoding="utf-8")
     load_sound(path, 50_000_000)
 
 
@@ -452,7 +452,7 @@ def test_old_processed_output_is_rejected_but_raw_cache_survives(tmp_path, monke
     assert result['recipe']['processing_version'] == 4
     # One old version is enough: any recipe that differs is refused by the same check.
     old = {**result, 'version': 3, 'recipe': {**result['recipe'], 'processing_version': 3}}
-    (kw['out_dir']/'sound.json').write_text(json.dumps(old))
+    (kw['out_dir']/'sound.json').write_text(json.dumps(old), encoding="utf-8")
     with pytest.raises(ValueError, match='different sound'):
         sound.generate(**kw)
     monkeypatch.delenv('ELEVENLABS_API_KEY')

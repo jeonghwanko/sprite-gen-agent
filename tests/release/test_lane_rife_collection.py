@@ -66,7 +66,7 @@ def _stand_in(data: Path) -> Path:
     (binary.parent / rife.MODEL).mkdir(parents=True)
     for name in ("flownet.param", "flownet.bin"):
         (binary.parent / rife.MODEL / name).write_bytes(b"")
-    binary.write_text("#!/bin/sh\nexit 1\n")
+    binary.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
     binary.chmod(0o755)
     return binary
 
@@ -90,12 +90,12 @@ def _collect(tmp_path: Path, name: str, env: dict[str, str]) -> dict[str, list[b
         encoding="utf-8",
     )
     assert proc.returncode == 0, f"collection with {name} failed:\n{proc.stdout[-3000:]}\n{proc.stderr[-3000:]}"
-    return json.loads(out.read_text())
+    return json.loads(out.read_text(encoding="utf-8"))
 
 
 @pytest.mark.slow
 def test_every_test_rife_decides_is_marked_real_rife(tmp_path):
-    (tmp_path / "rife_probe.py").write_text(PROBE)
+    (tmp_path / "rife_probe.py").write_text(PROBE, encoding="utf-8")
     # The whole suite, as the lane collects it: `--full`, and no PYTEST_ADDOPTS selecting a part.
     base = _rife_less_env(tmp_path)
     base["PYTHONPATH"] = os.pathsep.join(filter(None, [str(tmp_path), base.get("PYTHONPATH")]))
@@ -180,7 +180,7 @@ def test_in_a_skipped_file():
 def test_the_rife_less_run_fails_each_unmarked_skip_by_name(tmp_path):
     probes = {"test_guards.py": GUARDS, "test_guarded_file.py": GUARDED_FILE}
     for name, text in probes.items():
-        (tmp_path / name).write_text(text)
+        (tmp_path / name).write_text(text, encoding="utf-8")
     report = tmp_path / "report.xml"
     # This repository's configuration, and tests/conftest.py as the one conftest (-p), over files outside
     # the suite; the skipped file's error does not end the run before the other tests.

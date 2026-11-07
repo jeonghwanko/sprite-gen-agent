@@ -261,7 +261,7 @@ def test_a_wrap_a_part_on_its_own_beat_leaves_open_says_so_in_its_failure_line(t
                           interpolate=overlap.Between(), overlap_wrap="off")
     except SystemExit:
         pass
-    report = json.loads((tmp_path / "loop.json").read_text())
+    report = json.loads((tmp_path / "loop.json").read_text(encoding="utf-8"))
     error = report["error"]
     assert error.startswith("video-loop: loop seam ratio") and "the cycle does not close — the cut covers two steps" in error
     assert "a part on a beat of its own (a tail, a held prop) closes on no cut of two steps" in error

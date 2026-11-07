@@ -53,13 +53,13 @@ def test_alpha_floor_clears_the_haze_ring_before_measuring_parts(tmp_path):
     # the ring adds 6 px above and below the 60 px prop; cleaned, only the 2 px edge band stays
     assert opaque_height(clean[0]) > opaque_height(hazy[0])
     assert abs(opaque_height(clean[0]) - round(120 * 60 / 64)) <= 1
-    report = json.loads((tmp_path / "clean" / "alpha-cleanup.json").read_text())
+    report = json.loads((tmp_path / "clean" / "alpha-cleanup.json").read_text(encoding="utf-8"))
     assert report["floor"] == 64 and report["edge_px"] == 2
     assert report["haze_fraction_before"] > 0 and report["haze_fraction_after"] == 0
     assert report["changed_solid_pixels"] == 0
     assert not (tmp_path / "hazy" / "alpha-cleanup.json").exists()
     # the slice report names the cleanup report
-    assert json.loads((tmp_path / "clean" / "slice-sheet.json").read_text())["alpha_cleanup"] == "alpha-cleanup.json"
+    assert json.loads((tmp_path / "clean" / "slice-sheet.json").read_text(encoding="utf-8"))["alpha_cleanup"] == "alpha-cleanup.json"
 
 
 def test_cli_takes_none_and_the_floor(tmp_path):

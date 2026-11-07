@@ -211,8 +211,8 @@ def _cut(root: Path, frames: list[Image.Image], **kw) -> dict:
                       seam_max=loop.SEAM_RATIO_MAX, name="loop", report_path=root / "loop.json", cycle_mode="fixed", start=0,
                       length=len(frames), anchor="none", repair="off", **kw)
     except SystemExit as exc:
-        (root / "exit.txt").write_text(str(exc))
-    return json.loads((root / "loop.json").read_text())
+        (root / "exit.txt").write_text(str(exc), encoding="utf-8")
+    return json.loads((root / "loop.json").read_text(encoding="utf-8"))
 
 
 def _files(root: Path) -> dict[str, bytes]:
@@ -338,8 +338,8 @@ def _search(root: Path, hand, **kw) -> dict:
         loop.run_loop(keyed, root / "out", fps=24.0, state="walk", min_len=None, max_len=None, n_out=None,
                       seam_max=loop.SEAM_RATIO_MAX, name="loop", report_path=root / "loop.json", anchor="motion-auto", **kw)
     except SystemExit as exc:
-        (root / "exit.txt").write_text(str(exc))
-    return json.loads((root / "loop.json").read_text())
+        (root / "exit.txt").write_text(str(exc), encoding="utf-8")
+    return json.loads((root / "loop.json").read_text(encoding="utf-8"))
 
 
 

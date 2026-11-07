@@ -49,7 +49,7 @@ def _rodded(rise: int, hold: int = 1, *, room: int = 0, flung: int | None = None
 def _refused_by_pop(root: Path, keyed: Path, name: str, **kw) -> tuple[str, dict]:
     with pytest.raises(SystemExit) as exc:
         _cut(root, keyed, name, **kw)
-    return str(exc.value), json.loads((root / f"{name}.json").read_text())
+    return str(exc.value), json.loads((root / f"{name}.json").read_text(encoding="utf-8"))
 
 
 def _files(folder: Path) -> dict[str, bytes]:
@@ -124,7 +124,7 @@ def test_seam_max_does_not_lift_it_and_the_forced_argv_turns_it_off(tmp_path: Pa
         loop_mod.main([*argv, "--out-dir", str(tmp_path / "lifted"), "--report", str(tmp_path / "lifted.json")])
     assert loop_mod.main([*argv, "--out-dir", str(tmp_path / "forced"), "--report", str(tmp_path / "forced.json"),
                           "--seam-pop-max", "off"]) == 0
-    report = json.loads((tmp_path / "forced.json").read_text())
+    report = json.loads((tmp_path / "forced.json").read_text(encoding="utf-8"))
     assert report["seam_pop_gate"] == {"verdict": "off", "max": None, "pop": 11.0}
     assert "(reference bound; the loop is kept" in capsys.readouterr().err
 
@@ -268,7 +268,7 @@ def test_motion_auto_reads_the_cut_before_it_cuts_as_the_gate_reads_the_loop(tmp
         assert loop_mod.main(["--frames-dir", str(keyed), "--out-dir", str(tmp_path / name), "--state", "walk",
                               "--anchor", "motion-auto", "--repair", "off", "--report", str(tmp_path / f"{name}.json"),
                               *flags]) == 0
-        return json.loads((tmp_path / f"{name}.json").read_text())
+        return json.loads((tmp_path / f"{name}.json").read_text(encoding="utf-8"))
 
     with feet_unseen():
         on = cut("on")

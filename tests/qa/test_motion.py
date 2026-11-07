@@ -222,7 +222,7 @@ def descriptor(tmp_path):
         frame.save(path)
         entries.append({"file": path.name, "duration": 0.1})
     path = tmp_path / "walk.json"
-    path.write_text(json.dumps({"kind": "sprite-gen-asset", "version": 1, "frames": entries}))
+    path.write_text(json.dumps({"kind": "sprite-gen-asset", "version": 1, "frames": entries}), encoding="utf-8")
     return path
 
 
@@ -255,7 +255,7 @@ def test_module_entrypoint_publishes_report_and_preserves_sources(tmp_path):
         capture_output=True, encoding="utf-8", check=False,
     )
     assert result.returncode == 0, result.stderr
-    report = json.loads(output.read_text())
+    report = json.loads(output.read_text(encoding="utf-8"))
     assert report == json.loads(result.stdout)
     assert report["stride_px_per_second"] == pytest.approx(10)
     assert report["duration_seconds"] == pytest.approx(1)
@@ -312,13 +312,13 @@ def test_publication_uses_output_lock_then_atomic_write_once(tmp_path, monkeypat
     monkeypatch.setattr(motion, "atomic_write_set", write)
     assert motion.run(source=source, out=output) == 0
     assert len(calls) == 2
-    assert json.loads(output.read_text()) == json.loads(capsys.readouterr().out)
+    assert json.loads(output.read_text(encoding="utf-8")) == json.loads(capsys.readouterr().out)
 
 
 def test_live_output_lock_fails_without_retry_or_report(tmp_path):
     source = descriptor(tmp_path)
     output = tmp_path / "report.json"
-    (tmp_path / ".sprite-gen.lock").write_text(json.dumps({"owner": "synthetic-writer", "pid": os.getpid()}))
+    (tmp_path / ".sprite-gen.lock").write_text(json.dumps({"owner": "synthetic-writer", "pid": os.getpid()}), encoding="utf-8")
     before = file_bytes(tmp_path)
     with pytest.raises(SystemExit, match="locked by synthetic-writer"):
         motion.run(source=source, out=output)
@@ -328,7 +328,7 @@ def test_live_output_lock_fails_without_retry_or_report(tmp_path):
 def test_atomic_publish_failure_keeps_existing_report_and_does_not_retry(tmp_path, monkeypatch, capsys):
     source = descriptor(tmp_path)
     output = tmp_path / "report.json"
-    output.write_text("existing report")
+    output.write_text("existing report", encoding="utf-8")
     calls = []
 
     def fail_once(payloads):
@@ -338,7 +338,7 @@ def test_atomic_publish_failure_keeps_existing_report_and_does_not_retry(tmp_pat
     monkeypatch.setattr(motion, "atomic_write_set", fail_once)
     assert motion.run(source=source, out=output) == 2
     assert len(calls) == 1
-    assert output.read_text() == "existing report"
+    assert output.read_text(encoding="utf-8") == "existing report"
     assert "synthetic disk failure" in capsys.readouterr().err
 
 
@@ -379,7 +379,7 @@ def test_report_names_the_measured_sequence_so_consumers_can_refuse_other_select
         "sprite_sheet_alpha": "atlas.png",
         "frame_layout": {"rows": {"walk": rects, "idle": [rects[0]] * 5}},
         "animation": {"rows": {s: {"durations_ms": [100] * 5, "loop": True} for s in ("walk", "idle")}},
-    }))
+    }), encoding="utf-8")
     walk = load_asset(tmp_path / "atlas.json", state="walk")
     report = json.loads(json.dumps(analyze_motion(walk, contacts="0:4", foot_box=FOOT_BOX)))
     assert report["sequence"] == sequence_identity(walk)
@@ -403,4 +403,4 @@ def test_in_process_publication_releases_the_output_lock(tmp_path, capsys):
     assert not (output.parent / runio.LOCK_FILENAME).exists()
     assert (output.parent / runio.LOCK_FILENAME).resolve() not in runio._HELD_LOCKS
     assert motion.run(source=source, out=output) == 0
-    assert json.loads(output.read_text())["kind"] == "sprite-gen-motion-report"
+    assert json.loads(output.read_text(encoding="utf-8"))["kind"] == "sprite-gen-motion-report"

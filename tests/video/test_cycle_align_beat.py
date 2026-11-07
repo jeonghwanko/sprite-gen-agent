@@ -380,7 +380,7 @@ def _cut(tmp_path: Path, steps: list[tuple[int, int, int]]) -> Path:
 @pytest.mark.slow
 def test_an_aligned_loop_that_steps_the_same_foot_twice_is_named_and_with_refuse_the_set_is_stopped(tmp_path):
     d = _cut(tmp_path, SAME_FOOT)
-    meta = json.loads((d / "walk.strip.json").read_text())
+    meta = json.loads((d / "walk.strip.json").read_text(encoding="utf-8"))
     inside = {3, 4, 5, 6, 10, 11, 16, 17, 18, 19}
     assert meta["clip_feet"] == {"length": 24, "cuts": 25, "same_foot": 15, "alternate": 0, "unread": 0, "seam_in_step": 10,
                                  "same_foot_at": [s for s in range(25) if s not in inside]}
@@ -388,7 +388,7 @@ def test_an_aligned_loop_that_steps_the_same_foot_twice_is_named_and_with_refuse
     report = tmp_path / "set.cycle-align.json"
     with pytest.raises(SystemExit, match="steps the same foot twice in a row .* film this direction again .*--same-foot refuse"):
         align.align_set([d], views=["back"], report_path=report, same_foot="refuse")
-    refused = json.loads(report.read_text())
+    refused = json.loads(report.read_text(encoding="utf-8"))
     assert refused["applied"] is False and refused["refused"] == "same-foot" and refused["same_foot"][0]["twice"]
     assert (d / "walk.strip.json").read_bytes() == before
     done = align.align_set([d], views=["back"])
@@ -400,7 +400,7 @@ def test_an_aligned_loop_that_steps_the_same_foot_twice_is_named_and_with_refuse
     assert row["retake"]["reasons"] == ["same-foot"] and row["retake"]["same_foot"]["remedy"] == "retake"
     assert row["retake"]["same_foot"]["clip"] == {"length": 24, "cuts": 25, "same_foot": 15, "alternate": 0, "unread": 0, "seam_in_step": 10}
     assert done["retake"] == [{"dir": row["dir"], "name": "walk", **row["retake"]}]
-    assert json.loads((d / "walk.strip.json").read_text())["cycle_align"]["same_foot"] == row["same_foot"]
+    assert json.loads((d / "walk.strip.json").read_text(encoding="utf-8"))["cycle_align"]["same_foot"] == row["same_foot"]
     assert row["beat"]["path"] == "on-time" and done["same_foot"] == "warn"
 
 

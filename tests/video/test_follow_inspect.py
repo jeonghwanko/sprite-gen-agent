@@ -49,7 +49,7 @@ def strip_dir(path, draw=figure, n=N, **meta):
         strip.paste(draw(k), (k*W, 0))
     path.mkdir()
     strip.save(path/'walk.strip.png')
-    (path/'walk.strip.json').write_text(json.dumps({'kind': 'periodic', 'frames': n, 'w': W, 'h': H, 'delay_ms': 1000/24} | meta))
+    (path/'walk.strip.json').write_text(json.dumps({'kind': 'periodic', 'frames': n, 'w': W, 'h': H, 'delay_ms': 1000/24} | meta), encoding="utf-8")
     return path
 
 
@@ -63,7 +63,7 @@ def inspect(loop_dir, regions, out, **kw):
     """The record of an inspection, as written."""
     returned = follow_inspect.inspect_loop(loop_dir, regions, out, **kw)
     assert sorted(p.name for p in out.iterdir()) == sorted(FILES)
-    record = json.loads((out/FILES[0]).read_text())
+    record = json.loads((out/FILES[0]).read_text(encoding="utf-8"))
     assert record == returned
     return record
 
@@ -190,7 +190,7 @@ def test_the_record_is_what_video_follow_then_writes(tmp_path):
     loop_dir, out = strip_dir(tmp_path/'loop'), tmp_path/'out'
     record = inspect(loop_dir, [CHEST], out, on_fold='lower')
     follow.follow_loop(loop_dir, [CHEST], on_fold='lower')
-    written = json.loads((loop_dir/'walk.strip.json').read_text())['follow']
+    written = json.loads((loop_dir/'walk.strip.json').read_text(encoding="utf-8"))['follow']
     assert record['follow'] == {key: value for key, value in written.items() if key not in ('gif', 'webp')}
     source, moved = cells(loop_dir/follow.SOURCE), cells(loop_dir/'walk.strip.png')
     changed = [(a != b).any(axis=-1) for a, b in zip(source, moved)]
@@ -244,7 +244,7 @@ def test_each_region_has_its_gain_and_one_held_is_still_carried(tmp_path):
         assert cell['jacobian_min'] == min(chest['jacobian_min'], top['jacobian_min'])
         assert (source[k] == held['ring']).all(axis=-1).any(), k
     follow.follow_loop(loop_dir, regions, on_fold='lower')
-    written = json.loads((loop_dir/'walk.strip.json').read_text())['follow']
+    written = json.loads((loop_dir/'walk.strip.json').read_text(encoding="utf-8"))['follow']
     assert record['follow'] == {key: value for key, value in written.items() if key not in ('gif', 'webp')}
     assert [entry['held'] for entry in written['fold']['regions']] == [False, False, True]
     changed = [(a != b).any(axis=-1) for a, b in zip(cells(loop_dir/follow.SOURCE), cells(loop_dir/'walk.strip.png'))]
@@ -284,7 +284,7 @@ def test_what_was_read_names_the_evidence_and_another_cut_is_another(tmp_path):
     inspect(loop_dir, [CHEST], tmp_path/'b')
     for name in FILES:
         assert (tmp_path/'a'/name).read_bytes() == (tmp_path/'b'/name).read_bytes(), name
-    assert str(tmp_path) not in (tmp_path/'a'/FILES[0]).read_text()
+    assert str(tmp_path) not in (tmp_path/'a'/FILES[0]).read_text(encoding="utf-8")
     assert first['inputs']['strip']['sha256'] == hashlib.sha256((loop_dir/'walk.strip.png').read_bytes()).hexdigest()
     assert first['inputs']['meta']['sha256'] == hashlib.sha256((loop_dir/'walk.strip.json').read_bytes()).hexdigest()
     # video-follow moves the strip and records itself in the meta; what it was read from is the same cut.
@@ -459,7 +459,7 @@ def test_the_command_takes_what_video_follow_takes(tmp_path, capsys):
     capsys.readouterr()
     assert cli.main(['video-follow-inspect', *asked, '--out-dir', str(out), '--columns', '6']) == 0
     printed, said = capsys.readouterr()
-    printed, record = json.loads(printed), json.loads((out/FILES[0]).read_text())
+    printed, record = json.loads(printed), json.loads((out/FILES[0]).read_text(encoding="utf-8"))
     assert (out/FILES[0]).samefile(printed['record']) and printed['input_id'] == record['input_id'] and printed['cells'] == N
     assert printed['ownership'] == 'unknown' and printed['held'] == [] and printed['region_gains'] == [region['gain'] for region in record['regions']]
     assert [(out/record['boards'][name]['file']).samefile(printed['boards'][name]['path']) for name in ('source', 'moved')] == [True, True]
@@ -468,4 +468,4 @@ def test_the_command_takes_what_video_follow_takes(tmp_path, capsys):
     lines = said.strip().splitlines()
     assert lines and all(line.startswith('video-follow-inspect: --gain 50 folds ') and 'lowered to --gain ' in line for line in lines)
     assert follow_inspect.main([*asked, '--out-dir', str(tmp_path/'direct')]) == 0
-    assert json.loads((tmp_path/'direct'/FILES[0]).read_text())['input_id'] == record['input_id']
+    assert json.loads((tmp_path/'direct'/FILES[0]).read_text(encoding="utf-8"))['input_id'] == record['input_id']

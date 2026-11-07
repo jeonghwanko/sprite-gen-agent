@@ -77,7 +77,7 @@ def test_gen_set_generates_every_row_with_run_refs_and_reports(tmp_path: Path) -
         assert (run_dir / "reports" / "gen-set" / f"{state}.json").is_file()
     table = (run_dir / "reports" / "gen-set" / "table.md").read_text(encoding="utf-8")
     assert "| walk | codex | explicit |" in table and "| status |" in table
-    assert json.loads((run_dir / "reports" / "gen-set" / "set.report.json").read_text())["kind"] == "sprite-gen-gen-set-report"
+    assert json.loads((run_dir / "reports" / "gen-set" / "set.report.json").read_text(encoding="utf-8"))["kind"] == "sprite-gen-gen-set-report"
 
 
 def test_gen_set_reuses_existing_rows_and_force_regenerates(tmp_path: Path) -> None:
@@ -86,7 +86,7 @@ def test_gen_set_reuses_existing_rows_and_force_regenerates(tmp_path: Path) -> N
     seen: list = []
     again = gen_set.run_set(run_dir=run_dir, states=["idle"], provider=None, model=None, concurrency=1, force=False, gen_runner=_fake_runner(record=seen))
     assert seen == [] and again["items"][0]["reused"] is True
-    assert "| idle | - | - | - | reused |" in (run_dir / "reports" / "gen-set" / "table.md").read_text()
+    assert "| idle | - | - | - | reused |" in (run_dir / "reports" / "gen-set" / "table.md").read_text(encoding="utf-8")
     forced = gen_set.run_set(run_dir=run_dir, states=["idle"], provider=None, model=None, concurrency=1, force=True, gen_runner=_fake_runner(record=seen))
     assert len(seen) == 1 and forced["items"][0].get("reused") is None
 
@@ -96,7 +96,7 @@ def test_gen_set_names_failures_and_exits_non_zero(tmp_path: Path, monkeypatch, 
     monkeypatch.setattr(gen_set, "run_gen_cli", _fake_runner(fail_states={"walk"}))
     rc = gen_set.run(run_dir=run_dir, states=None, provider="grok", model=None, concurrency=2, force=False)
     assert rc == 1
-    table = (run_dir / "reports" / "gen-set" / "table.md").read_text()
+    table = (run_dir / "reports" / "gen-set" / "table.md").read_text(encoding="utf-8")
     assert "| walk | - | - |" in table and "FAIL: gen exited 1" in table
     assert not (run_dir / "raw" / "walk.png").exists() and (run_dir / "raw" / "idle.png").is_file()
 
@@ -157,7 +157,7 @@ def test_gen_set_broken_report_is_a_named_failure_and_never_reused(tmp_path: Pat
     first = gen_set.run_set(run_dir=run_dir, states=["idle"], provider="codex", model=None, concurrency=1, force=False, gen_runner=_broken_report_runner())
     assert first["failed"] == ["idle"] and "report unreadable" in first["items"][0]["error"]
     assert not (run_dir / "raw" / "idle.png").exists(), "no half state: the unproven row is removed"
-    assert "FAIL: gen exited 0 but its report unreadable" in (run_dir / "reports" / "gen-set" / "table.md").read_text()
+    assert "FAIL: gen exited 0 but its report unreadable" in (run_dir / "reports" / "gen-set" / "table.md").read_text(encoding="utf-8")
     # second run must generate again, not reuse
     calls: list = []
     second = gen_set.run_set(run_dir=run_dir, states=["idle"], provider="codex", model=None, concurrency=1, force=False, gen_runner=_fake_runner(record=calls))

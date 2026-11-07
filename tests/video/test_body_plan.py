@@ -267,13 +267,13 @@ def test_video_set_says_the_body_plan_in_the_redraw_and_the_clip(tmp_path, monke
     def paint(base, prompt, out, report, *, log, provider=None):
         redraws.append(prompt)
         out.write_bytes(base.read_bytes())
-        report.write_text(json.dumps({"prompt": prompt, "refs": [str(base)]}))
+        report.write_text(json.dumps({"prompt": prompt, "refs": [str(base)]}), encoding="utf-8")
         return 0
 
     def video(image, prompt, out, report, **kw):
         clips[out.parent.name] = prompt
         out.write_bytes(b"test-video")
-        report.write_text(json.dumps({"prompt": prompt}))
+        report.write_text(json.dumps({"prompt": prompt}), encoding="utf-8")
         return 0
 
     base = Image.new("RGB", (128, 96), (0, 255, 0))

@@ -35,7 +35,7 @@ def atlas(tmp_path):
         "sprite_sheet_alpha": "atlas.png",
         "frame_layout": {"rows": {"walk": rects, "idle": [rects[0]] * 5}},
         "animation": {"rows": {s: {"fps": 10, "durations_ms": [100] * 5, "loop": True} for s in ("walk", "idle")}},
-    }))
+    }), encoding="utf-8")
     return path
 
 
@@ -43,7 +43,7 @@ def motion_report(tmp_path, name="walk.motion.json", **load):
     report = analyze_motion(load_asset(tmp_path / "atlas.json", **load), contacts="0:4", foot_box=FOOT_BOX)
     assert report["stride_verified"] is True
     path = tmp_path / name
-    path.write_text(json.dumps(report))
+    path.write_text(json.dumps(report), encoding="utf-8")
     return path
 
 
@@ -53,7 +53,7 @@ def scene(tmp_path, layers=None, **overrides):
             "layers": layers if layers is not None else [{"id": "hero", "asset": "walk", "at": [24, 40]}]}
     spec.update(overrides)
     path = tmp_path / "scene.json"
-    path.write_text(json.dumps(spec))
+    path.write_text(json.dumps(spec), encoding="utf-8")
     return path
 
 
@@ -86,7 +86,7 @@ def test_plane_velocity_adds_to_layer_velocity(tmp_path):
 def test_stride_applies_actual_raster_scale_playback_rate_and_explicit_direction(tmp_path):
     atlas(tmp_path)
     report = motion_report(tmp_path, state="walk")
-    speed = json.loads(report.read_text())["stride_px_per_second"]
+    speed = json.loads(report.read_text(encoding="utf-8"))["stride_px_per_second"]
     assert speed == pytest.approx(20)
     loaded = load_scene(scene(tmp_path, layers=[{"id": "hero", "asset": "walk", "at": [24, 40], "scale": 0.33,
                                                  "playback_rate": 2, "stride": {"report": "walk.motion.json", "direction": "left"}}]))
@@ -122,14 +122,14 @@ def test_stride_rejects_reports_of_any_other_selection_of_the_same_files(tmp_pat
         if case == "anchor-override":
             load["anchor"] = (24, 39)
         report = motion_report(tmp_path, **load)
-        data = json.loads(report.read_text())
+        data = json.loads(report.read_text(encoding="utf-8"))
         if case == "unverified":
             data["stride_verified"] = False
         if case == "no-identity":
             del data["sequence"]
         if case == "not-a-report":
             data["kind"] = "sprite-gen-scene-inspection"
-        report.write_text(json.dumps(data))
+        report.write_text(json.dumps(data), encoding="utf-8")
         if case == "stale-bytes":
             with Image.open(tmp_path / "atlas.png") as sheet:
                 sheet.convert("RGBA").save(tmp_path / "atlas.png", optimize=True)
@@ -172,7 +172,7 @@ def test_scene_and_report_identity_are_the_parsed_bytes(tmp_path, monkeypatch):
 
     def read_then_rewrite(path):
         document, digest = original(path)
-        Path(path).write_text(json.dumps(document, indent=4))
+        Path(path).write_text(json.dumps(document, indent=4), encoding="utf-8")
         return document, digest
 
     monkeypatch.setattr(model, "read_json", read_then_rewrite)
@@ -234,7 +234,7 @@ def test_stride_report_replaced_between_two_layers_reads_is_refused(tmp_path, mo
         if Path(path) == report.resolve():
             digests.append(digest)
             if len(digests) == 1:
-                report.write_text(json.dumps({**document, "stride_px_per_second": 2 * document["stride_px_per_second"]}))
+                report.write_text(json.dumps({**document, "stride_px_per_second": 2 * document["stride_px_per_second"]}), encoding="utf-8")
         return document, digest
 
     monkeypatch.setattr(model, "read_json", read_then_double_the_stride_once)
@@ -242,7 +242,7 @@ def test_stride_report_replaced_between_two_layers_reads_is_refused(tmp_path, mo
         load_scene(spec)
     assert len(digests) == 2 and digests[0] != digests[1]
     # Both versions pass the per-report gate for this sequence; only the scene-wide map tells them apart.
-    assert bound_stride(json.loads(report.read_text()), load_asset(tmp_path / "atlas.json", state="walk")) == pytest.approx(40)
+    assert bound_stride(json.loads(report.read_text(encoding="utf-8")), load_asset(tmp_path / "atlas.json", state="walk")) == pytest.approx(40)
     monkeypatch.undo()
     loaded = load_scene(spec)
     assert [layer.velocity for layer in loaded.layers] == [(pytest.approx(-40), 0), (pytest.approx(40), 0)]

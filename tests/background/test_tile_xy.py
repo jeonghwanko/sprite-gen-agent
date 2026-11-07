@@ -126,7 +126,7 @@ def test_cli_accepts_axis_xy(tmp_path):
     out = tmp_path / "tile.png"
     assert tile.main(["--source", str(source), "--out", str(out), "--period", "16", "--overlap", "5",
                       "--axis", "xy"]) == 0
-    report = json.loads((tmp_path / "tile.report.json").read_text())
+    report = json.loads((tmp_path / "tile.report.json").read_text(encoding="utf-8"))
     assert report["axis"] == "xy" and report["status"] == "pass"
     assert report["source"] == str(source) and report["output"] == str(out)
     with Image.open(out) as image:

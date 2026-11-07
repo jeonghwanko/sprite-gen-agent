@@ -63,7 +63,7 @@ def test_the_first_cell_every_rest_and_the_close_are_the_breathed_cells(breathed
     src = breathed/'breathed'
     assert cli.main(['video-sway', '--frames', str(src), '--out', str(out), '--breathe', str(src/'breathe.json'),
                      '--region', region(), '--gain', '3']) == 0
-    record = json.loads((out/'sway.json').read_text())
+    record = json.loads((out/'sway.json').read_text(encoding="utf-8"))
     rests = [k for k in range(N) if (k*BREATHS) % N == 0]
     assert rests == [0, N//BREATHS]
     for k in rests:
@@ -72,7 +72,7 @@ def test_the_first_cell_every_rest_and_the_close_are_the_breathed_cells(breathed
     assert sum(not np.array_equal(rgba(out/name), rgba(src/name)) for name in FILES) > N//2
     dy = np.asarray(record['dy_px'])
     assert abs(dy[0]-dy[-1]) <= np.abs(np.diff(dy)).max() / 4, 'the loop does not close at rest'
-    report = json.loads((src/'breathe.json').read_text())
+    report = json.loads((src/'breathe.json').read_text(encoding="utf-8"))
     assert record['drive'] == {'kind': 'breath', 'breathe_sha256': hashlib.sha256((src/'breathe.json').read_bytes()).hexdigest(),
                                'lag': sway.LAG_DEFAULT, 'lift_px': round(lift(report), 4), 'heading_deg': 0.0, 'inhale': INHALE,
                                'breaths': BREATHS, 'start_cell': 0, 'loop_cells': None}
@@ -89,7 +89,7 @@ def late_peak(lag, inhale=INHALE):
 
 @pytest.mark.parametrize('lag', [0.1, 0.15, 0.2])
 def test_the_part_peaks_late_by_the_lag_and_reaches_gain_times_the_lift(breathed, lag):
-    report = json.loads((breathed/'breathed'/'breathe.json').read_text())
+    report = json.loads((breathed/'breathed'/'breathe.json').read_text(encoding="utf-8"))
     got = answer(breathed, lag=lag, gain=1.0)
     w = np.asarray([breathe.smooth_wave(p, INHALE) for p in report['phases']])
     rise = lift(report)
@@ -122,8 +122,8 @@ def test_the_part_follows_the_in_breath_share_the_record_says(breathed, tmp_path
                      '--inhale', '0.42', *beat]) == 0
     assert cli.main(['video-sway', '--frames', str(rec), '--out', str(out), '--breathe', str(rec/'breathe.json'),
                      '--region', region(), '--lag', '0.15', '--gain', '3']) == 0
-    report = json.loads((rec/'breathe.json').read_text())
-    record = json.loads((out/'sway.json').read_text())
+    report = json.loads((rec/'breathe.json').read_text(encoding="utf-8"))
+    record = json.loads((out/'sway.json').read_text(encoding="utf-8"))
     assert report['config']['inhale'] == record['drive']['inhale'] == 0.42
 
     def offset(inhale):
@@ -139,10 +139,10 @@ def test_a_record_written_before_the_keys_were_there_is_the_default_breath(breat
     says the default, as a sidecar leaving them out does — the share 0.40, and the frames are the loop from its first
     cell: the part follows the same breath to the bit, and the drive says the defaults."""
     src = breathed/'breathed'
-    report = json.loads((src/'breathe.json').read_text())
+    report = json.loads((src/'breathe.json').read_text(encoding="utf-8"))
     assert (report['config']['inhale'], report['config']['start_cell'], report['config']['loop_cells']) == (INHALE, 0, None)
     unsaid = tmp_path/'unsaid.json'
-    unsaid.write_text(json.dumps(report | {'config': {k: v for k, v in report['config'].items() if k not in keys}}))
+    unsaid.write_text(json.dumps(report | {'config': {k: v for k, v in report['config'].items() if k not in keys}}), encoding="utf-8")
     cells = [Image.fromarray(rgba(src/name)) for name in FILES]
     a, b = (sway.solve_cells(sway.read_ask([CHEST], breathe=path), cells, None) for path in (src/'breathe.json', unsaid))
     assert np.array_equal(a.dy, b.dy) and np.array_equal(a.dx, b.dx) and np.abs(a.dy).max() > 0
@@ -224,8 +224,8 @@ def test_a_way_out_is_offset_as_the_loop_cell_of_its_phase(breathed, way_out):
     assert way.gain == loop.gain < gain
     assert np.array_equal(way.dx, loop.dx[stretch]) and np.array_equal(way.dy, loop.dy[stretch])
     assert way.dy[0] != 0 and abs(way.dy[0]) == abs(loop.dy[START])
-    report = json.loads((root/'way-b'/'breathe.json').read_text())
-    record = json.loads((root/'way-s'/'sway.json').read_text())
+    report = json.loads((root/'way-b'/'breathe.json').read_text(encoding="utf-8"))
+    record = json.loads((root/'way-s'/'sway.json').read_text(encoding="utf-8"))
     assert (report['config']['start_cell'], report['config']['loop_cells']) == (START, N)
     assert (record['drive']['start_cell'], record['drive']['loop_cells']) == (START, N)
     assert record['dx_px'] == np.round(loop.dx[stretch], 2).tolist() and record['dy_px'] == np.round(loop.dy[stretch], 2).tolist()
@@ -236,13 +236,13 @@ def test_a_way_out_is_the_pad_hand_step_cut_out(way_out):
     carried from the loop's first cell, and so the same cells byte for byte — breathed, and swayed."""
     root, gain, stretch, own_reach = way_out
     cut = slice(START, START + len(SHIFTS))
-    way_b, pad_b = (json.loads((root/name/'breathe.json').read_text()) for name in ('way-b', 'pad-b'))
+    way_b, pad_b = (json.loads((root/name/'breathe.json').read_text(encoding="utf-8")) for name in ('way-b', 'pad-b'))
     assert way_b['phases'] == pad_b['phases'][cut]
     assert way_b['resolved']['anatomy'] == pad_b['resolved']['anatomy']
     for k, name in enumerate(WAY):
         assert np.array_equal(rgba(root/'way-b'/name), rgba(root/'pad-b'/f'frame-{START + k:03d}.png')), f'breathed cell {k}'
         assert np.array_equal(rgba(root/'way-s'/name), rgba(root/'pad-s'/f'frame-{START + k:03d}.png')), f'swayed cell {k}'
-    way_s, pad_s = (json.loads((root/name/'sway.json').read_text()) for name in ('way-s', 'pad-s'))
+    way_s, pad_s = (json.loads((root/name/'sway.json').read_text(encoding="utf-8")) for name in ('way-s', 'pad-s'))
     assert way_s['dx_px'] == pad_s['dx_px'][cut] and way_s['dy_px'] == pad_s['dy_px'][cut]
     same = ('gain', 'gain_requested', 'reach_px', 'fold', 'body_px', 'body_worn_px', 'body_bob_px')
     assert {k: way_s[k] for k in same} == {k: pad_s[k] for k in same}
@@ -289,7 +289,7 @@ def test_a_heading_moves_the_part_against_the_way_the_chest_rises(breathed, tmp_
 
 def test_a_record_that_does_not_say_the_breath_is_refused(breathed, tmp_path):
     src = breathed/'breathed'
-    report = json.loads((src/'breathe.json').read_text())
+    report = json.loads((src/'breathe.json').read_text(encoding="utf-8"))
     cases = {
         'changed': report | {'phases': [0.0, *report['phases'][1:-1], 0.5]},
         'counted': report | {'frames': N-1},
@@ -300,7 +300,7 @@ def test_a_record_that_does_not_say_the_breath_is_refused(breathed, tmp_path):
             'not one': "not a Breathe layer's record"}
     for name, bad in cases.items():
         path = tmp_path/f'{name}.json'
-        path.write_text(json.dumps(bad))
+        path.write_text(json.dumps(bad), encoding="utf-8")
         with pytest.raises(SystemExit, match=whys[name]):
             cli.main(['video-sway', '--frames', str(src), '--out', str(tmp_path/name), '--breathe', str(path), '--region', region()])
         assert not (tmp_path/name).exists()
@@ -333,7 +333,7 @@ def test_the_inspection_records_the_drive_and_its_way_by_name(breathed, tmp_path
     loop_dir = tmp_path/'loop'
     loop_dir.mkdir()
     Image.fromarray(np.concatenate(cells, axis=1)).save(loop_dir/'idle.strip.png')
-    (loop_dir/'idle.strip.json').write_text(json.dumps({'kind': 'periodic', 'frames': N, 'w': w, 'h': h, 'delay_ms': 41.67}))
+    (loop_dir/'idle.strip.json').write_text(json.dumps({'kind': 'periodic', 'frames': N, 'w': w, 'h': h, 'delay_ms': 41.67}), encoding="utf-8")
     record = sway_inspect.inspect_loop(loop_dir, [CHEST], tmp_path/'out', breathe=src/'breathe.json')
     digest = hashlib.sha256((src/'breathe.json').read_bytes()).hexdigest()
     assert record['follow']['drive']['kind'] == 'breath' and record['follow']['drive']['breathe_sha256'] == digest
