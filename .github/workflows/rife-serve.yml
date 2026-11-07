@@ -1,0 +1,107 @@
+# SPDX-License-Identifier: Apache-2.0
+# The resident binary's release assets (rife-ncnn-vulkan-serve, native/rife-serve/; docs/loop-repair.md section 1,
+# "The resident binary"). Run only when asked: a tag rife-serve-* (sprite_gen/video/rife_install.py SERVE_TAG) builds the
+# assets and opens a DRAFT release with them, and a run by hand builds them as artifacts only. Nothing is published here.
+# The runners have no GPU, so no check frame is made (build.py --no-check): a draft is checked on a real GPU of each
+# platform against the release binary before it is published, its zips then pinned in SERVE_ZIP_SHA256 — and every
+# machine checks each process again as it starts (rife.Served). Windows and Linux only: no macOS binary built today makes
+# the release's macOS frames.
+#
+# Both builds compile against the headers of Vulkan SDK 1.2.162.0, which the release built against (Vulkan-Headers
+# v1.2.162), with no Vulkan SDK: Windows links an import library made from that SDK's loader's export list
+# (Vulkan-Loader v1.2.162 loader/vulkan-1.def, SHA-256 pinned), Linux the distribution's libvulkan.
+name: rife-serve
+
+on:
+  push:
+    tags: ["rife-serve-*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  VULKAN_REF: v1.2.162
+  LOADER_DEF_SHA256: 1fd33b0cdf87d84038ea44aa3cb6a2df23b45d2d6fb4bafc1e93c13c47b9574f
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Vulkan headers and the loader's import library
+        shell: pwsh
+        run: |
+          git clone -q --depth 1 --branch $env:VULKAN_REF https://github.com/KhronosGroup/Vulkan-Headers.git vk-headers
+          Invoke-WebRequest "https://raw.githubusercontent.com/KhronosGroup/Vulkan-Loader/$env:VULKAN_REF/loader/vulkan-1.def" -OutFile vulkan-1.def
+          $got = (Get-FileHash vulkan-1.def -Algorithm SHA256).Hash.ToLower()
+          if ($got -ne $env:LOADER_DEF_SHA256) { throw "vulkan-1.def has SHA-256 $got, expected $env:LOADER_DEF_SHA256" }
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath
+          $lib = Get-ChildItem "$vs\VC\Tools\MSVC\*\bin\Hostx64\x64\lib.exe" | Select-Object -Last 1
+          & $lib.FullName /nologo /def:vulkan-1.def /machine:x64 /out:vulkan-1.lib
+          if ($LASTEXITCODE) { throw "lib.exe failed ($LASTEXITCODE)" }
+      - name: build and pack
+        shell: pwsh
+        run: |
+          python native/rife-serve/build.py --work build-work --out dist --no-check --zip -- -A x64 "-DVulkan_INCLUDE_DIR=$PWD/vk-headers/include" "-DVulkan_LIBRARY=$PWD/vulkan-1.lib"
+          if ($LASTEXITCODE) { throw "build.py failed ($LASTEXITCODE)" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rife-serve-windows
+          path: dist/*.zip
+          if-no-files-found: error
+
+  ubuntu:
+    runs-on: ubuntu-24.04
+    # Ubuntu 20.04's glibc (2.31), so the binary runs where the release's (built on 18.04) mostly does.
+    container: ubuntu:20.04
+    timeout-minutes: 60
+    steps:
+      - name: build tools
+        run: |
+          apt-get update -q
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends ca-certificates git cmake g++ make python3 libvulkan-dev binutils
+      - uses: actions/checkout@v4
+      - name: Vulkan headers
+        run: git clone -q --depth 1 --branch "$VULKAN_REF" https://github.com/KhronosGroup/Vulkan-Headers.git vk-headers
+      - name: build and pack
+        run: python3 native/rife-serve/build.py --work build-work --out dist --no-check --zip -- "-DVulkan_INCLUDE_DIR=$PWD/vk-headers/include" -DVulkan_LIBRARY=/usr/lib/x86_64-linux-gnu/libvulkan.so
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rife-serve-ubuntu
+          path: dist/*.zip
+          if-no-files-found: error
+
+  draft:
+    if: startsWith(github.ref, 'refs/tags/rife-serve-')
+    needs: [windows, ubuntu]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd dist
+          sha256sum *.zip | tee SHA256SUMS
+          {
+            echo "Draft: the resident binary (rife-ncnn-vulkan-serve) for rife-ncnn-vulkan 20221029, built by ${GITHUB_WORKFLOW} run ${GITHUB_RUN_ID} from ${GITHUB_SHA}."
+            echo
+            echo "Not checked on a GPU yet. Before publishing: make its check frame and the probe pairs' frames on a real GPU of each platform against the release binary (docs/loop-repair.md section 1, \"The resident binary\"), then pin these SHA-256 in sprite_gen/video/rife_install.py SERVE_ZIP_SHA256."
+            echo
+            echo '```'
+            cat SHA256SUMS
+            echo '```'
+          } > notes.md
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft --title "$GITHUB_REF_NAME" --notes-file notes.md *.zip SHA256SUMS
+          cat SHA256SUMS >> "$GITHUB_STEP_SUMMARY"
