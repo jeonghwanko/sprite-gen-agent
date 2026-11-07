@@ -70,7 +70,13 @@ MARKER = ".sprite-gen-install.json"
 # the release's macOS binary's frames, so the engine would refuse it there.
 SERVE_TAG = f"rife-serve-{rife.RELEASE}-1"
 SERVE_URL = "https://github.com/jeonghwanko/sprite-gen-agent/releases/download/{tag}/{name}"
-SERVE_ZIP_SHA256: dict[str, str] = {}
+# rife-serve-20221029-1, built by rife-serve run 42326667616 from bb0ed0e2 and checked against the release binary on
+# 2026-11-07 — its check frame and 66 frames between 11 real probe pairs, all 132 runs byte for byte: windows on an NVIDIA
+# RTX 3050 Laptop GPU (driver 545.92, Windows 11), ubuntu on an NVIDIA RTX 4060 (driver 580, Ubuntu 24.04).
+SERVE_ZIP_SHA256: dict[str, str] = {
+    "windows": "a1c86bd2883dabd937659f91d785e9083d269216863e4bd8b6380e05bc5346d8",
+    "ubuntu": "a819a0d14a14001cb35932e3dbc4da8c48f1b34592dd889b90465dcba312de85",
+}
 SERVE_PLATFORMS = ("windows", "ubuntu")
 SERVE_MARKER = ".sprite-gen-serve.json"
 SERVE_NOTICE = rife.SERVE + ".NOTICE.txt"

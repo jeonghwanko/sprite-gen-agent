@@ -54,6 +54,8 @@ def pinned(monkeypatch, tmp_path):
     monkeypatch.setitem(rife_install.ZIP_SHA256, PLATFORM, hashlib.sha256(path.read_bytes()).hexdigest())
     monkeypatch.setattr(rife, "MODEL_SHA256", {name: hashlib.sha256(data).hexdigest() for name, data in MODEL_FILES.items()},
                         raising=False)
+    # the binary's install only: the resident binary pinned beside it would be downloaded (test_rife_serve_install)
+    monkeypatch.setattr(rife_install, "SERVE_ZIP_SHA256", {})
     monkeypatch.delenv("SPRITE_GEN_RIFE_BACKEND", raising=False)
     monkeypatch.setenv("SPRITE_GEN_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.delenv("SPRITE_GEN_RIFE", raising=False)
