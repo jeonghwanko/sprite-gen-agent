@@ -29,7 +29,7 @@ def strip(root: Path, name: str, cells: list[Image.Image], *, delay_ms: float) -
         sheet.paste(cell, (k * w, 0))
     meta = {"frames": len(cells), "w": w, "h": h, "delay_ms": delay_ms, "loop": True, "kind": "periodic"}
     sheet.save(root / f"{name}.strip.png")
-    (root / f"{name}.strip.json").write_text(json.dumps(meta))
+    (root / f"{name}.strip.json").write_text(json.dumps(meta), encoding="utf-8")
     return f"{name}.strip.json"
 
 
@@ -40,11 +40,11 @@ def test_a_24_fps_strip_in_a_24_fps_scene_shows_each_cell_once(tmp_path):
     frames = [Image.new("RGBA", (16, 16), (40 * (i + 1), 20, 30, 255)) for i in range(4)]
     sheet, meta = build_strip(frames, cycle_seconds=4 / 24)
     sheet.save(tmp_path / "probe.strip.png")
-    (tmp_path / "probe.strip.json").write_text(json.dumps(meta))
+    (tmp_path / "probe.strip.json").write_text(json.dumps(meta), encoding="utf-8")
     spec = {"kind": "sprite-gen-scene", "version": 1, "canvas": {"width": 64, "height": 32, "background": [0, 0, 0]},
             "fps": 24, "duration": 4 / 24, "assets": {"probe": "probe.strip.json"},
             "layers": [{"id": "probe", "asset": "probe", "at": [32, 32]}]}
-    (tmp_path / "scene.json").write_text(json.dumps(spec))
+    (tmp_path / "scene.json").write_text(json.dumps(spec), encoding="utf-8")
     renderer = Renderer(load_scene(tmp_path / "scene.json"))
     assert meta["delay_ms"] == 41.67
     assert [renderer.frame(i / 24).getpixel((32, 28))[0] for i in range(4)] == [40, 80, 120, 160]
@@ -60,7 +60,7 @@ def test_a_frame_on_a_cell_boundary_shows_the_cell_that_starts_there(rate, tmp_p
     spec = {"kind": "sprite-gen-scene", "version": 1, "canvas": {"width": 64, "height": 32, "background": [0, 0, 0]},
             "fps": 20, "duration": 1.0, "assets": {"cells": source},
             "layers": [{"id": "cells", "asset": "cells", "at": [32, 32]}]}
-    (tmp_path / "scene.json").write_text(json.dumps(spec))
+    (tmp_path / "scene.json").write_text(json.dumps(spec), encoding="utf-8")
     renderer = Renderer(load_scene(tmp_path / "scene.json"))
     got = [(renderer.frame(i / 20).getpixel((32, 28))[0] - 10) // 4 for i in range(20)]
     assert got == [i * rate // 20 for i in range(20)]

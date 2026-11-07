@@ -129,7 +129,7 @@ def test_a_log_reads_the_cells_by_name(tmp_path: Path) -> None:
     lines = [{"t": k / 60, "hero": f"run {p}", "figures": [f"stand {k // 4}", None], "kind": "run"}
              for k, p in enumerate(POSES)]
     log = tmp_path / "cells.jsonl"
-    log.write_text("".join(json.dumps(line) + "\n" for line in lines))
+    log.write_text("".join(json.dumps(line) + "\n" for line in lines), encoding="utf-8")
     code, report, err = read("--log", str(log), "--log-figure", "hero", "--log-figure", "figures")
     assert code == 0, err
     assert report["read_by"] == "log" and sorted(report["table"]) == ["figure0", "hero"]
@@ -140,7 +140,7 @@ def test_a_log_reads_the_cells_by_name(tmp_path: Path) -> None:
 
 def test_a_log_names_the_keys_that_hold_figures(tmp_path: Path) -> None:
     log = tmp_path / "cells.jsonl"
-    log.write_text(json.dumps({"t": 0, "hero": "run 0"}) + "\n")
+    log.write_text(json.dumps({"t": 0, "hero": "run 0"}) + "\n", encoding="utf-8")
     code, _report, err = read("--log", str(log))
     assert code == 2 and "--log-figure" in err and "hero" in err
 
@@ -151,7 +151,7 @@ def test_a_listed_hold_is_listed_and_an_unlisted_one_fails_the_gate(tmp_path: Pa
     listed.write_text(json.dumps({"holds": [
         {"scene": "roof", "figure": "figure", "from": 7, "to": 8, "reason": "a stop the move means"},
         {"scene": "other", "figure": "figure", "from": 3, "to": 3, "reason": "another scene's"},
-    ]}))
+    ]}), encoding="utf-8")
     code, report, err = read("--source", source, "--holds", str(listed), "--scene", "roof")
     assert code == 0, err
     row = report["table"]["figure"]
@@ -160,7 +160,7 @@ def test_a_listed_hold_is_listed_and_an_unlisted_one_fails_the_gate(tmp_path: Pa
     assert row["listedRuns"][0]["reason"] == "a stop the move means"
     code, _report, err = read("--source", source, "--holds", str(listed), "--scene", "roof", "--gate")
     assert code == 1 and "1 frame" in err
-    listed.write_text(json.dumps({"holds": [{"from": 3, "to": 8, "reason": "all of them meant"}]}))
+    listed.write_text(json.dumps({"holds": [{"from": 3, "to": 8, "reason": "all of them meant"}]}), encoding="utf-8")
     code, report, err = read("--source", source, "--holds", str(listed), "--gate")
     assert code == 0, err
     assert report["unlisted"] == 0 and report["table"]["figure"]["listed"] == 3
@@ -171,19 +171,19 @@ def test_a_list_is_read_as_its_writer_wrote_it(tmp_path: Path) -> None:
     round, refuses the list (as holds lists are read elsewhere)."""
     source = str(save(scene(POSES), tmp_path / "frames"))
     listed = tmp_path / "meant.holds.json"
-    listed.write_text(json.dumps({"holds": [{"scene": "roof", "figure": "figure", "from": 3, "to": 3, "reason": "meant"}]}))
+    listed.write_text(json.dumps({"holds": [{"scene": "roof", "figure": "figure", "from": 3, "to": 3, "reason": "meant"}]}), encoding="utf-8")
     code, _report, err = read("--source", source, "--holds", str(listed))
     assert code == 2 and "--scene" in err and "roof" in err
-    listed.write_text(json.dumps({"holds": [{"from": 3, "to": 3, "reason": " "}]}))
+    listed.write_text(json.dumps({"holds": [{"from": 3, "to": 3, "reason": " "}]}), encoding="utf-8")
     code, _report, err = read("--source", source, "--holds", str(listed))
     assert code == 2 and "reason" in err
-    listed.write_text(json.dumps({"holds": [{"from": 4, "to": 3, "reason": "meant"}]}))
+    listed.write_text(json.dumps({"holds": [{"from": 4, "to": 3, "reason": "meant"}]}), encoding="utf-8")
     code, _report, err = read("--source", source, "--holds", str(listed))
     assert code == 2 and "from" in err
     # A folder: every *.holds.json under it.
     (tmp_path / "lists" / "deep").mkdir(parents=True)
-    (tmp_path / "lists" / "deep" / "a.holds.json").write_text(json.dumps({"holds": [{"from": 3, "to": 3, "reason": "meant"}]}))
-    (tmp_path / "lists" / "b.holds.json").write_text(json.dumps({"holds": [{"from": 7, "to": 8, "reason": "meant too"}]}))
+    (tmp_path / "lists" / "deep" / "a.holds.json").write_text(json.dumps({"holds": [{"from": 3, "to": 3, "reason": "meant"}]}), encoding="utf-8")
+    (tmp_path / "lists" / "b.holds.json").write_text(json.dumps({"holds": [{"from": 7, "to": 8, "reason": "meant too"}]}), encoding="utf-8")
     code, report, err = read("--source", source, "--holds", str(tmp_path / "lists"), "--gate")
     assert code == 0, err
     assert report["table"]["figure"]["listed"] == 3
@@ -196,7 +196,7 @@ def strip(tmp_path: Path, cells: list[Image.Image], meta: dict) -> Path:
         sheet.alpha_composite(cell, (k * w, 0))
     sheet.save(tmp_path / "walk.strip.png")
     path = tmp_path / "walk.strip.json"
-    path.write_text(json.dumps({"frames": len(cells), "w": w, "h": h, "delay_ms": 41.67, **meta}))
+    path.write_text(json.dumps({"frames": len(cells), "w": w, "h": h, "delay_ms": 41.67, **meta}), encoding="utf-8")
     return path
 
 
@@ -251,7 +251,7 @@ def test_a_report_is_written_where_asked(tmp_path: Path) -> None:
     out = tmp_path / "out" / "holds.json"
     code, report, err = read("--source", str(save(scene(POSES), tmp_path / "frames")), "--report", str(out))
     assert code == 0, err
-    assert json.loads(out.read_text()) == report and report["kind"] == holds.REPORT_KIND
+    assert json.loads(out.read_text(encoding="utf-8")) == report and report["kind"] == holds.REPORT_KIND
 
 
 # --- a figure in a few pixels, specks, and a reading of nothing -------------------------------------------------------
@@ -334,7 +334,7 @@ def test_frames_that_show_no_figure_are_no_reading(tmp_path: Path) -> None:
         code, report, err = read("--source", source, "--report", str(out), *gate)
         assert code == 2
         assert (report["inspected"], report["unlisted"], report["table"]) == (0, 0, {})
-        assert json.loads(out.read_text()) == report
+        assert json.loads(out.read_text(encoding="utf-8")) == report
         assert err.splitlines() == ["inspect-holds: no frame was read against the frame before: no figure on frames 0-2 "
                                     "(no pixel with alpha over 8)"]
 
@@ -371,10 +371,10 @@ def _nothing(tmp_path: Path, case: str) -> list[str]:
                 "--box", "40,40,10,10"]
     log = tmp_path / "cells.jsonl"
     if case == "log of no cell":
-        log.write_text("".join(json.dumps({"t": k, "hero": None}) + "\n" for k in range(5)))
+        log.write_text("".join(json.dumps({"t": k, "hero": None}) + "\n" for k in range(5)), encoding="utf-8")
         return ["--log", str(log), "--log-figure", "hero"]
     if case == "log past --frames":
-        log.write_text("".join(json.dumps({"t": k, "hero": "run 0"}) + "\n" for k in range(5)))
+        log.write_text("".join(json.dumps({"t": k, "hero": "run 0"}) + "\n" for k in range(5)), encoding="utf-8")
         return ["--log", str(log), "--log-figure", "hero", "--frames", "50-60"]
     path = strip(tmp_path, [figure(p) for p in range(4)], {"loop": False})
     if case == "strip past --frames":
