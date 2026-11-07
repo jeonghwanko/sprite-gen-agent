@@ -14,5 +14,5 @@ def test_a_tool_past_its_bound_is_stopped_and_named():
 
 
 def test_a_tool_that_ends_in_time_returns_its_result():
-    done = local_tool.run([sys.executable, "-c", "print('ok')"], seconds=30, what="probe", capture_output=True, text=True)
+    done = local_tool.run([sys.executable, "-c", "print('ok')"], seconds=30, what="probe", capture_output=True, text=True, encoding="utf-8")
     assert done.returncode == 0 and done.stdout.strip() == "ok"

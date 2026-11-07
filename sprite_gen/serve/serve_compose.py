@@ -170,7 +170,7 @@ def native_pick(kind: str = "folder") -> dict:
     script = _PICK_SCRIPTS.get(kind)
     if script is None:
         raise ValueError(f"unknown pick kind: {kind}")
-    proc = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
+    proc = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, encoding="utf-8")
     if proc.returncode != 0:
         if "-128" in (proc.stderr or ""):  # user canceled
             return {"cancelled": True}

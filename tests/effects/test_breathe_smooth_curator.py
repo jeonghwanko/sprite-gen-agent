@@ -46,7 +46,7 @@ def test_the_mirror_refuses_a_smooth_row_instead_of_drawing_pixel(tmp_path) -> N
     (tmp_path / "payload.json").write_text(json.dumps(payload), encoding="utf-8")
     (tmp_path / "harness.cjs").write_text(HARNESS, encoding="utf-8")
     proc = subprocess.run([shutil.which("node"), str(tmp_path / "harness.cjs"),
-                           str(tmp_path / "payload.json")], capture_output=True, text=True)
+                           str(tmp_path / "payload.json")], capture_output=True, text=True, encoding="utf-8")
     assert proc.returncode == 0, f"node 하네스 실패:\n{proc.stderr}"
     got = json.loads((tmp_path / "js.json").read_text(encoding="utf-8"))[0]
     assert not got["ok"] and got["refused"], f"smooth 줄을 미러가 그렸다(pixel 워프로): {got}"

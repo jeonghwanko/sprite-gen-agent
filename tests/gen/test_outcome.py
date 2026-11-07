@@ -214,7 +214,7 @@ def test_a_sigterm_from_outside_reaches_the_report(tmp_path):
                            "--report", {str(report)!r}]))
     """)
     child = subprocess.Popen([sys.executable, "-c", driver], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                             text=True, cwd=ROOT)
+                             text=True, encoding="utf-8", cwd=ROOT)
     assert child.stdout.readline().strip() == "SENT"
     child.send_signal(signal.SIGTERM)
     assert child.wait(timeout=30) == 143

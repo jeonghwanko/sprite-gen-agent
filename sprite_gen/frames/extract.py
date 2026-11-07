@@ -1924,7 +1924,7 @@ def heal_run(run_dir: Path | str) -> dict[str, Any]:
             cmd = [sys.executable, "-m", "sprite_gen.frames.extract",
                    "--run-dir", str(run_dir), "--states", state, *extract_flags]
             try:
-                proc = local_tool.run(cmd, seconds=local_tool.CHILD_SECONDS, what=f"extract {state}", capture_output=True, text=True, env=env)
+                proc = local_tool.run(cmd, seconds=local_tool.CHILD_SECONDS, what=f"extract {state}", capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
             except SystemExit:  # stopped at its bound: this state is not healed
                 report["failed"].append(state)
                 continue

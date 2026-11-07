@@ -490,7 +490,7 @@ def _call(binary: Path, model: Path, a: Image.Image, b: Image.Image, t: float, t
     try:
         proc = subprocess.run(
             [str(binary), "-0", str(tmp / "a.png"), "-1", str(tmp / "b.png"), "-o", str(out), "-s", f"{t:.4f}", "-m", str(model), *modes],
-            capture_output=True, text=True, timeout=CALL_TIMEOUT_SECONDS,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=CALL_TIMEOUT_SECONDS,
         )
     except subprocess.TimeoutExpired as exc:
         raise RifeUnavailable(f"{binary.name} made no frame in {CALL_TIMEOUT_SECONDS} s and was stopped "

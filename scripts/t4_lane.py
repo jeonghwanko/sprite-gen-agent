@@ -57,7 +57,7 @@ def _source() -> tuple[str, Path]:
     root = Path(__file__).resolve().parents[1]
 
     def git(*args: str) -> str:
-        return subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True, text=True).stdout
+        return subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True, text=True, encoding="utf-8", errors="replace").stdout
 
     if git("status", "--porcelain", "--untracked-files=no").strip():
         _fail("the checkout has uncommitted changes")
@@ -92,7 +92,7 @@ app = modal.App("sprite-gen-t4-lane", image=image)
 def _step(steps: list[dict], name: str, argv: list[str], env: dict[str, str]) -> subprocess.CompletedProcess[str]:
     print(f"== {name}", flush=True)
     t0 = time.monotonic()
-    proc = subprocess.run(argv, cwd=SRC, env=env, capture_output=True, text=True)
+    proc = subprocess.run(argv, cwd=SRC, env=env, capture_output=True, text=True, encoding="utf-8", errors="replace")
     out = proc.stdout + proc.stderr
     steps.append({"name": name, "exit": proc.returncode, "seconds": round(time.monotonic() - t0, 1), "out": out})
     return proc
@@ -101,20 +101,20 @@ def _step(steps: list[dict], name: str, argv: list[str], env: dict[str, str]) ->
 @app.function(gpu=GPU, cpu=2.0, memory=8192, timeout=7200)
 def gates(sha: str, whole_suite: bool) -> dict:
     """The steps above, in this container: their exits and what they said."""
-    built = Path("/lane/SOURCE_SHA").read_text().strip()
+    built = Path("/lane/SOURCE_SHA").read_text(encoding="utf-8").strip()
     rec: dict = {"commit": sha, "image_commit": built, "whole_suite": whole_suite, "steps": [], "passed": False}
     if built != sha:
         rec["why"] = f"the image holds {built}, not {sha}"
         return rec
-    model = Path(json.loads(Path("/lane/rife-install.json").read_text())["dir"]) / "rife-v4.6"
+    model = Path(json.loads(Path("/lane/rife-install.json").read_text(encoding="utf-8"))["dir"]) / "rife-v4.6"
     # Nowhere the engine looks for the binary holds one: an empty data directory, nothing on PATH, no SPRITE_GEN_RIFE.
     env = {k: v for k, v in os.environ.items() if not k.startswith("SPRITE_GEN_")}
     env.update(PATH=f"{VENV}/bin:{env.get('PATH', '/usr/local/bin:/usr/bin:/bin')}", XDG_DATA_HOME=tempfile.mkdtemp(),
                SPRITE_GEN_RIFE_MODEL=str(model), SPRITE_GEN_RIFE_DEVICE="cuda")
     steps = rec["steps"]
-    rec["pip_freeze"] = Path("/lane/pip-freeze.txt").read_text()
+    rec["pip_freeze"] = Path("/lane/pip-freeze.txt").read_text(encoding="utf-8")
     smi = subprocess.run(["nvidia-smi", "--query-gpu=name,driver_version,memory.total", "--format=csv,noheader"],
-                         capture_output=True, text=True)
+                         capture_output=True, text=True, encoding="utf-8", errors="replace")
     rec["gpu"] = (smi.stdout or smi.stderr).strip()
     probe = _step(steps, "PyTorch", [f"{VENV}/bin/python", "-c", "import torch; print('torch', torch.__version__, 'cuda', "
                                      "torch.version.cuda, 'cudnn', torch.backends.cudnn.version(), 'gpu', "

@@ -924,7 +924,7 @@ def _run_module(name: str, run_dir: Path, *extra: str) -> dict:
     proc = subprocess.run(
         [sys.executable, "-m", qualified(name), "--run-dir", str(run_dir), *extra],
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8", errors="replace",
     )
     return {
         "ok": proc.returncode == 0,
@@ -1382,7 +1382,7 @@ class CurationHandler(BaseHTTPRequestHandler):
                             args += ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "18"]
                         args.append(str(out))
                         try:
-                            proc = local_tool.run(args, seconds=local_tool.TOOL_SECONDS, what="curation export", capture_output=True, text=True)
+                            proc = local_tool.run(args, seconds=local_tool.TOOL_SECONDS, what="curation export", capture_output=True, text=True, encoding="utf-8", errors="replace")
                         except SystemExit as exc:  # ffmpeg hung: the request fails, the server keeps serving
                             self._send_json({"error": str(exc)}, 500)
                             return

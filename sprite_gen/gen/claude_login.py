@@ -98,7 +98,7 @@ def login(env: Mapping[str, str] | None = None, *, run: Run = subprocess.run) ->
     refused — not knowing is not the same as no login."""
     try:
         done = run([provider_binary(BINARY), "auth", "status", "--json"], env=child_env(env),
-                   capture_output=True, text=True, timeout=STATUS_TIMEOUT_SECONDS)
+                   capture_output=True, text=True, encoding="utf-8", timeout=STATUS_TIMEOUT_SECONDS)
     except FileNotFoundError:
         return None
     except (OSError, subprocess.TimeoutExpired) as exc:
@@ -168,7 +168,7 @@ def send_message(body: dict[str, Any], *, label: str, env: Mapping[str, str] | N
     with tempfile.TemporaryDirectory(prefix="sprite-gen-claude-") as cwd:
         outcome.submitted("claude")
         try:
-            done = run(_args(body), input=_message(body), env=child, cwd=cwd, capture_output=True, text=True,
+            done = run(_args(body), input=_message(body), env=child, cwd=cwd, capture_output=True, text=True, encoding="utf-8",
                        timeout=CALL_TIMEOUT_SECONDS)
         except subprocess.TimeoutExpired as exc:
             raise api.ApiError(f"{label}: `claude -p` gave no answer in {CALL_TIMEOUT_SECONDS:g}s and was stopped "

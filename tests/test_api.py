@@ -55,7 +55,7 @@ def test_an_unknown_name_is_an_attribute_error():
 def test_importing_one_name_loads_only_its_module():
     code = ("import sys; from sprite_gen.api import probe_access; "
             "print(int(any(m in sys.modules for m in ('sprite_gen.qa.motion', 'sprite_gen.video.rife'))))")
-    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=60, check=True).stdout
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, encoding="utf-8", timeout=60, check=True).stdout
     assert out.strip() == "0"
 
 

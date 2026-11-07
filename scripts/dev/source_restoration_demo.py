@@ -148,8 +148,8 @@ def five(files: dict[str, Path]) -> dict[str, object]:
 
 def run_cli(log: Path, *args: str) -> None:
     """One official verb in its own process, stdout and stderr kept beside its outputs."""
-    proc = subprocess.run([sys.executable, "-m", "sprite_gen.cli", *args], capture_output=True, text=True)
-    log.write_text(f"$ sprite-gen {' '.join(args)}\nexit {proc.returncode}\n--- stdout\n{proc.stdout}--- stderr\n{proc.stderr}")
+    proc = subprocess.run([sys.executable, "-m", "sprite_gen.cli", *args], capture_output=True, text=True, encoding="utf-8", errors="replace")
+    log.write_text(f"$ sprite-gen {' '.join(args)}\nexit {proc.returncode}\n--- stdout\n{proc.stdout}--- stderr\n{proc.stderr}", encoding="utf-8")
     if proc.returncode:
         raise SystemExit(f"source_restoration_demo: `sprite-gen {args[0]}` exited {proc.returncode}; see {log}")
 
@@ -184,7 +184,7 @@ def write_source(out: Path) -> dict[str, Path]:
         "kind": "sprite-gen-video-frames-report", "fps": FPS, "frames": N, "width": SW, "height": SH,
         "stream_index": 0, "key": "green",
         "note": "synthetic: the keyed frames are drawn by scripts/dev/source_restoration_demo.py, not keyed from the clip"},
-        indent=2) + "\n")
+        indent=2) + "\n", encoding="utf-8")
     manifest = out / "source" / "source.json"
     run_cli(out / "logs" / "video-source-manifest.log", "video-source-manifest", "--clip", str(clip),
             "--canvas", str(canvas), "--frames-report", str(report), "--frames-dir", str(keyed), "--out", str(manifest))
@@ -216,8 +216,8 @@ def write_delivered(out: Path, source: dict[str, Path]) -> tuple[dict[str, Path]
     for k, cell in enumerate(cells):
         sheet.paste(cell, (k * W, 0))
     sheet.save(files["strip"])
-    files["meta"].write_text(json.dumps(meta, indent=2) + "\n")
-    files["report"].write_text(json.dumps(report, indent=2) + "\n")
+    files["meta"].write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
+    files["report"].write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     save_clean_gif(cells, files["gif"], duration_ms=DELAY, alpha_threshold=128)
     loop.write_webp(cells, files["webp"], delay_ms=DELAY, workdir=out / "work" / "webp")
     return files, cells
@@ -357,7 +357,7 @@ def main(argv: list[str] | None = None) -> int:
 
     shown = showcase(out, delivered["gif"], restored["gif"], passed)
     manifest = json.loads(source["source_manifest"].read_bytes())
-    ffmpeg = subprocess.run([shutil.which("ffmpeg") or "ffmpeg", "-version"], capture_output=True, text=True).stdout.split("\n")[0]
+    ffmpeg = subprocess.run([shutil.which("ffmpeg") or "ffmpeg", "-version"], capture_output=True, text=True, encoding="utf-8", errors="replace").stdout.split("\n")[0]
     summary = {
         "kind": "sprite-gen-source-restoration-demo", "schema_version": 1,
         "what": "a new synthetic example drawn by this script; not a measurement of any delivered loop",
@@ -375,7 +375,7 @@ def main(argv: list[str] | None = None) -> int:
                      summarise(2, second, compared_2, restored, "request-1"),
                      summarise(3, third, compared_3, again, "request-2")],
         "showcase": shown, "checks": passed}
-    (out / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
+    (out / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({"summary": str(out / "summary.json"), "checks": len(passed),
                       "verdicts": [compared_1["verdict"], compared_2["verdict"], compared_3["verdict"]]}))
     return 0

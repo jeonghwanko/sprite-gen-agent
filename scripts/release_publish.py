@@ -47,7 +47,7 @@ class PublishError(RuntimeError):
 
 
 def _run(argv: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(argv, cwd=cwd, capture_output=True, text=True)
+    return subprocess.run(argv, cwd=cwd, capture_output=True, text=True, encoding="utf-8")
 
 
 def release_exists(gh: str, tag: str, *, repo: str, cwd: Path) -> bool:
