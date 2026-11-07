@@ -514,7 +514,10 @@ def test_a_made_frame_that_lost_its_outline_is_replaced_by_the_nearer_source_fra
     row = next(r for r in report["loops"] if Path(r["dir"]).name == "S")
     assert report["between"] == "auto" and report["made_by_rife"] == 0 and row["made_at"] == []
     assert len(row["smear"]) == len(row["nearest_at"]) > 0
-    assert report["replaced"] == sum(len(r["smear"]) for r in report["loops"])
+    # `replaced` counts the frames given way to the nearer source frame. A loop whose beat still breaks after that is made
+    # of source frames only, its rows `source-plan`, and is not counted (E here; docs/loop-repair.md section 4).
+    methods = [m["method"] for r in report["loops"] for m in r["smear"]]
+    assert set(methods) <= {"nearest", "source-plan"} and report["replaced"] == methods.count("nearest")
     assert all(m["method"] == "nearest" and m["faults"] == ["outline"] and m["outline_loss"] > OUTLINE_WARN for m in row["smear"])
     assert sorted(m["at"] for m in row["smear"]) == row["nearest_at"]
     named = [w for w in report["warnings"] if "lost its outline" in w and "the nearer source frame was taken there" in w]
