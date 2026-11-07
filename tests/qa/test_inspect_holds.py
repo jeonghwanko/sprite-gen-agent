@@ -422,3 +422,12 @@ def test_the_python_reading_raises_where_it_reads_nothing(tmp_path: Path) -> Non
         holds.read(source=save([Image.new("RGBA", (24, 24))] * 3, tmp_path / "clear"))
     assert caught.value.report["inspected"] == 0 and caught.value.report["read_by"] == "alpha"
     assert str(caught.value).startswith(holds.NOTHING)
+
+
+def test_a_strip_whose_sheet_is_missing_names_it(tmp_path: Path) -> None:
+    """A sidecar copied without its sheet (a hand-off folder of JSON alone) is an error that names the sheet, not a raw
+    file-not-found (sprite-gen-agent)."""
+    sidecar = tmp_path / "walk.strip.json"
+    sidecar.write_text(json.dumps({"frames": 2, "w": 4, "h": 4, "delay_ms": 41.67}), encoding="utf-8")
+    code, _report, err = read("--source", str(sidecar))
+    assert code == 2 and "the strip's sheet walk.strip.png is not beside it" in err

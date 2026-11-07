@@ -83,6 +83,7 @@ From sprite-gen 4.0.0 (pull request #167), two pieces were ported on their own,
 without the release's fill of held cells (`--fill-held`) or its removal of
 game-pack, sound and ui-kit: a strip's cells read at their exact rate
 (sprite_gen/spec/assets.py `frame_seconds`, from commit 11c486a), and
-`inspect-holds` (sprite_gen/qa/holds.py and its test, as upstream has them, from
-commits 94d9189 and d2e1574), with only the reading half of
+`inspect-holds` (sprite_gen/qa/holds.py and its test, from commits 94d9189 and
+d2e1574; its placement search made faster with the same result, and a missing
+strip sheet named), with only the reading half of
 sprite_gen/video/held_fill.py that it reads by.

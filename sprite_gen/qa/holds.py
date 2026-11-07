@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
-# Modified for sprite-gen-agent (ported from upstream 4.0.0, typed and written for Python 3.11; see NOTICE).
+# Modified for sprite-gen-agent (ported from upstream 4.0.0, typed and written for Python 3.11, the placement search
+# made faster, a missing strip sheet named; see NOTICE).
 """Holds: the frames on which a figure shows the picture it showed on the frame before, so that on screen it stands
 still for a frame and then goes on (`inspect-holds`, docs/asset-tools.md "Frames shown again").
 
@@ -82,22 +83,39 @@ def same_figure(a: Image.Image, b: Image.Image, *, search: int = SEARCH_PX) -> b
     `search` px of it where the fewest pixels change, and read as `held_fill.same_steps` reads a step."""
     A, B = _premultiplied(a), _premultiplied(b)
     h, w = max(A.shape[0], B.shape[0]) + 2 * search, max(A.shape[1], B.shape[1]) + 2 * search
-    base = np.zeros((h, w, 4), dtype=np.float32)
-    base[search:search + A.shape[0], search:search + A.shape[1]] = A
-    best: tuple[int, int, int, int] | None = None
-    for dy in range(-search, search + 1):
-        for dx in range(-search, search + 1):
-            moved = np.zeros_like(base)
-            moved[search + dy:search + dy + B.shape[0], search + dx:search + dx + B.shape[1]] = B
-            changed = int((np.abs(base - moved).max(axis=-1) > held_fill_mod.PIXEL_SAME).sum())
-            if best is None or (changed, abs(dy) + abs(dx)) < best[:2]:
-                best = (changed, abs(dy) + abs(dx), dy, dx)
-    _, _, dy, dx = best  # type: ignore[misc]
+    dy, dx = best_offset(A, B, search=search)
     canvas_a = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     canvas_b = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     canvas_a.paste(a.convert("RGBA"), (search, search))
     canvas_b.paste(b.convert("RGBA"), (search + dx, search + dy))
     return held_fill_mod.same_steps([canvas_a, canvas_b])[0]
+
+
+def best_offset(A: np.ndarray, B: np.ndarray, *, search: int = SEARCH_PX) -> tuple[int, int]:
+    """Where `B` (premultiplied RGBA, pixels along the last axis) sits best over `A`, both on one canvas `search` px
+    larger on every side, `A` at its corner and `B` moved by (dy, dx) within `search` of it: the place that changes
+    the fewest pixels (any channel by more than PIXEL_SAME), the nearer on a tie, the first in row order after that.
+
+    The canvas is held channel first, and a place's count is the pixels `A` shows outside `B`'s box (they change
+    against the clear canvas) plus those that change inside it: no canvas is drawn for each place
+    (tests/test_p1_perf_equivalence.py keeps the form that drew one and compares)."""
+    h, w = max(A.shape[0], B.shape[0]) + 2 * search, max(A.shape[1], B.shape[1]) + 2 * search
+    base = np.zeros((4, h, w), dtype=np.float32)
+    base[:, search:search + A.shape[0], search:search + A.shape[1]] = A.transpose(2, 0, 1)
+    moved = np.ascontiguousarray(B.transpose(2, 0, 1), dtype=np.float32)
+    bh, bw = B.shape[:2]
+    shown = base.max(axis=0) > held_fill_mod.PIXEL_SAME  # premultiplied, so >= 0: a pixel against clear changes so
+    total = int(shown.sum())
+    best: tuple[int, int, int, int] | None = None
+    for dy in range(-search, search + 1):
+        for dx in range(-search, search + 1):
+            y, x = search + dy, search + dx
+            inside = int((np.abs(base[:, y:y + bh, x:x + bw] - moved).max(axis=0) > held_fill_mod.PIXEL_SAME).sum())
+            changed = total - int(shown[y:y + bh, x:x + bw].sum()) + inside
+            if best is None or (changed, abs(dy) + abs(dx)) < best[:2]:
+                best = (changed, abs(dy) + abs(dx), dy, dx)
+    assert best is not None
+    return best[2], best[3]
 
 
 def _same_in_place(a: Image.Image, b: Image.Image) -> bool:
@@ -414,7 +432,10 @@ def load(source: Path, *, key: str | None, work: Path, frames: tuple[int, int | 
         kind = "frames"
     elif source.name.endswith(".strip.json"):
         meta = json.loads(source.read_text(encoding="utf-8"))
-        sheet = Image.open(source.with_name(source.name[: -len(".json")] + ".png")).convert("RGBA")
+        png = source.with_name(source.name[: -len(".json")] + ".png")
+        if not png.is_file():
+            raise ValueError(f"{source}: the strip's sheet {png.name} is not beside it")
+        sheet = Image.open(png).convert("RGBA")
         n, w, h = (int(meta[k]) for k in ("frames", "w", "h"))
         if sheet.size != (n * w, h):
             raise ValueError(f"{source}: the strip's size disagrees with its sidecar")

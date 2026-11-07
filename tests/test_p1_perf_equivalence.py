@@ -17,7 +17,7 @@ from PIL import Image
 
 from sprite_gen._deps import np
 from sprite_gen.frames import decontam, extract, morph
-from sprite_gen.qa import inspect, preview
+from sprite_gen.qa import holds, inspect, preview
 from sprite_gen.serve import serve_curation
 from sprite_gen.video import auto_motion, loop, repair
 from sprite_gen.video import frames as frames_mod
@@ -487,3 +487,55 @@ def test_flow_states_read_again_is_the_same_path_and_a_copy():
     repair._flow_memo.clear()
     assert np.array_equal(again, repair.flow_states(frames))
     assert (again != -1).any()
+
+
+# --- 2026-11-07: inspect-holds' placement search -------------------------------
+
+
+def _ref_best_offset(A, B, search):
+    """`holds.same_figure`'s search as ported from upstream 4.0.0: a fresh canvas drawn for every place, pixels last."""
+    h, w = max(A.shape[0], B.shape[0]) + 2 * search, max(A.shape[1], B.shape[1]) + 2 * search
+    base = np.zeros((h, w, 4), dtype=np.float32)
+    base[search:search + A.shape[0], search:search + A.shape[1]] = A
+    best = None
+    for dy in range(-search, search + 1):
+        for dx in range(-search, search + 1):
+            moved = np.zeros_like(base)
+            moved[search + dy:search + dy + B.shape[0], search + dx:search + dx + B.shape[1]] = B
+            changed = int((np.abs(base - moved).max(axis=-1) > holds.held_fill_mod.PIXEL_SAME).sum())
+            if best is None or (changed, abs(dy) + abs(dx)) < best[:2]:
+                best = (changed, abs(dy) + abs(dx), dy, dx)
+    return best[2], best[3]
+
+
+def _figure_crop(rng, h, w, *, shift=(0, 0), noise=0):
+    """A blob figure on a clear crop, moved by `shift` and with `noise` pixels changed: places with ties, near wins
+    and far ones."""
+    a = np.zeros((h, w, 4), dtype=np.uint8)
+    cy, cx = h // 2 + shift[0], w // 2 + shift[1]
+    yy, xx = np.mgrid[0:h, 0:w]
+    body = ((yy - cy) / (h * 0.35)) ** 2 + ((xx - cx) / (w * 0.3)) ** 2 < 1
+    a[body] = (200, 90, 40, 255)
+    a[body & ((yy + xx) % 7 == 0)] = (30, 30, 30, 255)
+    a[(yy - cy) ** 2 + (xx - cx - w // 4) ** 2 < 9] = (120, 200, 250, 180)  # a soft hand
+    for _ in range(noise):
+        a[rng.randrange(h), rng.randrange(w)] = (rng.randrange(256), rng.randrange(256), rng.randrange(256), rng.randrange(256))
+    return Image.fromarray(a, "RGBA")
+
+
+def test_inspect_holds_placement_is_the_canvas_per_place_search():
+    rng = random.Random(1107)
+    cases = []
+    for h, w in ((40, 30), (64, 48), (23, 57), (9, 9)):
+        base = _figure_crop(rng, h, w)
+        for shift in ((0, 0), (1, -2), (-3, 3), (2, 0)):
+            for noise in (0, 15):
+                cases.append((base, _figure_crop(rng, h, w, shift=shift, noise=noise)))
+        cases.append((base, _figure_crop(rng, h + 3, w - 2, shift=(1, 1))))  # crops of unequal size
+        cases.append((base, Image.new("RGBA", (w, h), (0, 0, 0, 0))))  # a clear crop: every place ties
+    for search in (3, 1, 0):
+        for a, b in cases:
+            A, B = holds.held_fill_mod.premultiplied(a), holds.held_fill_mod.premultiplied(b)
+            assert holds.best_offset(A, B, search=search) == _ref_best_offset(A, B, search)
+    assert len({_ref_best_offset(holds.held_fill_mod.premultiplied(a), holds.held_fill_mod.premultiplied(b), 3)
+                for a, b in cases}) > 3  # the inputs reach places away from the corner, not only (0, 0)
