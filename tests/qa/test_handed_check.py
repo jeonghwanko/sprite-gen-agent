@@ -195,7 +195,7 @@ def test_cli_reads_a_strip_writes_a_board_and_exits_on_a_mirror(tmp_path) -> Non
             sheet.paste(f, (i * W, 0))
         path = tmp_path / f"{name}.strip.png"
         sheet.save(path)
-        (tmp_path / f"{name}.strip.json").write_text(json.dumps({"frames": len(frames), "w": W, "h": H}))
+        (tmp_path / f"{name}.strip.json").write_text(json.dumps({"frames": len(frames), "w": W, "h": H}), encoding="utf-8")
         return path
 
     good = strip(loop("right"), "sw")
@@ -206,7 +206,7 @@ def test_cli_reads_a_strip_writes_a_board_and_exits_on_a_mirror(tmp_path) -> Non
                          "--report", str(tmp_path / "ok.json")], capture_output=True, encoding="utf-8")
     assert ok.returncode == 0, ok.stderr
     assert json.loads(ok.stdout)["ok"] and (tmp_path / "ok.png").is_file()
-    assert json.loads((tmp_path / "ok.json").read_text())["frames"] == 6
+    assert json.loads((tmp_path / "ok.json").read_text(encoding="utf-8"))["frames"] == 6
     no = subprocess.run([*base, "--strip", str(bad)], capture_output=True, encoding="utf-8")
     assert no.returncode == 1 and "on the picture's left, expected its right" in no.stderr
 

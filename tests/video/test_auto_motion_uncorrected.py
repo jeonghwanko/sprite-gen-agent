@@ -37,7 +37,7 @@ def test_real_boundary_match_emits_verified_unchanged_cycle_and_exposes_it(tmp_p
     args = ["--frames-dir", str(keyed), "--out-dir", str(out), "--state", "walk", "--repair", "off"]
     assert loop.main(args + ["--anchor", "motion-auto"]) == 0
     summary = json.loads(capsys.readouterr().out)
-    report = json.loads((out / "loop.loop.report.json").read_text())
+    report = json.loads((out / "loop.loop.report.json").read_text(encoding="utf-8"))
     motion = report["motion_anchor"]
     assert summary["motion_anchor"] == motion
     assert motion["applied"] is False
@@ -68,7 +68,7 @@ def test_uncertain_match_does_not_accept_bad_uncorrected_seam(tmp_path, monkeypa
     with pytest.raises(SystemExit, match="loop seam ratio"):
         loop.main(["--frames-dir", str(keyed), "--out-dir", str(out), "--state", "walk", "--repair", "off",
                    "--anchor", "motion-auto"])
-    report = json.loads((out / "loop.loop.report.json").read_text())
+    report = json.loads((out / "loop.loop.report.json").read_text(encoding="utf-8"))
     assert report["status"] == "failed" and report["resampled_seam_ratio"] > 2
     assert report["motion_anchor"]["applied"] is False
     assert not (out / "loop.gif").exists() and not (out / "loop.webp").exists()

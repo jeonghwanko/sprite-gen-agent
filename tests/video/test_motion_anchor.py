@@ -101,7 +101,7 @@ def test_cli_writes_corrected_cycle_and_gates_rendered_cells(tmp_path, corrected
             "--cycle", "fixed", "--start", "0", "--length", "24", "--anchor", "motion",
             "--anchor-region", "55,27,86,60", "--anchor-region", "48,61,94,110"]
     assert loop.main(args) == 0
-    result = json.loads((out / "loop.loop.report.json").read_text())
+    result = json.loads((out / "loop.loop.report.json").read_text(encoding="utf-8"))
     assert result["status"] == "passed"
     assert result["cycle"]["start"] == 0 and result["cycle"]["length"] == 24
     assert result["cycle"]["kind"] == "fixed"
@@ -114,7 +114,7 @@ def test_cli_writes_corrected_cycle_and_gates_rendered_cells(tmp_path, corrected
     # Changing the limit still refuses the output; motion mode never skips the gate.
     with pytest.raises(SystemExit, match="loop seam ratio"):
         loop.main(args + ["--seam-max", "0.001"])
-    assert json.loads((out / "loop.loop.report.json").read_text())["status"] == "failed"
+    assert json.loads((out / "loop.loop.report.json").read_text(encoding="utf-8"))["status"] == "failed"
 
 
 def test_contract_refused_before_reading_files_or_generating(tmp_path):
@@ -141,7 +141,7 @@ def test_failed_registration_writes_a_report_before_output(tmp_path):
         loop.main(["--frames-dir", str(keyed), "--out-dir", str(out), "--cycle", "fixed",
                    "--start", "0", "--length", "6", "--anchor", "motion",
                    "--anchor-region", "0,0,10,10", "--anchor-region", "48,61,94,110"])
-    report = json.loads((out / "loop.loop.report.json").read_text())
+    report = json.loads((out / "loop.loop.report.json").read_text(encoding="utf-8"))
     assert report["status"] == "failed" and report["anchor"] == "motion"
     assert not (out / "cycle").exists()
 

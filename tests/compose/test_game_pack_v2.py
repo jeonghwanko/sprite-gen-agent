@@ -118,7 +118,7 @@ def all_ints(value):
 def test_version_2_manifest_has_exactly_the_documented_sections(tmp_path):
     out = tmp_path / "out"
     result = game_pack.pack(scene_request(tmp_path), out)
-    assert json.loads((out / "game-pack.json").read_text()) == result
+    assert json.loads((out / "game-pack.json").read_text(encoding="utf-8")) == result
     assert result["version"] == 2
     assert set(result) == {"kind", "version", "textures", "animations", "images", "tiles", "ui"}
     assert set(result["ui"]) == {"nine_slice", "icons"}
@@ -226,7 +226,7 @@ def test_version_2_output_is_deterministic(tmp_path):
     game_pack.pack(request, tmp_path / "b")
     read = lambda d: {p.name: p.read_bytes() for p in d.iterdir()}
     assert read(tmp_path / "a") == read(tmp_path / "b")
-    assert str(tmp_path) not in (tmp_path / "a" / "game-pack.json").read_text()
+    assert str(tmp_path) not in (tmp_path / "a" / "game-pack.json").read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize("change,message", [
@@ -261,7 +261,7 @@ def test_an_image_needs_exactly_one_frame(tmp_path):
 
 def test_a_ui_kit_report_must_be_a_ui_kit_report(tmp_path):
     request = scene_request(tmp_path)
-    report = json.loads((tmp_path / "ui" / "ui-kit.json").read_text())
+    report = json.loads((tmp_path / "ui" / "ui-kit.json").read_text(encoding="utf-8"))
     report["elements"]["panel"]["stretch"] = "y"
     write_json(tmp_path / "ui" / "ui-kit.json", report)
     with pytest.raises(ValueError, match="stretch"):
@@ -286,7 +286,7 @@ def fill_strip(path, size, cap):
 def fill_kit(tmp_path, *, scale=1, inside="hp_bar_frame", stretch="x", cap=3, size=(40, 8)):
     """A report with a bar frame (content area 32 x 6 at scale 1) and a fill drawn inside it."""
     ui_kit_report(tmp_path / "ui")
-    report = json.loads((tmp_path / "ui" / "ui-kit.json").read_text())
+    report = json.loads((tmp_path / "ui" / "ui-kit.json").read_text(encoding="utf-8"))
     fill_strip(tmp_path / "ui" / "hp_bar_fill.png", size, cap)
     record = {"file": "hp_bar_fill.png", "box": {"x": 0, "y": 0, "w": 64, "h": 16},
               "rect": {"x": 1, "y": 1, "w": size[0], "h": size[1]}, "size": {"w": size[0], "h": size[1]},
@@ -350,7 +350,7 @@ def test_bad_fills_are_refused(tmp_path, change, message):
 
 def test_a_fill_must_name_its_frame(tmp_path):
     request = fill_kit(tmp_path)
-    report = json.loads((tmp_path / "ui" / "ui-kit.json").read_text())
+    report = json.loads((tmp_path / "ui" / "ui-kit.json").read_text(encoding="utf-8"))
     report["elements"]["hp_bar_fill"]["inside"] = {"rect": {"x": 10, "y": 3, "w": 32, "h": 6}}
     write_json(tmp_path / "ui" / "ui-kit.json", report)
     with pytest.raises(ValueError, match="hp_bar_fill: inside must name the element"):

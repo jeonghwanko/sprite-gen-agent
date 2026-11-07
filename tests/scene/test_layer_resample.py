@@ -28,7 +28,7 @@ def test_a_scaled_layer_carries_no_colour_its_frame_did_not_have(tmp_path: Path,
     (tmp_path / "scene.json").write_text(json.dumps({
         "kind": "sprite-gen-scene", "version": 1, "canvas": {"width": 400, "height": 400, "background": [16, 16, 16]},
         "fps": 10, "duration": 0.5, "assets": {"hero": "hero.png"},
-        "layers": [{"id": "hero", "asset": "hero", "at": [200, 380], "scale": scale}]}))
+        "layers": [{"id": "hero", "asset": "hero", "at": [200, 380], "scale": scale}]}), encoding="utf-8")
     scene = load_scene(tmp_path / "scene.json")
     layer = scene.layers[0]
     size = tuple(layer.raster_size)

@@ -54,7 +54,7 @@ def cells(path, meta):
 
 
 def chest_region(loop_dir):
-    meta = json.loads((loop_dir/'walk.strip.json').read_text())
+    meta = json.loads((loop_dir/'walk.strip.json').read_text(encoding="utf-8"))
     first = cells(loop_dir/'walk.strip.png', meta)[0]
     pink = np.all(np.abs(first[..., :3].astype(int)-(230, 90, 120)) < 40, axis=-1) & (first[..., 3] > 200)
     ys, xs = np.nonzero(pink)
@@ -62,11 +62,11 @@ def chest_region(loop_dir):
 
 
 def test_the_region_moves_with_the_bob_and_nothing_else_does(loop_dir):
-    before = json.loads((loop_dir/'walk.strip.json').read_text())
+    before = json.loads((loop_dir/'walk.strip.json').read_text(encoding="utf-8"))
     old = cells(loop_dir/'walk.strip.png', before)
     region = chest_region(loop_dir)
     result = follow.follow_loop(loop_dir, [region])
-    meta = json.loads((loop_dir/'walk.strip.json').read_text())
+    meta = json.loads((loop_dir/'walk.strip.json').read_text(encoding="utf-8"))
     new = cells(loop_dir/'walk.strip.png', meta)
     rec = meta['follow']
     # The body bobs twice a cycle; the part answers it.
@@ -108,7 +108,7 @@ def strip_dir(path, draw, n=24):
         strip.paste(c, (k*w, 0))
     path.mkdir()
     strip.save(path/'walk.strip.png')
-    (path/'walk.strip.json').write_text(json.dumps({'kind': 'periodic', 'frames': n, 'w': w, 'h': h, 'delay_ms': 1000/24}))
+    (path/'walk.strip.json').write_text(json.dumps({'kind': 'periodic', 'frames': n, 'w': w, 'h': h, 'delay_ms': 1000/24}), encoding="utf-8")
     return path
 
 
@@ -144,7 +144,7 @@ def test_a_cell_with_no_core_is_refused(tmp_path):
     with pytest.raises(SystemExit, match=r"^video-follow: cell 5 has no body as deep as a quarter of cell 0's \(\d+ px\)$"):
         follow.follow_loop(loop_dir, [(80.0, 83.0, 22.0, 17.0)])
     assert (loop_dir/'walk.strip.png').read_bytes() == as_cut
-    assert 'follow' not in json.loads((loop_dir/'walk.strip.json').read_text())
+    assert 'follow' not in json.loads((loop_dir/'walk.strip.json').read_text(encoding="utf-8"))
 
 
 def bunny(k, ears, period=24):
@@ -195,7 +195,7 @@ def test_cells_with_no_body_in_common_are_refused(tmp_path):
     with pytest.raises(SystemExit, match=r'^video-follow: no part of the body is at one place in more than half of the cells$'):
         follow.follow_loop(loop_dir, [(80.0, 100.0, 22.0, 17.0)])
     assert (loop_dir/'walk.strip.png').read_bytes() == as_cut
-    assert 'follow' not in json.loads((loop_dir/'walk.strip.json').read_text())
+    assert 'follow' not in json.loads((loop_dir/'walk.strip.json').read_text(encoding="utf-8"))
 
 
 def test_the_part_lags_and_settles_without_a_kick():
@@ -224,10 +224,10 @@ def test_running_it_again_reads_the_strip_as_cut(loop_dir):
 def test_an_alignment_clears_the_follow_through_and_says_so(loop_dir):
     region = chest_region(loop_dir)
     follow.follow_loop(loop_dir, [region])
-    meta = json.loads((loop_dir/'walk.strip.json').read_text())
+    meta = json.loads((loop_dir/'walk.strip.json').read_text(encoding="utf-8"))
     report = align.align_set([loop_dir], length=meta['cycle_frames'])
     assert report['loops'][0]['follow_cleared'] is True
-    after = json.loads((loop_dir/'walk.strip.json').read_text())
+    after = json.loads((loop_dir/'walk.strip.json').read_text(encoding="utf-8"))
     assert 'follow' not in after
     assert not (loop_dir/follow.SOURCE).exists()
 
@@ -239,7 +239,7 @@ def test_a_new_cut_removes_the_old_follow_source(loop_dir, tmp_path):
                       '--repair', 'off', '--report', str(tmp_path/'loop2.json'), '--name', 'walk'])
     assert code == 0
     assert not (loop_dir/follow.SOURCE).exists()
-    assert 'follow' not in json.loads((loop_dir/'walk.strip.json').read_text())
+    assert 'follow' not in json.loads((loop_dir/'walk.strip.json').read_text(encoding="utf-8"))
 
 
 def test_the_default_refusal_reads_as_it_did(loop_dir):
@@ -250,7 +250,7 @@ def test_the_default_refusal_reads_as_it_did(loop_dir):
     assert re.fullmatch(r'video-follow: a move of \d+\.\d px folds a region of radius 2 px over itself; '
                         r'lower --gain or give the region larger radii', str(refused.value))
     assert (loop_dir/'walk.strip.png').read_bytes() == as_cut
-    assert 'follow' not in json.loads((loop_dir/'walk.strip.json').read_text())
+    assert 'follow' not in json.loads((loop_dir/'walk.strip.json').read_text(encoding="utf-8"))
 
 
 def small_region(loop_dir, share):
@@ -265,7 +265,7 @@ def head_region(loop_dir, share):
 
     On the head's top edge, so its move changes pixels: inside the flat head nothing would."""
     radius = small_region(loop_dir, share)[3]
-    meta = json.loads((loop_dir/'walk.strip.json').read_text())
+    meta = json.loads((loop_dir/'walk.strip.json').read_text(encoding="utf-8"))
     first = cells(loop_dir/'walk.strip.png', meta)[0]
     head = np.all(np.abs(first[..., :3].astype(int)-(210, 150, 60)) < 40, axis=-1) & (first[..., 3] > 200)
     ys, xs = np.nonzero(head)
@@ -295,7 +295,7 @@ def test_lower_takes_the_largest_gain_that_does_not_fold(loop_dir):
     with pytest.raises(SystemExit, match='folds a region'):
         follow.follow_loop(loop_dir, [region])
     result = follow.follow_loop(loop_dir, [region], on_fold='lower')
-    meta = json.loads((loop_dir/'walk.strip.json').read_text())
+    meta = json.loads((loop_dir/'walk.strip.json').read_text(encoding="utf-8"))
     rec = meta['follow']
     assert rec['gain_requested'] == follow.GAIN_DEFAULT and rec['on_fold'] == 'lower' and rec['fold']['lowered'] is True
     assert result['gain'] == rec['gain']
@@ -313,7 +313,7 @@ def test_lower_takes_the_largest_gain_that_does_not_fold(loop_dir):
     # The report's gain is the --gain that gives this strip; one step more is refused.
     follow.follow_loop(loop_dir, [region], gain=rec['gain'])
     assert (loop_dir/'walk.strip.png').read_bytes() == lowered
-    assert json.loads((loop_dir/'walk.strip.json').read_text())['follow']['fold']['lowered'] is False
+    assert json.loads((loop_dir/'walk.strip.json').read_text(encoding="utf-8"))['follow']['fold']['lowered'] is False
     with pytest.raises(SystemExit, match='folds a region'):
         follow.follow_loop(loop_dir, [region], gain=rec['gain']+follow.GAIN_STEP)
 
@@ -321,7 +321,7 @@ def test_lower_takes_the_largest_gain_that_does_not_fold(loop_dir):
 def moved_alone(loop_dir, region, **kw):
     """The strip with `region` moved by itself, and the pixels that moved."""
     follow.follow_loop(loop_dir, [region], on_fold='lower', **kw)
-    meta = json.loads((loop_dir/'walk.strip.json').read_text())
+    meta = json.loads((loop_dir/'walk.strip.json').read_text(encoding="utf-8"))
     strip = np.asarray(Image.open(loop_dir/'walk.strip.png').convert('RGBA'))
     source = np.asarray(Image.open(loop_dir/follow.SOURCE).convert('RGBA'))
     return strip, (strip != source).any(axis=-1), meta['follow']
@@ -346,7 +346,7 @@ def test_each_region_takes_its_own_gain(loop_dir):
     assert both['fold']['ratio'] == max(large['ratio'], little['ratio'])
     # The strip's move is the chest's, as when the chest moves alone.
     assert (both['dx_px'], both['dy_px'], both['reach_px']) == (chest_rec['dx_px'], chest_rec['dy_px'], chest_rec['reach_px'])
-    meta = json.loads((loop_dir/'walk.strip.json').read_text())
+    meta = json.loads((loop_dir/'walk.strip.json').read_text(encoding="utf-8"))
     strip = np.asarray(Image.open(loop_dir/'walk.strip.png').convert('RGBA'))
     source = np.asarray(Image.open(loop_dir/follow.SOURCE).convert('RGBA'))
     # Each region's pixels are as when it moves alone at its own gain; nothing else changed.
@@ -365,7 +365,7 @@ def test_overlapping_regions_of_different_gains_fold_nowhere(loop_dir):
     result = follow.follow_loop(loop_dir, [(cx, cy+6, rx+6, ry+6), small], on_fold='lower')
     large, little = result['fold']['regions']
     assert large['gain'] == follow.GAIN_DEFAULT > little['gain'] >= follow.GAIN_MEASURED
-    meta = json.loads((loop_dir/'walk.strip.json').read_text())
+    meta = json.loads((loop_dir/'walk.strip.json').read_text(encoding="utf-8"))
     ok, worst = folds_nowhere(meta['follow'], meta)
     assert ok, worst
 
@@ -378,7 +378,7 @@ def test_a_region_too_small_to_move_is_held_and_the_rest_move(loop_dir):
     ear = head_region(loop_dir, 0.3)  # folds at 0.75: under the mass as measured
     chest_alone, chest_moved, _ = moved_alone(loop_dir, chest)
     result = follow.follow_loop(loop_dir, [chest, ear], on_fold='lower')
-    meta = json.loads((loop_dir/'walk.strip.json').read_text())
+    meta = json.loads((loop_dir/'walk.strip.json').read_text(encoding="utf-8"))
     rec = meta['follow']
     moving, held = rec['fold']['regions']
     assert held['held'] is True and held['gain'] == 0 and held['ratio'] == 0 and held['gain_limit'] < follow.GAIN_MEASURED
@@ -397,7 +397,7 @@ def test_a_region_too_small_to_move_is_held_and_the_rest_move(loop_dir):
 def test_a_strip_whose_every_region_is_held_is_refused(loop_dir):
     ear, other = head_region(loop_dir, 0.3), small_region(loop_dir, 0.2)
     as_cut = (loop_dir/'walk.strip.png').read_bytes()
-    meta = (loop_dir/'walk.strip.json').read_text()
+    meta = (loop_dir/'walk.strip.json').read_text(encoding="utf-8")
     with pytest.raises(SystemExit) as refused:
         follow.follow_loop(loop_dir, [other, ear], on_fold='lower')
     # Named by the largest region, the last to fold: if it is held, so is every other.
@@ -406,7 +406,7 @@ def test_a_strip_whose_every_region_is_held_is_refused(loop_dir):
                         r'\(the mass as measured moves \d+\.\d px; the largest gain that does not fold is 0\.\d+\); give the region larger radii',
                         str(refused.value))
     assert (loop_dir/'walk.strip.png').read_bytes() == as_cut
-    assert (loop_dir/'walk.strip.json').read_text() == meta
+    assert (loop_dir/'walk.strip.json').read_text(encoding="utf-8") == meta
 
 
 @pytest.mark.slow
@@ -415,7 +415,7 @@ def test_regions_that_take_one_gain_are_written_as_one_gain(loop_dir):
     # with no gain of its own per region, and the strip is the one that gain asked for gives.
     a, b = small_region(loop_dir, 0.7), head_region(loop_dir, 0.7)
     result = follow.follow_loop(loop_dir, [a, b], on_fold='lower')
-    rec = json.loads((loop_dir/'walk.strip.json').read_text())['follow']
+    rec = json.loads((loop_dir/'walk.strip.json').read_text(encoding="utf-8"))['follow']
     assert rec['fold']['lowered'] is True and follow.GAIN_MEASURED <= rec['gain'] < follow.GAIN_DEFAULT
     assert [sorted(e) for e in rec['fold']['regions']] == [['gain_limit', 'radius_px', 'ratio']]*2
     assert sorted(rec) == ['body_bob_px', 'body_px', 'body_worn_px', 'dx_px', 'dy_px', 'fold', 'freq_hz', 'gain', 'gain_requested',
@@ -429,12 +429,12 @@ def test_regions_that_take_one_gain_are_written_as_one_gain(loop_dir):
 def test_lower_does_not_go_under_the_mass_as_measured(loop_dir):
     region = small_region(loop_dir, 0.3)  # folds at 0.75: under gain 1
     as_cut = (loop_dir/'walk.strip.png').read_bytes()
-    meta = (loop_dir/'walk.strip.json').read_text()
+    meta = (loop_dir/'walk.strip.json').read_text(encoding="utf-8")
     with pytest.raises(SystemExit) as refused:
         follow.follow_loop(loop_dir, [region], on_fold='lower')
     assert 'folds a region' in str(refused.value) and 'under --gain 1' in str(refused.value)
     assert (loop_dir/'walk.strip.png').read_bytes() == as_cut
-    assert (loop_dir/'walk.strip.json').read_text() == meta
+    assert (loop_dir/'walk.strip.json').read_text(encoding="utf-8") == meta
     # A request already under 1 that folds is refused too: lowering only goes down.
     with pytest.raises(SystemExit, match='under --gain 1'):
         follow.follow_loop(loop_dir, [small_region(loop_dir, 0.3)], gain=0.9, on_fold='lower')
@@ -553,7 +553,7 @@ def test_a_region_over_the_soft_outline_leaves_no_colour_under_clear_pixels(tmp_
     out = tmp_path/'soft-loop'
     assert loop.main(['--frames-dir', str(keyed), '--out-dir', str(out), '--state', 'walk', '--anchor', 'motion-auto',
                       '--repair', 'off', '--report', str(tmp_path/'soft.json'), '--name', 'walk']) == 0
-    meta = json.loads((out/'walk.strip.json').read_text())
+    meta = json.loads((out/'walk.strip.json').read_text(encoding="utf-8"))
     first = cells(out/'walk.strip.png', meta)[0]
     pink = np.all(np.abs(first[..., :3].astype(int)-(230, 90, 120)) < 40, axis=-1) & (first[..., 3] > 0)
     ys, xs = np.nonzero(pink)

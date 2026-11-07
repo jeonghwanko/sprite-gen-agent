@@ -154,5 +154,5 @@ def test_the_sway_layer_sways_on_the_beat_chosen(tmp_path) -> None:
     report = _avoid(_loop(tmp_path / "loop", BUMP), out)
     assert cli.main(["video-sway", "--frames", str(out), "--out", str(tmp_path / "swayed"), "--breathe", str(out / "breathe.json"),
                      "--region", "64,95,30,18"]) == 0
-    drive = json.loads((tmp_path / "swayed" / "sway.json").read_text())["drive"]
+    drive = json.loads((tmp_path / "swayed" / "sway.json").read_text(encoding="utf-8"))["drive"]
     assert {k: drive[k] for k in report["beat"]["chosen"]} == report["beat"]["chosen"]

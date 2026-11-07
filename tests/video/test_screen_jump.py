@@ -131,7 +131,7 @@ def test_an_aligned_loop_whose_take_jumps_is_named_with_the_frames_that_show_it(
     assert jumps[0]["at"] == [[(14 - start) % 54, (15 - start) % 54]]
     assert row["retake"]["reasons"] == ["filmed-jump"] and row["retake"]["filmed_jump"]["remedy"] == "recut-or-retake"
     assert sum("cut it again or film this direction again (filmed-jump)" in w for w in done["warnings"]) == 1
-    assert json.loads((d / "walk.strip.json").read_text())["cycle_align"]["screen"]["jumps"][0]["step"] == [14, 15]
+    assert json.loads((d / "walk.strip.json").read_text(encoding="utf-8"))["cycle_align"]["screen"]["jumps"][0]["step"] == [14, 15]
 
 
 @pytest.mark.slow

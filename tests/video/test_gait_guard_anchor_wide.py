@@ -227,8 +227,8 @@ def test_video_set_passes_shape_and_anchor_through(tmp_path: Path, monkeypatch, 
 
     def fake_video(image, prompt, out, report, *, duration, resolution, log):
         Path(out).write_bytes(b"x")
-        Path(report).write_text("{}")
-        Path(log).write_text("")
+        Path(report).write_text("{}", encoding="utf-8")
+        Path(log).write_text("", encoding="utf-8")
         return 0
 
     # This routing test must not inspect its synthetic still through a live provider.
@@ -244,7 +244,7 @@ def test_video_set_passes_shape_and_anchor_through(tmp_path: Path, monkeypatch, 
     assert seen == {"shape": "wide", "anchor": anchor, "spill": ("auto", "canvas.png"), "decontam": "auto"}
     if anchor == "motion-auto":
         assert payload["items"][0]["loop"]["motion_anchor"]["applied"] is False
-        assert "uncorrected" in (tmp_path / "set/table.md").read_text()
+        assert "uncorrected" in (tmp_path / "set/table.md").read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize("state,play,anchor,cut", [("walk", None, None, "motion-auto"), ("run", "loop", None, "motion-auto"),
@@ -270,8 +270,8 @@ def test_video_set_cuts_a_searched_walk_with_motion_auto_unless_told(tmp_path: P
 
     def fake_video(image, prompt, out, report, *, duration, resolution, log, **pin):
         Path(out).write_bytes(b"x")
-        Path(report).write_text("{}")
-        Path(log).write_text("")
+        Path(report).write_text("{}", encoding="utf-8")
+        Path(log).write_text("", encoding="utf-8")
         return 0
 
     monkeypatch.setattr(batch_mod.canvas_mod, "run_canvas", fake_canvas)
@@ -288,7 +288,7 @@ def test_video_set_cuts_a_searched_walk_with_motion_auto_unless_told(tmp_path: P
     item = payload["items"][0]
     assert item["loop"]["retake"] == {"reason": "start-stop", "reasons": ["start-stop"], "remedy": "retake"}
     assert any(w.startswith(f"{item['item']}: film this direction again (start-stop)") for w in payload["warnings"])
-    assert "film again: start-stop" in (tmp_path / "set/table.md").read_text()
+    assert "film again: start-stop" in (tmp_path / "set/table.md").read_text(encoding="utf-8")
 
 
 def test_cheer_motion_template_names_no_limbs() -> None:

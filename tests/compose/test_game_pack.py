@@ -90,7 +90,7 @@ def test_mixed_export_preserves_timing_order_policy_pivot_and_pixel_colors(tmp_p
     ])
     out = tmp_path / "out"
     result = game_pack.pack(source, out)
-    assert json.loads((out / "game-pack.json").read_text()) == result
+    assert json.loads((out / "game-pack.json").read_text(encoding="utf-8")) == result
     anim = result["animations"]["walk"]
     assert (anim["loop"], anim["hold_last"], anim["end_frame"], anim["blend"], anim["direction"]) == (False, True, 2, "add", "NE")
     assert anim["events"] == [{"frame": 1, "name": "impact"}]
@@ -329,7 +329,7 @@ def test_explicit_intermediate_budget_and_webp_cli_preserve_immutable_output(tmp
                            "--out-dir", str(tmp_path / "out"), "--image-format", "webp", "--max-bytes", "200000000"],
                           capture_output=True, encoding="utf-8")
     assert call.returncode == 0, call.stderr
-    manifest = json.loads((tmp_path / "out" / "game-pack.json").read_text())
+    manifest = json.loads((tmp_path / "out" / "game-pack.json").read_text(encoding="utf-8"))
     assert all(t["image"].endswith(".webp") for t in manifest["textures"])
     with pytest.raises(ValueError, match="different content"):
         game_pack.pack(src, tmp_path / "out")
@@ -343,7 +343,7 @@ def test_webp_only_tiles_preserve_transparent_rgb_and_every_alpha_value(tmp_path
     image.putdata([(i, 255-i, (i*17) % 256, i) for i in range(256)])
     image.save(tmp_path / "tile.png")
     src = tmp_path / "tiles.json"
-    src.write_text(json.dumps({"version": 2, "tiles": [{"id": "ground", "source": "tile.png", "display": {"width": 16}}]}))
+    src.write_text(json.dumps({"version": 2, "tiles": [{"id": "ground", "source": "tile.png", "display": {"width": 16}}]}), encoding="utf-8")
     result = game_pack.pack(src, tmp_path / "out", image_format="webp")
     tile = result["tiles"]["ground"]
     assert tile["image"] == tile["webp"] == "tile-ground.webp"

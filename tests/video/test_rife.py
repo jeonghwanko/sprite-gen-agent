@@ -25,7 +25,7 @@ def _fake_binary(tmp_path: Path, with_model: bool = True) -> Path:
     # install root only find the binary under that name.
     binary = tmp_path / "bin" / rife.installed_binary(Path(".")).name
     binary.parent.mkdir(parents=True)
-    binary.write_text("#!/bin/sh\nexit 0\n")
+    binary.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
     binary.chmod(binary.stat().st_mode | stat.S_IXUSR)
     if with_model:
         (binary.parent / rife.MODEL).mkdir()
@@ -98,7 +98,7 @@ def _stand_in(binary: Path, shell: str, python: str) -> Path:
     """A stand-in for the RIFE binary: a shell script, or on Windows, which runs no shebang script
     (WinError 193), the same steps in Python behind a .cmd that hands them to this interpreter."""
     if sys.platform != "win32":
-        binary.write_text(shell)
+        binary.write_text(shell, encoding="utf-8")
         binary.chmod(binary.stat().st_mode | stat.S_IXUSR)
         return binary
     script = binary.with_suffix(".py")
@@ -131,7 +131,7 @@ def _modes_asked(monkeypatch, tmp_path: Path, named: str | None) -> tuple[list[l
     binary, log = _recording_binary(tmp_path)
     interpolate = rife.Rife(binary, tmp_path / rife.MODEL)
     interpolate(_disc(40), _disc(72), 0.5)
-    calls = [line.split() for line in log.read_text().splitlines()]
+    calls = [line.split() for line in log.read_text(encoding="utf-8").splitlines()]
     return [[a for a in argv if a in ("-x", "-z", "-u", "-g")] for argv in calls], interpolate.describe()
 
 
@@ -201,7 +201,7 @@ def test_read_makes_the_frame_as_every_call_and_reads_sixteen_single_passes_turn
     interpolate = rife.Rife(binary, tmp_path / rife.MODEL)
     a, b = _marked(40), _marked(72)
     frame, apart = interpolate.read(a, b, 0.25)
-    calls = [line.split() for line in log.read_text().splitlines()]
+    calls = [line.split() for line in log.read_text(encoding="utf-8").splitlines()]
     assert len(calls) == 2 + rife.PASS_CALLS == interpolate.calls and interpolate.made == 1
     flags = [[x for x in argv if x in ("-x", "-z", "-u", "-g")] for argv in calls]
     assert flags[:2] == [["-x", "-z"], ["-x", "-z"]] and all(f == [] for f in flags[2:])

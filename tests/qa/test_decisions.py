@@ -52,7 +52,7 @@ def test_prepare_is_offline_and_binds_pixels_order_durations(evidence, monkeypat
     changed = copy.deepcopy(spec)
     changed["frames"][0]["duration"] = .15
     assert d.prepare_request(changed, base)[1] != binding
-    assert "data:image" not in (out / "request-summary.json").read_text()
+    assert "data:image" not in (out / "request-summary.json").read_text(encoding="utf-8")
     assert not (base / "review.json").exists()
 
 
@@ -158,7 +158,7 @@ def test_timeout_is_recorded_without_retry_or_secret(evidence, monkeypatch):
         raise d.RequestFailure("transport_outcome_unknown")
     report = live(evidence, monkeypatch, timeout)
     assert report["error_code"] == "transport_outcome_unknown"
-    assert "test-key" not in (evidence[2] / "decision-review.json").read_text()
+    assert "test-key" not in (evidence[2] / "decision-review.json").read_text(encoding="utf-8")
     with pytest.raises(ValueError, match="unknown outcome"):
         live(evidence, monkeypatch)
 
@@ -222,7 +222,7 @@ def test_invalid_json_keeps_request_id_in_unverified_report(evidence, monkeypatc
     assert report["status"] == "unverified"
     assert report["error_code"] == "invalid_response_json"
     assert report["request_id"] == "req-invalid-json"
-    assert "invalid-secret-response-body" not in (evidence[2] / "decision-review.json").read_text()
+    assert "invalid-secret-response-body" not in (evidence[2] / "decision-review.json").read_text(encoding="utf-8")
     with pytest.raises(ValueError, match="unknown outcome"):
         live(evidence, monkeypatch, d.post_request)
 

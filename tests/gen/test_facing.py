@@ -221,7 +221,7 @@ def test_codex_vision_reads_new_answer_and_scrubs_identity(monkeypatch, tmp_path
     monkeypatch.setenv("ORCHESTRATOR_MEMBER_ID", "synthetic")
     def run(command, **kwargs):
         seen.append((command, kwargs))
-        Path(command[command.index("-o") + 1]).write_text('right')
+        Path(command[command.index("-o") + 1]).write_text('right', encoding="utf-8")
         return SimpleNamespace(returncode=0)
     monkeypatch.setattr(facing_vision.subprocess, "run", run)
     monkeypatch.setattr(codex_provider, "codex_login", lambda: codex_provider.CodexLogin(codex_provider.AUTH_SOURCE_LOGIN))
@@ -240,7 +240,7 @@ def test_cli_options_reach_report(tmp_path, monkeypatch):
     assert gen.main(["--provider", "openai", "--prompt", "robot", "--ref", str(FIXTURES / "right.png"),
                      "--out", str(tmp_path / "out.png"), "--report", str(report),
                      "--facing", "left"]) == 0
-    facing_report = json.loads(report.read_text())["extra"]["facing"]
+    facing_report = json.loads(report.read_text(encoding="utf-8"))["extra"]["facing"]
     assert facing_report["requested"] == "left" and facing_report["action"] == "none"
     assert facing_report["fix"] == "none"
     assert (tmp_path / "out.png").read_bytes() == (FIXTURES / "right.png").read_bytes()
@@ -276,12 +276,12 @@ def test_gen_set_reference_row_keeps_its_prompt(tmp_path, monkeypatch):
     backend = Backend()
     monkeypatch.setattr(gen, "_make_provider", lambda *a, **kw: backend)
     prompt = tmp_path / "prompt.txt"
-    prompt.write_text("a front-facing robot animation row")
+    prompt.write_text("a front-facing robot animation row", encoding="utf-8")
     monkeypatch.setattr(gen_set, "run_logged", lambda command, log: gen.main(command[4:]))
     assert gen_set.run_gen_cli(prompt, tmp_path / "out.png", [FIXTURES / "front.png"],
                               tmp_path / "report.json", provider="openai", model=None,
                               log=tmp_path / "log.txt") == 0
-    assert backend.generations[0].prompt == prompt.read_text() and not backend.inspections
+    assert backend.generations[0].prompt == prompt.read_text(encoding="utf-8") and not backend.inspections
 
 
 def test_reroll_reference_row_keeps_its_prompt(tmp_path, monkeypatch):
@@ -294,7 +294,7 @@ def test_reroll_reference_row_keeps_its_prompt(tmp_path, monkeypatch):
     monkeypatch.setattr(reroll, "guide_rel", lambda *a: "guide.png")
     monkeypatch.setattr(reroll, "take_raw_rel", lambda *a: "out.png")
     monkeypatch.setattr(reroll, "record_take", lambda *a: None)
-    (tmp_path / "prompt.txt").write_text("a back-facing robot animation row")
+    (tmp_path / "prompt.txt").write_text("a back-facing robot animation row", encoding="utf-8")
     reroll.reroll_state(tmp_path, "idle", provider="openai")
     assert backend.generations[0].prompt == "a back-facing robot animation row" and not backend.inspections
 

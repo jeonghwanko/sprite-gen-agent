@@ -55,7 +55,7 @@ def _collected(tmp_path: Path, *args: str) -> tuple[list[str], str]:
 
 
 def test_a_plain_run_deselects_the_tests_marked_slow_and_full_runs_every_test(tmp_path):
-    (tmp_path / "test_probe.py").write_text(PROBE)
+    (tmp_path / "test_probe.py").write_text(PROBE, encoding="utf-8")
     fast, said = _collected(tmp_path)
     assert fast == ["test_one_case_marked_slow[1]", "test_unmarked"], said
     assert "fast bundle: the tests marked slow are deselected; `pytest --full` runs every test" in said

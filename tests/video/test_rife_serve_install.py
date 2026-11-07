@@ -101,7 +101,7 @@ def test_the_pinned_asset_build_py_packs_is_put_beside_the_binary_with_its_notic
     assert (target / SERVE).read_bytes() == b"a resident binary\n" and os.access(target / SERVE, os.X_OK)
     notice = (target / rife_install.SERVE_NOTICE).read_text(encoding="utf-8")
     assert rife.RELEASE in notice and "the licence of src/ncnn/LICENSE.txt" in notice and "Apache License" in notice
-    assert json.loads((target / rife_install.SERVE_MARKER).read_text())["sha256"] == sha
+    assert json.loads((target / rife_install.SERVE_MARKER).read_text(encoding="utf-8"))["sha256"] == sha
     assert sorted(p.name for p in target.parent.iterdir()) == [TOP]  # no staging left behind
 
     again = _install(zip_path, serve_zip=asset)

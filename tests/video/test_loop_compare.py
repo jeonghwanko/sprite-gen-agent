@@ -49,17 +49,17 @@ def _artifact(tmp_path, name, frames=None):
     m = {"frames": n, "w": w, "h": h, "delay_ms": 41.67, "cycle_seconds": .5, "cycle_frames": n, "loop": True,
          "scale": 1.0, "source_rect": [0, 0, w, h], "foot_anchor": "none",
          "source_cut": {"source": src, "start": 4, "length": n, "samples": list(range(4, 4 + n))}}
-    files["meta"].write_text(json.dumps(m) + "\n")
+    files["meta"].write_text(json.dumps(m) + "\n", encoding="utf-8")
     files["report"].write_text(json.dumps({"kind": "sprite-gen-video-loop-report", "status": "passed", "source": src,
                                          "fps": 24.0, "frames_total": 36, "cycle": {"start": 4, "length": n},
-                                         "strip": m, "resampled_seam_ratio": .1, "jolt": {"passed": True}}))
+                                         "strip": m, "resampled_seam_ratio": .1, "jolt": {"passed": True}}), encoding="utf-8")
     return files
 
 
 def _edit(path, mutate):
-    doc = json.loads(path.read_text())
+    doc = json.loads(path.read_text(encoding="utf-8"))
     mutate(doc)
-    path.write_text(json.dumps(doc))
+    path.write_text(json.dumps(doc), encoding="utf-8")
 
 
 def _compare(a, b):
@@ -68,7 +68,7 @@ def _compare(a, b):
 
 def test_identical_final_pixels_are_not_improvement_and_digests_are_exact_bytes(tmp_path):
     a, b = _artifact(tmp_path, "a"), _artifact(tmp_path, "b")
-    b["meta"].write_text(b["meta"].read_text() + "\n\n")
+    b["meta"].write_text(b["meta"].read_text(encoding="utf-8") + "\n\n", encoding="utf-8")
     _edit(b["report"], lambda d: d.update(resampled_seam_ratio=.00001))
     r = _compare(a, b)
     assert r["verdict"] == "non_regressing" and r["reasons"] == ["identical-pixels-and-timing"]
@@ -156,7 +156,7 @@ def test_cli_writes_unknown_successfully_and_refuses_corrupt_input_or_overwrite(
             args.extend([f"--{side}-{key}", str(path)])
     output = tmp_path / "comparison.json"
     assert main(args + ["--report", str(output)]) == 0
-    r = json.loads(output.read_text())
+    r = json.loads(output.read_text(encoding="utf-8"))
     assert r["kind"] == compare.KIND and r["verdict"] == "unknown"
     assert json.loads(capsys.readouterr().out) == r
     with pytest.raises(SystemExit, match="--baseline-meta and --report are the same file"):
@@ -164,7 +164,7 @@ def test_cli_writes_unknown_successfully_and_refuses_corrupt_input_or_overwrite(
     _edit(b["meta"], lambda d: d.update(w=1))
     with pytest.raises(SystemExit, match="size agrees"):
         main(args + ["--report", str(output)])
-    b["meta"].write_text("{")
+    b["meta"].write_text("{", encoding="utf-8")
     with pytest.raises(SystemExit, match="video-loop-compare"):
         main(args + ["--report", str(output)])
 

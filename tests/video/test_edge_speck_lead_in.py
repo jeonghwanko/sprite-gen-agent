@@ -266,7 +266,7 @@ def _fixed(tmp_path: Path, clip: list[Image.Image], start: int) -> tuple[dict, d
     out = loop.run_loop(keyed, tmp_path / "out", fps=24.0, state="walk", min_len=None, max_len=None, n_out=None,
                         seam_max=1000.0, name="w", report_path=None, cycle_mode="fixed", start=start, length=24,
                         body_height=120, anchor="body", repair="off")
-    return out, json.loads((tmp_path / "out" / "w.strip.json").read_text()), keyed
+    return out, json.loads((tmp_path / "out" / "w.strip.json").read_text(encoding="utf-8")), keyed
 
 
 @pytest.mark.slow
@@ -282,7 +282,7 @@ def test_a_cut_after_a_lead_in_reads_the_standing_height_on_its_own_first_frame(
     for name in ("a", "b"):
         shutil.copytree(tmp_path / "out", tmp_path / name)
     align.align_set([tmp_path / "a", tmp_path / "b"], between="nearest")
-    aligned = json.loads((tmp_path / "a" / "w.strip.json").read_text())
+    aligned = json.loads((tmp_path / "a" / "w.strip.json").read_text(encoding="utf-8"))
     assert (aligned["body_ref"], aligned["body_ref_frame"], aligned["body_src_h"], aligned["scale"]) == \
         ("cut-first-frame", 12, meta["body_src_h"], meta["scale"])
 

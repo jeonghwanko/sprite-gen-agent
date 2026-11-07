@@ -166,7 +166,7 @@ def test_the_same_frame_twice_is_the_same_bytes_and_the_identity_names_what_make
 
 
 def _walkers() -> dict:
-    return json.loads((WALKERS / "walkers.json").read_text())["pairs"]
+    return json.loads((WALKERS / "walkers.json").read_text(encoding="utf-8"))["pairs"]
 
 
 def _walker(key: str, name: str) -> Image.Image:
@@ -312,7 +312,7 @@ def test_a_loop_whose_device_fails_as_the_network_is_put_on_it_fails_with_its_re
     with pytest.raises(SystemExit, match=r"fix RIFE, or pass --repair off") as failed:
         _run(tmp_path, keyed)
     assert FAILURE_TEXT["OutOfMemoryError"] in str(failed.value) and failed.value.__cause__.__cause__ is error
-    report = json.loads((tmp_path / "w.json").read_text())
+    report = json.loads((tmp_path / "w.json").read_text(encoding="utf-8"))
     assert report["status"] == "failed" and FAILURE_TEXT["OutOfMemoryError"] in report["error"]
     assert not list((tmp_path / "out").glob(f".{loop.FALLBACK_FRAMES}*"))
 
@@ -436,8 +436,8 @@ def test_a_model_other_than_the_pinned_one_is_refused_and_one_not_there_is_not_i
         rife.locate_model()
     model = tmp_path / "other" / rife.MODEL
     model.mkdir(parents=True)
-    (model / "flownet.param").write_text("another model")
-    (model / "flownet.bin").write_text("another model")
+    (model / "flownet.param").write_text("another model", encoding="utf-8")
+    (model / "flownet.bin").write_text("another model", encoding="utf-8")
     monkeypatch.setenv("SPRITE_GEN_RIFE_MODEL", str(model))
     assert rife.locate_model() == model.resolve()
     with pytest.raises(rife.RifeUnavailable, match=rf"flownet.param has sha256 [0-9a-f]{{64}}, expected {rife.MODEL_SHA256['flownet.param']}"):

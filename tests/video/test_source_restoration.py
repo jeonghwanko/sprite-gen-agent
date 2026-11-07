@@ -94,13 +94,13 @@ def build(tmp_path, zoom=1, key='green', paint=None, facing='right', unpainted=(
     for k,f in enumerate(fs): f.save(src_dir/f'frame-{k:04}.png')
     canvas=src_dir/'frame-0000.png'
     freport=tmp_path/'frames.json'
-    freport.write_text(json.dumps({'kind':'sprite-gen-video-frames-report','fps':24.,'frames':12,'width':W*zoom,'height':H*zoom,'stream_index':0,'key':key}))
+    freport.write_text(json.dumps({'kind':'sprite-gen-video-frames-report','fps':24.,'frames':12,'width':W*zoom,'height':H*zoom,'stream_index':0,'key':key}), encoding="utf-8")
     manifest=tmp_path/'source.json'
     inputs=dict(source_manifest=manifest,source_frames_dir=src_dir,source_canvas=canvas,source_frames_report=freport)
     mp4=tmp_path/'clip.mp4'
     subprocess.run(['ffmpeg','-v','error','-framerate','24','-i',str(src_dir/'frame-%04d.png'),'-c:v','libx264','-pix_fmt','yuv420p',str(mp4)],check=True)
     inputs['source_clip']=mp4
-    manifest.write_text(json.dumps(source.manifest(clip=mp4,canvas=canvas,frames_report=freport,files=sorted(src_dir.glob('*.png')),timestamps=source.timestamps(mp4,0))))
+    manifest.write_text(json.dumps(source.manifest(clip=mp4,canvas=canvas,frames_report=freport,files=sorted(src_dir.glob('*.png')),timestamps=source.timestamps(mp4,0))), encoding="utf-8")
     clean=[resize_cell(cleaned(f),(W,H)) for f in fs]
     bad=list(clean)
     for k in (2,8): bad[k]=resize_cell(damage(cleaned((drawn if k in unpainted else fs)[k]),zoom),(W,H))
@@ -109,7 +109,7 @@ def build(tmp_path, zoom=1, key='green', paint=None, facing='right', unpainted=(
     src=source.Source.read(**inputs)
     m['source_cut']={'source':src.record['source'],'start':0,'length':12,'samples':list(range(12))}
     report={'kind':'sprite-gen-video-loop-report','status':'passed','fps':24.,'frames_total':12,'source':src.record['source'],'cycle':{'start':0,'length':12},'anchor':'none','jump_repair':{'replaced':[2,8],'facing':facing},'strip':m,'n_out':12,'delay_ms':42}
-    paths['meta'].write_text(json.dumps(m)); paths['report'].write_text(json.dumps(report))
+    paths['meta'].write_text(json.dumps(m), encoding="utf-8"); paths['report'].write_text(json.dumps(report), encoding="utf-8")
     write_strip(paths,bad)
     return paths, inputs, clean
 
@@ -157,9 +157,9 @@ def repaint_source(case, index, paint):
     paint(frame); frame.save(p)
     record=source.manifest(clip=inputs['source_clip'],canvas=inputs['source_canvas'],frames_report=inputs['source_frames_report'],
                            files=sorted(inputs['source_frames_dir'].glob('*.png')),timestamps=source.timestamps(inputs['source_clip'],0))
-    inputs['source_manifest'].write_text(json.dumps(record))
-    m=json.loads(paths['meta'].read_bytes()); m['source_cut']['source']=record['source']; paths['meta'].write_text(json.dumps(m))
-    r=json.loads(paths['report'].read_bytes()); r.update(source=record['source'],strip=m); paths['report'].write_text(json.dumps(r))
+    inputs['source_manifest'].write_text(json.dumps(record), encoding="utf-8")
+    m=json.loads(paths['meta'].read_bytes()); m['source_cut']['source']=record['source']; paths['meta'].write_text(json.dumps(m), encoding="utf-8")
+    r=json.loads(paths['report'].read_bytes()); r.update(source=record['source'],strip=m); paths['report'].write_text(json.dumps(r), encoding="utf-8")
     return frame
 
 
@@ -220,10 +220,10 @@ def test_changed_or_forged_source_receipt_is_error(case,field):
     _,inputs,_=case
     if field=='manifest':
         m=json.loads(inputs['source_manifest'].read_bytes()); m['source']['sha256']='f'*64
-        inputs['source_manifest'].write_text(json.dumps(m))
+        inputs['source_manifest'].write_text(json.dumps(m), encoding="utf-8")
     elif field=='pts':
         m=json.loads(inputs['source_manifest'].read_bytes()); m['frames'][3]['pts_seconds']+=.0001
-        inputs['source_manifest'].write_text(json.dumps(m))
+        inputs['source_manifest'].write_text(json.dumps(m), encoding="utf-8")
     else:
         p=next(inputs['source_frames_dir'].glob('*.png')) if field=='frame' else inputs['source_'+field]
         p.write_bytes(p.read_bytes()+b'changed')
@@ -232,7 +232,7 @@ def test_changed_or_forged_source_receipt_is_error(case,field):
 
 def test_missing_source_is_error_and_follow_is_shared_unknown(case,tmp_path):
     paths,inputs,_=case
-    meta=json.loads(paths['meta'].read_bytes()); meta['follow']={'gain':1}; paths['meta'].write_text(json.dumps(meta))
+    meta=json.loads(paths['meta'].read_bytes()); meta['follow']={'gain':1}; paths['meta'].write_text(json.dumps(meta), encoding="utf-8")
     r=repair(case,tmp_path)
     assert r['status']=='unknown' and r['common_failure'] and not r['outputs']
     assert r['reasons']==['follow-source-warp-unverified']
@@ -247,12 +247,12 @@ def test_tampered_final_artifacts_are_not_accepted(case,tmp_path,mutation):
     paths=outputs(r)
     if mutation in ('duration','crop'):
         m=json.loads(paths['meta'].read_bytes()); m['delay_ms' if mutation=='duration' else 'source_rect']=80 if mutation=='duration' else [1,0,65,80]
-        paths['meta'].write_text(json.dumps(m))
+        paths['meta'].write_text(json.dumps(m), encoding="utf-8")
     elif mutation=='report':
-        paths['report'].write_text(paths['report'].read_text()+'\n')
+        paths['report'].write_text(paths['report'].read_text(encoding="utf-8")+'\n', encoding="utf-8")
     elif mutation=='receipt':
         report=json.loads(paths['report'].read_bytes()); report['restoration']['applied'][0]['copied']['rle'][0]+=1
-        paths['report'].write_text(json.dumps(report))
+        paths['report'].write_text(json.dumps(report), encoding="utf-8")
     else:
         fs=cells(paths)
         if mutation=='freeze': fs=[fs[0]]*len(fs)
@@ -577,8 +577,8 @@ def test_source_that_does_not_reproduce_the_normal_cells_is_shared_unknown(case,
 
 def test_missing_legacy_recipe_is_shared_unknown(case,tmp_path):
     paths,_,_=case
-    m=json.loads(paths['meta'].read_bytes()); m.pop('source_rect'); paths['meta'].write_text(json.dumps(m))
-    r=json.loads(paths['report'].read_bytes()); r['strip']=m; paths['report'].write_text(json.dumps(r))
+    m=json.loads(paths['meta'].read_bytes()); m.pop('source_rect'); paths['meta'].write_text(json.dumps(m), encoding="utf-8")
+    r=json.loads(paths['report'].read_bytes()); r['strip']=m; paths['report'].write_text(json.dumps(r), encoding="utf-8")
     result=repair(case,tmp_path)
     assert result['status']=='unknown' and result['common_failure']
     assert result['reasons']==['legacy-projection-recipe-missing']
@@ -589,10 +589,10 @@ def test_native_before_repair_receipt_is_checked(case,tmp_path):
     paths,_,clean=case
     r=json.loads(paths['report'].read_bytes())
     r['source_projection']={'recipe':source.RECIPE,'wrap_dx_px':0,'before_repair_pixels_sha256':[evidence.digest(f.tobytes()) for f in clean]}
-    paths['report'].write_text(json.dumps(r))
+    paths['report'].write_text(json.dumps(r), encoding="utf-8")
     assert repair(case,tmp_path)['comparison']['verdict']=='improved'
     r['source_projection']['before_repair_pixels_sha256'][2]='a'*64
-    paths['report'].write_text(json.dumps(r))
+    paths['report'].write_text(json.dumps(r), encoding="utf-8")
     result=repair(case,tmp_path,out='rejected')
     assert result['reasons']==['source-processing-receipt-mismatch'] and result['common_failure']
 
@@ -697,7 +697,7 @@ def test_later_request_rebuilds_the_new_baseline_from_the_origin(case,tmp_path,a
 
 
 def rewrite_receipt(current, change):
-    report=json.loads(current['report'].read_bytes()); change(report); current['report'].write_text(json.dumps(report))
+    report=json.loads(current['report'].read_bytes()); change(report); current['report'].write_text(json.dumps(report), encoding="utf-8")
 
 
 def repaint_cell(current, index, place, colour):
@@ -726,7 +726,7 @@ def test_changed_current_baseline_or_receipt_is_error(case,tmp_path,adopted,tamp
     elif tamper=='duplicate': rewrite_receipt(current,lambda r: r['restoration']['applied'].append(entry(r)))
     elif tamper=='first_baseline': rewrite_receipt(current,lambda r: entry(r)['baseline_artifacts']['strip'].update(sha256='0'*64))
     elif tamper=='extra_field': rewrite_receipt(current,lambda r: r['restoration'].update(verified=True))
-    elif tamper=='meta_bytes': current['meta'].write_text(current['meta'].read_text()+'\n')
+    elif tamper=='meta_bytes': current['meta'].write_text(current['meta'].read_text(encoding="utf-8")+'\n', encoding="utf-8")
     else: rewrite_receipt(current,lambda r: r.update(producer={'implementation_sha256':'0'*64}))
     with pytest.raises(ValueError,match=refusal):
         repair(case,tmp_path,baseline=current,origin=origin,out='next-request')
@@ -742,7 +742,7 @@ def test_replaced_origin_or_source_is_error(case,tmp_path,adopted):
     # One origin file changed: not the origin the receipt names.
     other={k:tmp_path/('other'+p.suffix if k!='report' else 'other.loop.json') for k,p in origin.items()}
     for k,p in origin.items(): shutil.copyfile(p,other[k])
-    other['meta'].write_text(other['meta'].read_text()+'\n')
+    other['meta'].write_text(other['meta'].read_text(encoding="utf-8")+'\n', encoding="utf-8")
     with pytest.raises(ValueError,match='another origin or source'):
         repair(case,tmp_path,baseline=current,origin=other,out='other-origin')
     # A first request must start at its origin.
@@ -754,7 +754,7 @@ def test_replaced_origin_or_source_is_error(case,tmp_path,adopted):
     frame.putpixel((30,40),(200,150,100,255)); frame.save(p)
     record=source.manifest(clip=inputs['source_clip'],canvas=inputs['source_canvas'],frames_report=inputs['source_frames_report'],
                            files=sorted(inputs['source_frames_dir'].glob('*.png')),timestamps=source.timestamps(inputs['source_clip'],0))
-    inputs['source_manifest'].write_text(json.dumps(record))
+    inputs['source_manifest'].write_text(json.dumps(record), encoding="utf-8")
     with pytest.raises(ValueError,match='another origin or source'):
         repair(case,tmp_path,baseline=current,origin=origin,out='other-source')
     assert not any((tmp_path/d).exists() for d in ('own-origin','other-origin','unrelated-first','other-source'))

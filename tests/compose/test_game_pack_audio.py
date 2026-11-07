@@ -48,9 +48,9 @@ def inputs(tmp_path):
                 'normalization': {'pcm_lufs':-18, 'pcm_true_peak_dbtp':-2},
                 'playback': {'version':2, 'sample_rate':48000, 'start_frame':0,
                              'end_frame':48000, 'overlap_frames':0}}
-    (source/'sound.json').write_text(json.dumps(manifest))
+    (source/'sound.json').write_text(json.dumps(manifest), encoding="utf-8")
     path = tmp_path/'request.json'
-    path.write_text(json.dumps(request))
+    path.write_text(json.dumps(request), encoding="utf-8")
     return path, request, manifest
 
 
@@ -58,12 +58,12 @@ def test_optional_audio_preserves_image_only_bytes_and_packs_events(tmp_path):
     path, request, original = inputs(tmp_path)
     pack(path, tmp_path/'before')
     request['audio'] = []
-    path.write_text(json.dumps(request))
+    path.write_text(json.dumps(request), encoding="utf-8")
     pack(path, tmp_path/'empty')
     assert {p.name:p.read_bytes() for p in (tmp_path/'before').iterdir()} == {
         p.name:p.read_bytes() for p in (tmp_path/'empty').iterdir()}
     request['audio'] = [{'id':'hit','source':'audio/sound.json'}]
-    path.write_text(json.dumps(request))
+    path.write_text(json.dumps(request), encoding="utf-8")
     result = pack(path, tmp_path/'with')
     audio = result['audio']['hit']
     assert audio['event'] == result['animations']['hero']['events'][0]['name']
@@ -98,8 +98,8 @@ def test_broken_audio_cannot_publish_a_partial_pack(tmp_path, defect):
     if defect == 'quiet': manifest['files']['m4a']['lufs'] = -19.5  # under the target, its PCM not peak-limited
     if defect == 'norecipe': del manifest['recipe']
     if defect == 'recipe2': manifest['recipe']['processing_version'] = 2
-    path.write_text(json.dumps(request))
-    (tmp_path/'audio'/'sound.json').write_text(json.dumps(manifest))
+    path.write_text(json.dumps(request), encoding="utf-8")
+    (tmp_path/'audio'/'sound.json').write_text(json.dumps(manifest), encoding="utf-8")
     with pytest.raises(ValueError): pack(path, tmp_path/'bad')
     assert not (tmp_path/'bad').exists()
 
@@ -116,7 +116,7 @@ V1_AUDIO_PAGE_PIXELS_SHA256 = '834f7685ed723160d26784bb8ba1153e5f8ae56f5ddc8f51e
 def with_sound(tmp_path):
     path, request, _ = inputs(tmp_path)
     request['audio'] = [{'id': 'hit', 'source': 'audio/sound.json'}]
-    path.write_text(json.dumps(request))
+    path.write_text(json.dumps(request), encoding="utf-8")
     return path, request
 
 
@@ -140,7 +140,7 @@ def test_version_2_pack_with_sound_adds_only_the_tile_files(tmp_path):
     pack(path, tmp_path/'v1')
     Image.new('RGBA', (8, 8), 'blue').save(tmp_path/'ground.png')
     request.update(version=2, tiles=[{'id': 'ground', 'source': 'ground.png', 'display': {'width': 16}}])
-    path.write_text(json.dumps(request))
+    path.write_text(json.dumps(request), encoding="utf-8")
     result = pack(path, tmp_path/'v2')
     v1 = {p.name: p.read_bytes() for p in (tmp_path/'v1').iterdir()}
     v2 = {p.name: p.read_bytes() for p in (tmp_path/'v2').iterdir()}
@@ -158,14 +158,14 @@ SOUND_ONLY_FILES = ['audio-hit.m4a', 'audio-hit.ogg', 'game-pack.json', 'sprite-
 def test_a_sound_only_request_packs_the_manifest_sound_and_helper(tmp_path, version, assets):
     path, request = with_sound(tmp_path)
     request['version'] = version
-    path.write_text(json.dumps(request))
+    path.write_text(json.dumps(request), encoding="utf-8")
     pictured = pack(path, tmp_path/'pictured')
     assert pictured['version'] == version and pictured['textures']
     if assets is None:
         del request['assets']
     else:
         request['assets'] = assets
-    path.write_text(json.dumps(request))
+    path.write_text(json.dumps(request), encoding="utf-8")
     out = tmp_path/'sound'
     result = pack(path, out)
     assert sorted(p.name for p in out.iterdir()) == SOUND_ONLY_FILES
@@ -181,7 +181,7 @@ def test_a_sound_only_request_packs_the_manifest_sound_and_helper(tmp_path, vers
                                       {'version': 1}, {'version': 2, 'assets': [], 'audio': []}, {'version': 2}])
 def test_a_request_with_neither_pictures_nor_sound_is_refused(tmp_path, document):
     path = tmp_path/'request.json'
-    path.write_text(json.dumps(document))
+    path.write_text(json.dumps(document), encoding="utf-8")
     with pytest.raises(ValueError, match='nothing to pack'):
         pack(path, tmp_path/'out')
     assert not (tmp_path/'out').exists()
@@ -213,8 +213,8 @@ def version_3_bundle(tmp_path, lufs=-18., spike=None, timescale=48000, **changes
     for key, value in changes.items():
         manifest[key] = {**manifest[key], **value} if isinstance(value, dict) else value
     request['audio'] = [{'id':'hit','source':'audio/sound.json'}]
-    path.write_text(json.dumps(request))
-    (tmp_path/'audio'/'sound.json').write_text(json.dumps(manifest))
+    path.write_text(json.dumps(request), encoding="utf-8")
+    (tmp_path/'audio'/'sound.json').write_text(json.dumps(manifest), encoding="utf-8")
     return path
 
 

@@ -271,10 +271,10 @@ def test_unified_cli_exposes_video() -> None:
 def test_invalid_login_never_falls_back_to_configured_key(tmp_path, monkeypatch, contents, message):
     monkeypatch.setenv("GROK_HOME", str(tmp_path))
     auth = tmp_path / "auth.json"
-    auth.write_text(contents)
+    auth.write_text(contents, encoding="utf-8")
     with pytest.raises(SystemExit, match=message):
         video.resolve_credential(env={"XAI_API_KEY": "console-key"}, now=NOW)
-    assert auth.read_text() == contents
+    assert auth.read_text(encoding="utf-8") == contents
 
 
 def test_login_directory_never_permits_api_credit(tmp_path, monkeypatch):

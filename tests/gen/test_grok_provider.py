@@ -205,7 +205,7 @@ def test_expired_login_fails_without_spawn_or_upload(tmp_path, api, monkeypatch)
     monkeypatch.delenv("XAI_API_KEY")
     monkeypatch.setenv("GROK_HOME", str(tmp_path))
     auth = tmp_path / "auth.json"
-    auth.write_text(json.dumps({"account": {"key": "synthetic-secret", "expires_at": "2000-01-01T00:00:00Z"}}))
+    auth.write_text(json.dumps({"account": {"key": "synthetic-secret", "expires_at": "2000-01-01T00:00:00Z"}}), encoding="utf-8")
     before = auth.read_bytes()
     with pytest.raises(SystemExit, match="expired"):
         gen.generate_image("grok", "x", tmp_path / "out.png")
@@ -243,7 +243,7 @@ def test_image_guide_requires_explicit_api_billing_confirmation(tmp_path, api, m
 def _subscription_login(tmp_path, monkeypatch):
     monkeypatch.setenv("GROK_HOME", str(tmp_path))
     (tmp_path / "auth.json").write_text(json.dumps({"account": {
-        "key": "subscription-token", "expires_at": "2100-01-01T00:00:00Z"}}))
+        "key": "subscription-token", "expires_at": "2100-01-01T00:00:00Z"}}), encoding="utf-8")
 
 
 # 403 and 503 both end on the first call, on the subscription token.

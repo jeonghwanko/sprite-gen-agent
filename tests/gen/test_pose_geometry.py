@@ -28,7 +28,7 @@ def fixture(tmp_path, motion_name="walk"):
     for f in plan["frames"]:
         f["body_landmarks"] = copy.deepcopy(BODY)
     path = tmp_path/"plan.json"
-    path.write_text(json.dumps(plan))
+    path.write_text(json.dumps(plan), encoding="utf-8")
     run = tmp_path/"run"
     run.mkdir()
     manifest = motion.prepare(path,run)
@@ -45,13 +45,13 @@ def observe_candidate(run,manifest,image,evidence,fit=None):
     fid="contact-a"
     def runner(prompt,out,refs,report,**kw):
         image.save(out)
-        report.write_text(json.dumps({"provider":"codex"}))
+        report.write_text(json.dumps({"provider":"codex"}), encoding="utf-8")
         return 0
     result=motion.generate(run,manifest,fid,runner=runner)
     obs_path=run/"poses/pose-contact-a/attempt-01/geometry-observations.json"
     data=copy.deepcopy(evidence) if fit is None else geo.transformed_evidence(evidence,fit,geo.sha(run/"poses/pose-contact-a/attempt-01/output.png"))
     data["binding"]["output_sha256"]=geo.sha(run/"poses/pose-contact-a/attempt-01/output.png")
-    obs_path.write_text(json.dumps(data))
+    obs_path.write_text(json.dumps(data), encoding="utf-8")
     return result,obs_path
 
 
@@ -63,7 +63,7 @@ def test_plan_binds_identity_and_rejects_authored_zoom(tmp_path):
         pose_plan.validate(p)
     p["frames"][-1]["body_landmarks"]=copy.deepcopy(BODY)
     p["body_reference"]["sha256"]="0"*64
-    (tmp_path/"bad.json").write_text(json.dumps(p))
+    (tmp_path/"bad.json").write_text(json.dumps(p), encoding="utf-8")
     new=tmp_path/"bad";new.mkdir()
     with pytest.raises(ValueError,match="calibration"):
         motion.prepare(tmp_path/"bad.json",new)
@@ -82,7 +82,7 @@ def test_exact_geometry_pass_does_not_replace_visual_review(tmp_path):
     review(run/"poses/pose-contact-a/attempt-01/geometry-review.json")
     assert motion._accepted(run,"contact-a",m)[0].name=="output.png"
     # Altering observed body/foot evidence revokes the visual approval.
-    value=json.loads(obs.read_text());value["observation"]+=" corrected notes";obs.write_text(json.dumps(value))
+    value=json.loads(obs.read_text(encoding="utf-8"));value["observation"]+=" corrected notes";obs.write_text(json.dumps(value), encoding="utf-8")
     with pytest.raises(ValueError,match="stale"):
         motion._accepted(run,"contact-a",m)
 
@@ -99,7 +99,7 @@ def test_body_only_recovery_preserves_source_and_requires_new_review(tmp_path,dr
     assert motion.measure_geometry(run,m,"contact-a")["status"]=="registration_available"
     fixed=motion.measure_geometry(run,m,"contact-a",register=True)
     assert fixed["generation_calls"]==0
-    derived=json.loads((run/"poses/pose-contact-a/attempt-01/registered/geometry-observations.json").read_text())
+    derived=json.loads((run/"poses/pose-contact-a/attempt-01/registered/geometry-observations.json").read_text(encoding="utf-8"))
     assert derived["provenance"]["kind"]=="transformed_observations"
     assert derived["provenance"]["source_binding"]["output_sha256"]==hashlib.sha256(original).hexdigest()
     assert abs(fixed["transform"]["scale"]-1/drift["scale"])<1e-9
@@ -215,24 +215,24 @@ def test_registered_anchor_flows_into_export_with_correct_hashes(tmp_path):
     second=image.copy();ImageDraw.Draw(second).rectangle((31,40,33,42),fill="orange")
     seen=[]
     def runner(prompt,out,refs,report,**kwargs):
-        seen.extend(refs);second.save(out);report.write_text(json.dumps({"provider":"codex"}));return 0
+        seen.extend(refs);second.save(out);report.write_text(json.dumps({"provider":"codex"}), encoding="utf-8");return 0
     result=motion.generate(run,m,"contact-b",runner=runner)
     assert str(seen[-1])==fixed["output"]
     folder=run/"poses/pose-contact-b/attempt-01"
     observed=copy.deepcopy(e);observed["binding"].update(frame="contact-b",output_sha256=geo.sha(folder/"output.png"))
     observed["feet"]["A"],observed["feet"]["B"]=observed["feet"]["B"],observed["feet"]["A"]
-    (folder/"geometry-observations.json").write_text(json.dumps(observed))
+    (folder/"geometry-observations.json").write_text(json.dumps(observed), encoding="utf-8")
     assert motion.measure_geometry(run,m,"contact-b")["status"]=="pass"
     review(folder/"geometry-review.json")
     result=motion.export_asset(run,m)
     assert result["status"]=="awaiting_sequence_review"
     review(run/"sequence-review.json")
     result=motion.export_asset(run,m)
-    asset=json.loads((run/"asset.json").read_text())
+    asset=json.loads((run/"asset.json").read_text(encoding="utf-8"))
     assert "registered/output.png" in asset["frames"][0]["file"]
     assert asset["frames"][1]["duration"]==.12
     # Revoking an anchor's body evidence also invalidates its dependent pose.
     original=run/"poses/pose-contact-a/attempt-01/geometry-observations.json"
-    value=json.loads(original.read_text());value["observation"]+=" changed";original.write_text(json.dumps(value))
+    value=json.loads(original.read_text(encoding="utf-8"));value["observation"]+=" changed";original.write_text(json.dumps(value), encoding="utf-8")
     with pytest.raises(ValueError,match="source/observations changed"):
         motion.export_asset(run,m)

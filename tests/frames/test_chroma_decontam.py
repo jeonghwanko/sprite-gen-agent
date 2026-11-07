@@ -477,14 +477,14 @@ def test_row_extractor_reads_and_records_chroma_decontam(fixture_run_dir: Path):
     request_path = fixture_run_dir / "sprite-request.json"
     plain = run_script("extract_sprite_row_frames.py", "--run-dir", str(fixture_run_dir))
     assert plain.returncode == 0, plain.stderr
-    chroma = json.loads(request_path.read_text())["chroma"]
+    chroma = json.loads(request_path.read_text(encoding="utf-8"))["chroma"]
     assert "decontam" not in chroma
     assert chroma["mode"] == "rgb"
     frames_off = {p.name: p.read_bytes() for p in sorted((fixture_run_dir / "frames").rglob("frame-*.png"))}
 
     with_flag = run_script("extract_sprite_row_frames.py", "--run-dir", str(fixture_run_dir), "--decontam", "palette")
     assert with_flag.returncode == 0, with_flag.stderr
-    request = json.loads(request_path.read_text())
+    request = json.loads(request_path.read_text(encoding="utf-8"))
     assert request["chroma"]["decontam"] == "palette"
     frames_on = {p.name: p.read_bytes() for p in sorted((fixture_run_dir / "frames").rglob("frame-*.png"))}
     assert frames_on.keys() == frames_off.keys()
@@ -540,8 +540,8 @@ def test_gen_decontam_runs_after_the_ycbcr_matte_and_reports(tmp_path: Path, mon
     # the default publishes the matte as it is; auto adds the pass
     assert _gen(tmp_path, monkeypatch, provider, out=tmp_path / "off.png", report=tmp_path / "off.json") == 0
     assert _gen(tmp_path, monkeypatch, provider, decontam="auto") == 0
-    off = json.loads((tmp_path / "off.json").read_text())
-    on = json.loads((tmp_path / "girl.json").read_text())
+    off = json.loads((tmp_path / "off.json").read_text(encoding="utf-8"))
+    on = json.loads((tmp_path / "girl.json").read_text(encoding="utf-8"))
     assert "decontam" not in off["chroma"]
     assert on["chroma"]["decontam"]["mode"] == "auto" and on["chroma"]["decontam"]["changed_px"] > 0
     raw = np.array(Image.open(tmp_path / "girl.png.raw.png").convert("RGB"))
@@ -587,12 +587,12 @@ def test_gen_auto_leaves_native_alpha_and_opaque_images_alone(tmp_path: Path, mo
     native = _Native(gen_base.TRANSPARENCY_NATIVE)
     assert _gen(tmp_path, monkeypatch, native, out=tmp_path / "native.png", report=tmp_path / "native.json",
                 decontam="auto") == 0
-    payload = json.loads((tmp_path / "native.json").read_text())
+    payload = json.loads((tmp_path / "native.json").read_text(encoding="utf-8"))
     assert payload["alpha"]["strategy"] == "native" and payload["chroma"] is None
     opaque = _FakeKeyProvider(gen_base.TRANSPARENCY_CHROMA)
     assert _gen(tmp_path, monkeypatch, opaque, transparent=False, out=tmp_path / "opaque.png",
                 report=tmp_path / "opaque.json", decontam="auto") == 0
-    assert opaque.calls == 1 and json.loads((tmp_path / "opaque.json").read_text())["chroma"] is None
+    assert opaque.calls == 1 and json.loads((tmp_path / "opaque.json").read_text(encoding="utf-8"))["chroma"] is None
 
 
 # --------------------------------------------------------------------------- video-frames default (auto)
@@ -674,7 +674,7 @@ def test_video_set_hands_its_decontam_to_video_frames_and_lists_the_warning(tmp_
 
     def video(image, prompt, out, report, **kw):
         out.write_bytes(b"test-video")
-        report.write_text(json.dumps({"prompt": prompt}))
+        report.write_text(json.dumps({"prompt": prompt}), encoding="utf-8")
         return 0
 
     monkeypatch.setattr(batch.facing_mod.vision, "grok_inspect", lambda *a, **kw: ("left", {}))

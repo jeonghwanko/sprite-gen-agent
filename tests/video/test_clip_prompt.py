@@ -54,7 +54,7 @@ def test_an_item_films_its_play_mode_and_motion_text_once_back_to_its_first_pose
     def video_stub(image, prompt, out, report, **kw):
         sent.append((prompt, kw.get("last_frame")))
         out.write_bytes(b"clip")
-        report.write_text(json.dumps({"prompt": prompt}))
+        report.write_text(json.dumps({"prompt": prompt}), encoding="utf-8")
         return 0
 
     def frames_stub(clip, out, **kw):
@@ -75,7 +75,7 @@ def test_an_item_films_its_play_mode_and_motion_text_once_back_to_its_first_pose
     assert last_frame == root / "side-punch" / "canvas.png"
     [item] = report["items"]
     assert item["play"] == "once-return" and item["loop"]["kind"] == "once-return"
-    meta = json.loads((root / "side-punch" / "loop" / "side-punch.strip.json").read_text())
+    meta = json.loads((root / "side-punch" / "loop" / "side-punch.strip.json").read_text(encoding="utf-8"))
     assert meta["loop"] is False and meta["hold_last"] is False and meta["returns"] is True
     assert meta["source_cut"]["samples"][0] == 0 and meta["source_cut"]["samples"][-1] == 35
     strip = Image.open(root / "side-punch" / "loop" / "side-punch.strip.png").convert("RGBA")

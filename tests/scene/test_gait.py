@@ -10,7 +10,7 @@ from sprite_gen.scene.gait_render import Raster, occlusion_evidence, render_prox
 
 class GaitTests(unittest.TestCase):
     def setUp(self):
-        self.profile=json.loads((Path(__file__).resolve().parents[2]/'examples/gait-mocha.json').read_text())
+        self.profile=json.loads((Path(__file__).resolve().parents[2]/'examples/gait-mocha.json').read_text(encoding="utf-8"))
 
     def test_dense_contact_cycle_and_lengths(self):
         for motion in ('walk','run'):
@@ -86,7 +86,7 @@ class GaitTests(unittest.TestCase):
 
     def test_refuses_overwriting_accepted_output(self):
         with TemporaryDirectory() as folder:
-            d=Path(folder);source=d/'profile.json';source.write_text(json.dumps(self.profile));output=d/'out';output.mkdir()
+            d=Path(folder);source=d/'profile.json';source.write_text(json.dumps(self.profile), encoding="utf-8");output=d/'out';output.mkdir()
             with self.assertRaisesRegex(ValueError,'new directory'):run(profile=source,out_dir=output,motion='walk')
 
 

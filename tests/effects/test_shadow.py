@@ -163,7 +163,7 @@ def _asset_files(tmp_path):
         entries.append({"file": path.name, "duration": duration})
     source = tmp_path / "source.asset.json"
     source.write_text(json.dumps({"kind": "sprite-gen-asset", "version": 1,
-                                  "frames": entries, "anchor": [7.5, 47]}))
+                                  "frames": entries, "anchor": [7.5, 47]}), encoding="utf-8")
     return source
 
 
@@ -212,7 +212,7 @@ def test_run_uses_shared_loader_for_all_source_types(tmp_path, source_kind):
             "frame_layout": {"rows": {"walk": [
                 {"x": index * 32, "y": 0, "w": 32, "h": 48} for index in range(2)]}},
             "animation": {"rows": {"walk": {"durations_ms": [70, 230], "loop": True}}},
-        }))
+        }), encoding="utf-8")
     original = load_asset(source, state=state)
     fingerprints = original.fingerprints()
     out_dir = tmp_path / "shadows"
@@ -250,7 +250,7 @@ def test_invalid_cli_values_do_not_create_output(tmp_path, kwargs):
 
 def test_malformed_source_does_not_create_output(tmp_path):
     source = tmp_path / "source.asset.json"
-    source.write_text('{"kind":"sprite-gen-asset","version":1,"frames":[]}')
+    source.write_text('{"kind":"sprite-gen-asset","version":1,"frames":[]}', encoding="utf-8")
     out_dir = tmp_path / "shadows"
     with pytest.raises(ValueError):
         shadow.run(source=source, out_dir=out_dir)
@@ -299,11 +299,11 @@ def test_an_output_spelt_in_capitals_of_the_source_is_refused(tmp_path):
 
 def test_output_cannot_overwrite_a_frame_referenced_by_descriptor(tmp_path):
     source = _asset_files(tmp_path)
-    data = json.loads(source.read_text())
+    data = json.loads(source.read_text(encoding="utf-8"))
     referenced_frame = tmp_path / "frame-000.png"
     referenced_frame.write_bytes((tmp_path / "source-0.png").read_bytes())
     data["frames"][0]["file"] = referenced_frame.name
-    source.write_text(json.dumps(data))
+    source.write_text(json.dumps(data), encoding="utf-8")
     before = referenced_frame.read_bytes()
     with pytest.raises(ValueError, match="overwrite source"):
         shadow.run(source=source, out_dir=tmp_path)
@@ -354,7 +354,7 @@ def test_live_writer_lock_is_respected_without_publishing(tmp_path):
     out_dir = tmp_path / "shadows"
     out_dir.mkdir()
     lock = out_dir / runio.LOCK_FILENAME
-    lock.write_text(json.dumps({"owner": "synthetic-other-writer", "pid": os.getpid()}))
+    lock.write_text(json.dumps({"owner": "synthetic-other-writer", "pid": os.getpid()}), encoding="utf-8")
     before = lock.read_bytes()
     with pytest.raises(SystemExit, match="locked by synthetic-other-writer"):
         shadow.run(source=source, out_dir=out_dir)

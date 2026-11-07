@@ -50,7 +50,7 @@ def strip_dir(path, frames):
         strip.paste(frame, (k*W, 0))
     path.mkdir()
     strip.save(path/'run.strip.png')
-    (path/'run.strip.json').write_text(json.dumps({'kind': 'periodic', 'frames': len(frames), 'w': W, 'h': H, 'delay_ms': DELAY}))
+    (path/'run.strip.json').write_text(json.dumps({'kind': 'periodic', 'frames': len(frames), 'w': W, 'h': H, 'delay_ms': DELAY}), encoding="utf-8")
     return path
 
 
@@ -63,7 +63,7 @@ def probes(tmp_path):
 def followed(src, path, regions, **kw):
     loop_dir = shutil.copytree(src, path)
     follow.follow_loop(loop_dir, regions, on_fold='lower', **kw)
-    return loop_dir, json.loads((loop_dir/'run.strip.json').read_text())['follow']
+    return loop_dir, json.loads((loop_dir/'run.strip.json').read_text(encoding="utf-8"))['follow']
 
 
 def drawn(loop_dir):

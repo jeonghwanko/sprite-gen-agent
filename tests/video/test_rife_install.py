@@ -71,7 +71,7 @@ def test_install_keeps_what_the_engine_runs_where_locate_finds_it(pinned, tmp_pa
     assert sorted(report["files"]) == sorted([BINARY, "LICENSE", "README.md", f"{rife.MODEL}/flownet.bin", f"{rife.MODEL}/flownet.param"])
     assert not (target / "rife-v4").exists() and not (tmp_path / "data" / "escape.txt").exists()
     assert os.access(target / BINARY, os.X_OK) and (target / BINARY).stat().st_mode & stat.S_IXUSR
-    assert json.loads((target / rife_install.MARKER).read_text())["sha256"] == rife_install.ZIP_SHA256[PLATFORM]
+    assert json.loads((target / rife_install.MARKER).read_text(encoding="utf-8"))["sha256"] == rife_install.ZIP_SHA256[PLATFORM]
     assert rife.locate() == ((target / BINARY).resolve(), (target / rife.MODEL).resolve())
     assert report["engine_finds"] == str((target / BINARY).resolve()) and "note" not in report
     assert [p.name for p in (tmp_path / "data" / "rife").iterdir()] == [TOP]  # no staging or download left behind
@@ -96,7 +96,7 @@ def test_a_zip_without_the_model_is_refused(pinned, tmp_path, monkeypatch):
 def test_a_second_run_does_nothing_and_force_unpacks_again(pinned, tmp_path):
     rife_install.install(zip_path=pinned, platform=PLATFORM, run_check=False)
     stray = tmp_path / "data" / "rife" / TOP / "stray"
-    stray.write_text("x")
+    stray.write_text("x", encoding="utf-8")
     assert rife_install.install(platform=PLATFORM, run_check=False)["installed"] == "already"  # no zip, no download
     assert stray.exists()
     assert rife_install.install(zip_path=pinned, platform=PLATFORM, force=True, run_check=False)["installed"] == "now"
@@ -125,7 +125,7 @@ def test_another_dir_names_the_variable_that_points_the_engine_at_it(pinned, tmp
 def test_the_check_frame_fails_on_a_binary_that_does_not_run(pinned, tmp_path):
     rife_install.install(zip_path=pinned, platform=PLATFORM, run_check=False)
     target = tmp_path / "data" / "rife" / TOP
-    (target / BINARY).write_text("#!/bin/sh\necho no vulkan >&2\nexit 1\n")
+    (target / BINARY).write_text("#!/bin/sh\necho no vulkan >&2\nexit 1\n", encoding="utf-8")
     with pytest.raises(SystemExit, match="check frame failed.*no vulkan"):
         rife_install.install(platform=PLATFORM)
 

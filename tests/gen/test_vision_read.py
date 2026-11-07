@@ -70,7 +70,7 @@ def test_codex_asks_the_question_on_its_own_login(monkeypatch, tmp_path) -> None
 
     def run(command, **kwargs):
         seen.append((command, kwargs))
-        Path(command[command.index("-o") + 1]).write_text('{"lines": ["ION"]}')
+        Path(command[command.index("-o") + 1]).write_text('{"lines": ["ION"]}', encoding="utf-8")
         return SimpleNamespace(returncode=0)
 
     monkeypatch.setattr(facing_vision.subprocess, "run", run)
@@ -86,7 +86,7 @@ def test_codex_reads_on_the_model_and_effort_it_names_not_the_login_config(monke
 
     def run(command, **kwargs):
         seen.append(command)
-        Path(command[command.index("-o") + 1]).write_text('{"lines": ["ION"]}')
+        Path(command[command.index("-o") + 1]).write_text('{"lines": ["ION"]}', encoding="utf-8")
         return SimpleNamespace(returncode=0)
 
     monkeypatch.setattr(facing_vision.subprocess, "run", run)
@@ -107,7 +107,7 @@ def test_the_facing_check_still_asks_the_facing_question(monkeypatch, tmp_path) 
 
     def run(command, **kwargs):
         seen.append((command, kwargs["input"]))
-        Path(command[command.index("-o") + 1]).write_text("left")
+        Path(command[command.index("-o") + 1]).write_text("left", encoding="utf-8")
         return SimpleNamespace(returncode=0)
 
     monkeypatch.setattr(facing_vision.subprocess, "run", run)

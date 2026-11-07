@@ -157,7 +157,7 @@ def test_force_reimport_is_a_clean_rebuild(tmp_path):
     assert r2.returncode == 0, r2.stderr
     assert not (out / "base-source.png").exists()          # stale base gone
     assert not (out / "references" / "imported").exists()  # stale refs gone
-    prov = json.loads((out / "unpack-source.json").read_text())
+    prov = json.loads((out / "unpack-source.json").read_text(encoding="utf-8"))
     assert prov["base_source"] is None and prov["imported_refs"] == {}
     st = build_run_state(out)
     assert st["baseUrl"] is None and st["contract"]["sourceless"] is True
@@ -550,7 +550,7 @@ def test_unstamped_curation_ignored(tmp_path):
     # an UNSTAMPED sidecar written directly, as a legacy/manual file would be
     (out / "curation.json").write_text(_json.dumps({
         "version": 1, "kind": "sprite-gen-curation",
-        "states": {"items": {"selected": [1], "transforms": {"1": {"dx": 9}}}}}))
+        "states": {"items": {"selected": [1], "transforms": {"1": {"dx": 9}}}}}), encoding="utf-8")
     assert cur.load_curation(out) is None                 # unstamped -> ignored, not applied
     assert build_run_state(out)["curation"]["states"] == {}
     # a valid save (via the stamping writer) then applies for the matching generation

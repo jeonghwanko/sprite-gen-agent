@@ -195,7 +195,7 @@ def test_extract_cli_ycbcr_mode_end_to_end(fixture_run_dir: Path):
         "ycbcr",
     )
     assert result.returncode == 0, result.stderr
-    request = json.loads((fixture_run_dir / "sprite-request.json").read_text())
+    request = json.loads((fixture_run_dir / "sprite-request.json").read_text(encoding="utf-8"))
     assert request["chroma"]["mode"] == "ycbcr"
     for state, frames in (("idle", 4), ("walk", 3)):
         for index in range(frames):

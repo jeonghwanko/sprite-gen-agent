@@ -35,7 +35,7 @@ def write_scene(tmp_path, layers, *, width=16, height=12, fps=10, duration=0.5, 
     spec = {"kind": "sprite-gen-scene", "version": 1, "canvas": {"width": width, "height": height, "background": list(background)},
             "fps": fps, "duration": duration, "assets": assets_block, "layers": layers, **extra}
     path = tmp_path / "scene.json"
-    path.write_text(json.dumps(spec))
+    path.write_text(json.dumps(spec), encoding="utf-8")
     return path
 
 
@@ -122,7 +122,7 @@ def test_export_layers_publishes_frame_zero_plates_and_records_it(tmp_path):
     assert "layers/hero.png" in report["files"]
     with Image.open(out / "layers" / "hero.png") as plate:
         assert plate.getpixel((0, 0)) == (0, 0, 0, 0) and plate.getpixel((7, 10)) == RED
-    assert json.loads((out / "placement.json").read_text())["layer_plate_time"] == 0
+    assert json.loads((out / "placement.json").read_text(encoding="utf-8"))["layer_plate_time"] == 0
 
 
 @pytest.mark.parametrize("formats, kwargs, message", [
@@ -238,14 +238,14 @@ def test_output_directory_rules_are_enforced_without_touching_the_destination(tm
         out, message = tmp_path, "contains scene inputs"
     elif problem == "nonempty":
         out.mkdir()
-        (out / "previous.txt").write_text("keep me")
+        (out / "previous.txt").write_text("keep me", encoding="utf-8")
         message = "must be empty"
     elif problem == "live-lock":
         out.mkdir()
-        (out / runio.LOCK_FILENAME).write_text(json.dumps({"owner": "synthetic-other-writer", "pid": os.getpid()}))
+        (out / runio.LOCK_FILENAME).write_text(json.dumps({"owner": "synthetic-other-writer", "pid": os.getpid()}), encoding="utf-8")
         message, expected = "locked by synthetic-other-writer", SystemExit
     else:
-        out.write_text("a file")
+        out.write_text("a file", encoding="utf-8")
         message = "must be a directory"
     before = snapshot(tmp_path)
     with pytest.raises(expected, match=message):
@@ -261,7 +261,7 @@ def test_gif_and_mp4_use_explicit_settings_with_source_fps_and_full_palette_by_d
         ImageDraw.Draw(image).rectangle((4 + i, 4, 10 + i, 16), fill=RED)
         image.save(tmp_path / f"f{i}.png")
         frames.append({"file": f"f{i}.png", "duration": 0.1})
-    (tmp_path / "walk.json").write_text(json.dumps({"kind": "sprite-gen-asset", "version": 1, "frames": frames}))
+    (tmp_path / "walk.json").write_text(json.dumps({"kind": "sprite-gen-asset", "version": 1, "frames": frames}), encoding="utf-8")
     spec = write_scene(tmp_path, [{"id": "hero", "asset": "walk", "at": [32, 36]}], assets={"walk": "walk.json"},
                        width=64, height=40, fps=10, duration=0.6, background=(30, 60, 90))
     report = render_scene(spec, tmp_path / "default", formats="gif,mp4")

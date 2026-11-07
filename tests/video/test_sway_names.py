@@ -35,7 +35,7 @@ def test_the_new_verb_and_the_old_one_write_the_same_bytes(loop_dir, tmp_path):
     assert cli.main(['video-sway', '--loop-dir', str(loop_dir), '--region', region]) == 0
     assert cli.main(['video-follow', '--loop-dir', str(twin), '--region', region]) == 0
     assert _files(loop_dir) == _files(twin), "video-sway and video-follow wrote different files"
-    meta = json.loads((loop_dir/'walk.strip.json').read_text())
+    meta = json.loads((loop_dir/'walk.strip.json').read_text(encoding="utf-8"))
     assert 'follow' in meta and 'sway' not in meta, "the record is written under `follow` in this release"
 
 
@@ -88,9 +88,9 @@ def test_a_record_under_sway_is_read_as_one_under_follow(tmp_path):
     sway.sway_loop(loop_dir, [CHEST])
     under_follow = sway_inspect.inspect_loop(loop_dir, [CHEST], tmp_path/'a')
     meta_path = loop_dir/'walk.strip.json'
-    meta = json.loads(meta_path.read_text())
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
     meta['sway'] = meta.pop('follow')
-    meta_path.write_text(json.dumps(meta, indent=2) + '\n')
+    meta_path.write_text(json.dumps(meta, indent=2) + '\n', encoding="utf-8")
     under_sway = sway_inspect.inspect_loop(loop_dir, [CHEST], tmp_path/'b')
     assert under_sway['inputs']['meta']['follow_recorded'] is True
     assert under_sway['inputs']['meta']['cut_sha256'] == under_follow['inputs']['meta']['cut_sha256']
@@ -103,11 +103,11 @@ def test_sway_again_over_a_record_under_sway_keeps_one_record(tmp_path):
     loop_dir = strip_dir(tmp_path/'loop')
     sway.sway_loop(loop_dir, [CHEST])
     meta_path = loop_dir/'walk.strip.json'
-    meta = json.loads(meta_path.read_text())
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
     meta['sway'] = meta.pop('follow')
-    meta_path.write_text(json.dumps(meta, indent=2) + '\n')
+    meta_path.write_text(json.dumps(meta, indent=2) + '\n', encoding="utf-8")
     sway.sway_loop(loop_dir, [CHEST])
-    again = json.loads(meta_path.read_text())
+    again = json.loads(meta_path.read_text(encoding="utf-8"))
     assert 'follow' in again and 'sway' not in again, "two records of one sway"
 
 

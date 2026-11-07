@@ -64,8 +64,8 @@ def test_a_named_timeout_stands_in_a_windows_worker(monkeypatch) -> None:
 
 def test_a_worker_marks_only_the_tests_without_a_timeout_of_their_own(tmp_path: Path) -> None:
     # This repository's configuration, and tests/conftest.py as the one conftest (-p), over a file outside the suite.
-    (tmp_path / "test_probe.py").write_text(PROBE)
-    (tmp_path / "stand_in_worker.py").write_text(WORKER)
+    (tmp_path / "test_probe.py").write_text(PROBE, encoding="utf-8")
+    (tmp_path / "stand_in_worker.py").write_text(WORKER, encoding="utf-8")
     env = {k: v for k, v in os.environ.items() if k != "PYTEST_TIMEOUT"}
     env["PYTHONPATH"] = os.pathsep.join([str(tmp_path), env.get("PYTHONPATH", "")])
     proc = subprocess.run(

@@ -76,7 +76,7 @@ def test_failure_report_preserves_periodic_and_return_attempts(tmp_path: Path):
     with pytest.raises(SystemExit):
         loop.run_loop(keyed, tmp_path / 'out', fps=24, state='attack', min_len=None,
                       max_len=None, n_out=None, seam_max=2, name='attack', report_path=target)
-    report = json.loads(target.read_text(), parse_constant=lambda value: pytest.fail(value))
+    report = json.loads(target.read_text(encoding="utf-8"), parse_constant=lambda value: pytest.fail(value))
     assert report['status'] == 'failed'
     assert report['cycle']['kind'] == 'one-shot'
     assert report['cycle']['candidates'] == []
@@ -105,7 +105,7 @@ def test_weak_partial_repeat_is_refused_and_reported(tmp_path, monkeypatch):
         loop.run_loop(keyed, tmp_path / 'out', fps=24, state='attack', min_len=None,
                       max_len=None, n_out=None, seam_max=2, name='weak', report_path=target,
                       cycle_mode='periodic')
-    report = json.loads(target.read_text())
+    report = json.loads(target.read_text(encoding="utf-8"))
     cycle = report['cycle']
     assert cycle['period_global'] == 44
     assert .15 < cycle['periodicity'] < cycle['periodicity_min']

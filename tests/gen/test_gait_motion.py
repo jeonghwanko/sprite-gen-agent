@@ -14,7 +14,7 @@ from sprite_gen.spec import pose_geometry,gait_inputs
 # other workers. Its tests are given that, a hang still a named failure.
 pytestmark = pytest.mark.timeout(600)
 
-def profile():return json.loads((Path(__file__).resolve().parents[2]/'examples/gait-mocha.json').read_text())
+def profile():return json.loads((Path(__file__).resolve().parents[2]/'examples/gait-mocha.json').read_text(encoding="utf-8"))
 def settings():return {'canvas':[1024,1024],'guide_scale':2.4,'guide_translation':[128,8],'body_scale':2.,'body_translation':[10,50],'elevation_degrees':16.,'sample_policy':'clearance-safe','description':'SYNTHETIC fixture only; not character art.'}
 
 def prompt_fixture(motion,time):
@@ -87,50 +87,50 @@ def test_resampling_is_explicit_contact_preserving_and_half_cycle(motion):
 
 @pytest.fixture(scope='module')
 def prepared(tmp_path_factory):
-    root=tmp_path_factory.mktemp('gait-bridge');p=profile();path=root/'profile.json';path.write_text(json.dumps(p))
+    root=tmp_path_factory.mktemp('gait-bridge');p=profile();path=root/'profile.json';path.write_text(json.dumps(p), encoding="utf-8")
     gait.run(path,root/'guide');image=root/'original.png';Image.new('RGB',(256,256),'tan').save(image)
     cal={'sha256':hashlib.sha256(image.read_bytes()).hexdigest(),'canvas':[256,256],'landmarks':{'head_left':[60,25],'head_right':[160,25],'trunk_left':[50,140],'trunk_right':[180,140]},'reviewer':'OFFLINE SYNTHETIC','observation':'Synthetic visible marks for pipeline tests only.'}
-    c=root/'body.json';c.write_text(json.dumps(cal));s=root/'settings.json';s.write_text(json.dumps(settings()))
+    c=root/'body.json';c.write_text(json.dumps(cal), encoding="utf-8");s=root/'settings.json';s.write_text(json.dumps(settings()), encoding="utf-8")
     result=bridge.prepare_inputs(root/'guide',image,c,s,root/'prepared');return root,result
 
 def test_preparation_binds_actual_depth_masks_and_separates_reference_roles(prepared):
-    root,result=prepared;path=root/'prepared/walk-plan.json';plan=json.loads(path.read_text());gait_inputs.verify(path,plan)
+    root,result=prepared;path=root/'prepared/walk-plan.json';plan=json.loads(path.read_text(encoding="utf-8"));gait_inputs.verify(path,plan)
     assert len(plan['frames'])==16 and plan['gait_reference']['projection']['elevation_degrees']==16
     assert plan['frames'][4]['contacts']!={}
     run=root/'run';run.mkdir();manifest=gen_motion.prepare(path,run);assert manifest['contract']==5
     fid=result['motions']['walk']['independent_single_supports']['A']
     local=run/'poses'/('pose-'+fid)/'input-review.json'
-    d=json.loads(local.read_text());d['reviewer']='synthetic offline'
+    d=json.loads(local.read_text(encoding="utf-8"));d['reviewer']='synthetic offline'
     for x in d['checks'].values():x.update(status='pass',observation='OFFLINE fixture, no image quality claim')
-    local.write_text(json.dumps(d))
+    local.write_text(json.dumps(d), encoding="utf-8")
     with pytest.raises(ValueError,match='input-review|full sequence'):gen_motion._require_input_review(run,manifest)
     blocked=copy.deepcopy(manifest);blocked['plan']['gait_reference']['bundle_contract']='blocked'
     with pytest.raises(ValueError,match='ALL generation'):gen_motion._require_input_review(run,blocked,fid)
-    global_review=json.loads((run/'input-review.json').read_text());global_review['reviewer']='offline synthetic full input review'
+    global_review=json.loads((run/'input-review.json').read_text(encoding="utf-8"));global_review['reviewer']='offline synthetic full input review'
     for x in global_review['checks'].values():x.update(status='pass',observation='offline fixture, no artwork approval')
-    (run/'input-review.json').write_text(json.dumps(global_review))
+    (run/'input-review.json').write_text(json.dumps(global_review), encoding="utf-8")
     seen=[]
     def runner(prompt,out,refs,report,**kw):
-        seen.append(refs);im=Image.new('RGBA',(1024,1024));ImageDraw.Draw(im).rectangle((200,100,700,900),fill='tan');im.save(out);report.write_text('{"provider":"codex","offline":true}');return 0
+        seen.append(refs);im=Image.new('RGBA',(1024,1024));ImageDraw.Draw(im).rectangle((200,100,700,900),fill='tan');im.save(out);report.write_text('{"provider":"codex","offline":true}', encoding="utf-8");return 0
     first=gen_motion.generate(run,manifest,fid,runner=runner)
     assert first['status']=='awaiting_review' and 'diagnostic' in first['geometry']
     assert [p.name for p in seen[0]]==['guide.png','identity.png','gait-visible-depth.png','gait-amodal-xray.png']
-    folder=run/'poses'/('pose-'+fid)/'attempt-01';d=json.loads((folder/'review.json').read_text());d['reviewer']='offline'
+    folder=run/'poses'/('pose-'+fid)/'attempt-01';d=json.loads((folder/'review.json').read_text(encoding="utf-8"));d['reviewer']='offline'
     for x in d['checks'].values():x.update(status='fail',observation='offline rejection')
-    (folder/'review.json').write_text(json.dumps(d))
+    (folder/'review.json').write_text(json.dumps(d), encoding="utf-8")
     # Contract 5: unmeasured guide geometry no longer blocks a visual retry.
     gen_motion.generate(run,manifest,fid,retry=True,runner=runner)
-    assert len(seen)==2 and 'Previous candidate rejected' in (folder.parent/'attempt-02'/'prompt.txt').read_text()
-    second=folder.parent/'attempt-02'/'review.json';d=json.loads(second.read_text());d['reviewer']='offline'
+    assert len(seen)==2 and 'Previous candidate rejected' in (folder.parent/'attempt-02'/'prompt.txt').read_text(encoding="utf-8")
+    second=folder.parent/'attempt-02'/'review.json';d=json.loads(second.read_text(encoding="utf-8"));d['reviewer']='offline'
     for x in d['checks'].values():x.update(status='fail',observation='offline rejection')
-    second.write_text(json.dumps(d))
+    second.write_text(json.dumps(d), encoding="utf-8")
     with pytest.raises(ValueError,match='two attempts exhausted'):gen_motion.generate(run,manifest,fid,retry=True,runner=runner)
     assert len(seen)==2
     bound=run/'poses'/('pose-'+fid)/'gait-visible-depth.png';original=bound.read_bytes();bound.write_bytes(original+b'x')
     with pytest.raises(ValueError,match='prepared input changed'):gen_motion.prepare(path,run)
 
 def test_source_mutation_is_detected(prepared):
-    root,_=prepared;path=root/'prepared/walk-plan.json';plan=json.loads(path.read_text());p=root/'prepared/derived/walk/depth-00.npy';old=p.read_bytes()
+    root,_=prepared;path=root/'prepared/walk-plan.json';plan=json.loads(path.read_text(encoding="utf-8"));p=root/'prepared/derived/walk/depth-00.npy';old=p.read_bytes()
     try:
         p.write_bytes(old+b'x')
         with pytest.raises(ValueError,match='gait source changed'):gait_inputs.verify(path,plan)
@@ -234,16 +234,16 @@ def test_contract5_export_waits_for_sequence_review_and_contact_coverage(prepare
     root,_=prepared;path=root/'prepared/walk-plan.json'
     run=root/'run-coverage';run.mkdir();manifest=gen_motion.prepare(path,run)
     def passed(p):
-        d=json.loads(p.read_text());d['reviewer']='offline synthetic'
+        d=json.loads(p.read_text(encoding="utf-8"));d['reviewer']='offline synthetic'
         for x in d['checks'].values():x.update(status='pass',observation='offline fixture, no artwork approval')
-        p.write_text(json.dumps(d))
+        p.write_text(json.dumps(d), encoding="utf-8")
     passed(run/'input-review.json')
     frames=manifest['plan']['frames']
     for f in frames:passed(run/'poses'/('pose-'+f['id'])/'input-review.json')
     def runner(prompt,out,refs,report,**kw):
         i=int(out.parent.parent.name.rsplit('-',1)[1])
         im=Image.new('RGBA',(1024,1024));ImageDraw.Draw(im).rectangle((200+i,100,700,900),fill='tan');im.save(out)
-        report.write_text('{"provider":"codex","offline":true}');return 0
+        report.write_text('{"provider":"codex","offline":true}', encoding="utf-8");return 0
     done=set()
     while len(done)<len(frames):
         for f in frames:

@@ -45,12 +45,12 @@ def grid_text():
 
 def test_effect_grid_keeps_sparks_changed_extent_and_empty_end(tmp_path):
     grid = tmp_path / "effect.txt"
-    grid.write_text(grid_text())
+    grid.write_text(grid_text(), encoding="utf-8")
     out = tmp_path / "out"
     assert draw.main(["--grid", str(grid), "--kind", "effect", "--out-dir", str(out)]) == 0
-    report = json.loads((out / "report.json").read_text())
+    report = json.loads((out / "report.json").read_text(encoding="utf-8"))
     assert report["status"] == "ok"
-    meta = json.loads((out / report["files"]["metadata"]).read_text())
+    meta = json.loads((out / report["files"]["metadata"]).read_text(encoding="utf-8"))
     assert meta["loop"] is False and meta["hold_last"] is False
     assert meta["anchor"] == [4, 4] and meta["frames"] == 3
     strip = Image.open(out / report["files"]["strip"]).convert("RGBA")

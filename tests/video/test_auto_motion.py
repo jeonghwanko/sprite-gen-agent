@@ -165,7 +165,7 @@ def test_actual_cli_auto_selects_corrects_and_verifies_animation(tmp_path):
     output = tmp_path/'out'
     args = ['--frames-dir', str(keyed), '--out-dir', str(output), '--state', 'walk', '--anchor', 'motion-auto', '--repair', 'off']
     assert loop.main(args) == 0
-    report = json.loads((output/'loop.loop.report.json').read_text())
+    report = json.loads((output/'loop.loop.report.json').read_text(encoding="utf-8"))
     start, length = report['cycle']['start'], report['cycle']['length']
     assert length == 24
     assert report['anchor'] == 'motion-auto' and report['seam_measurement'] == 'rendered-cells'
@@ -183,7 +183,7 @@ def test_actual_cli_auto_selects_corrects_and_verifies_animation(tmp_path):
         np.testing.assert_array_equal(np.asarray(restored), np.asarray(source[start+k]))
     with pytest.raises(SystemExit, match='loop seam ratio'):
         loop.main(args+['--seam-max', '.001'])
-    assert json.loads((output/'loop.loop.report.json').read_text())['status'] == 'failed'
+    assert json.loads((output/'loop.loop.report.json').read_text(encoding="utf-8"))['status'] == 'failed'
 
 
 def test_automatic_contract_refuses_manual_inputs_and_non_gaits_before_io(tmp_path):

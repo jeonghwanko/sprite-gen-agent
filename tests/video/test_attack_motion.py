@@ -77,7 +77,7 @@ def test_video_set_pins_attack_to_its_canvas_for_two_seconds(tmp_path: Path, sta
     def video(image, prompt, out, report, **kw):
         calls.append({"image": image, **kw})
         out.write_bytes(b"test-video")
-        report.write_text(json.dumps({"prompt": prompt}))
+        report.write_text(json.dumps({"prompt": prompt}), encoding="utf-8")
         return 0
 
     result = batch_mod.run_item(item=f"side-{state}", direction="side", state=state, base=FIXTURE, root=tmp_path,
@@ -113,7 +113,7 @@ def test_video_set_gives_every_state_the_same_body_height(tmp_path: Path, monkey
 
     def video(image, prompt, out, report, **kw):
         Path(out).write_bytes(b"x")
-        Path(report).write_text(json.dumps({"prompt": prompt}))
+        Path(report).write_text(json.dumps({"prompt": prompt}), encoding="utf-8")
         return 0
 
     monkeypatch.setattr(batch_mod.facing_mod.vision, "grok_inspect", lambda *a, **kw: ("right", {}))

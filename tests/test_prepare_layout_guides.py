@@ -26,7 +26,7 @@ def test_reused_request_cannot_restore_pose_guides(tmp_path: Path):
         result = run_script("prepare_sprite_run.py", "--out-dir", str(out_dir),
                             "--character-id", "runner", "--request-json", json.dumps(request))
         assert result.returncode == 0, result.stdout + result.stderr
-        emitted = json.loads((out_dir / "sprite-request.json").read_text())
+        emitted = json.loads((out_dir / "sprite-request.json").read_text(encoding="utf-8"))
         assert "motion_phase_guides" not in emitted
         if old_value is not None:
             assert "motion_phase_guides" in result.stderr
@@ -38,7 +38,7 @@ def test_reused_request_cannot_restore_pose_guides(tmp_path: Path):
                 (246, 246, 246), (51, 51, 51), (47, 128, 237), (184, 200, 232),
             }
             guide_pixels.append(guide.tobytes())
-        prompt = next((out_dir / "prompts").rglob("*.txt")).read_text()
+        prompt = next((out_dir / "prompts").rglob("*.txt")).read_text(encoding="utf-8")
         assert "Animation action: running in place" in prompt
         for retired in ("stick", "phase guide", "phase hints", "Motion phase requirements"):
             assert retired not in prompt

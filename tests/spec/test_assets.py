@@ -41,7 +41,7 @@ def descriptor(tmp_path, *, anchor=None, durations=(0.1, 0.1, 0.1, 0.1, 0.1), fi
     if anchor is not None:
         data["anchor"] = anchor
     path = tmp_path / "walk.json"
-    path.write_text(json.dumps(data))
+    path.write_text(json.dumps(data), encoding="utf-8")
     return path
 
 
@@ -58,7 +58,7 @@ def atlas(tmp_path, states=("walk", "idle")):
         "sprite_sheet_alpha": "atlas.png", "game_input": "atlas.png",
         "frame_layout": {"rows": {s: rows[s] for s in states}},
         "animation": {"rows": {s: {"fps": 10, "durations_ms": [100] * len(rows[s]), "loop": True} for s in states}},
-    }))
+    }), encoding="utf-8")
     return path
 
 
@@ -112,7 +112,7 @@ def test_real_loop_strip_writer_output_is_read_back_cell_by_cell(tmp_path):
     frames = walk_frames()
     strip, meta = build_strip(frames, cycle_seconds=0.5)
     strip.save(tmp_path / "walk.strip.png")
-    (tmp_path / "walk.strip.json").write_text(json.dumps(meta))
+    (tmp_path / "walk.strip.json").write_text(json.dumps(meta), encoding="utf-8")
     seq = load_asset(tmp_path / "walk.strip.json")
     assert seq.size == (meta["w"], meta["h"])
     assert len(seq.frames) == meta["frames"]
@@ -135,7 +135,7 @@ def test_real_runtime_atlas_writer_output_keeps_rects_and_timing(fixture_run_dir
         proc = run_script(script, "--run-dir", str(fixture_run_dir))
         assert proc.returncode == 0, proc.stdout + proc.stderr
     manifest_path = fixture_run_dir / "manifest.json"
-    manifest = json.loads(manifest_path.read_text())
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     with pytest.raises(ValueError, match="--state is required"):
         load_asset(manifest_path)
     with pytest.raises(ValueError, match="unknown asset state"):
@@ -214,7 +214,7 @@ def test_descriptor_identity_is_the_parsed_bytes(tmp_path, monkeypatch):
         if Path(path).name == "walk.json":
             edited = json.loads(data)
             edited["frames"] = edited["frames"][:2]
-            Path(path).write_text(json.dumps(edited))
+            Path(path).write_text(json.dumps(edited), encoding="utf-8")
         return data
 
     monkeypatch.setattr(assets, "_read_bytes", read_then_edit)
@@ -265,7 +265,7 @@ def test_frame_at_wraps_when_looping_and_holds_the_last_frame_otherwise(tmp_path
 ])
 def test_invalid_descriptors_are_rejected(tmp_path, mutate, message):
     source = descriptor(tmp_path)
-    source.write_text(json.dumps(mutate(json.loads(source.read_text()))))
+    source.write_text(json.dumps(mutate(json.loads(source.read_text(encoding="utf-8")))), encoding="utf-8")
     with pytest.raises(ValueError, match=message):
         load_asset(source)
 
@@ -279,9 +279,9 @@ def test_invalid_descriptors_are_rejected(tmp_path, mutate, message):
 ])
 def test_invalid_atlas_manifests_are_rejected(tmp_path, mutate, message):
     source = atlas(tmp_path, states=("walk",))
-    data = json.loads(source.read_text())
+    data = json.loads(source.read_text(encoding="utf-8"))
     mutate(data)
-    source.write_text(json.dumps(data))
+    source.write_text(json.dumps(data), encoding="utf-8")
     with pytest.raises(ValueError, match=message):
         load_asset(source)
 
@@ -308,11 +308,11 @@ def test_frame_sequence_positional_contract_defaults_anchor_and_keeps_digests_ke
 
 def test_playback_metadata_is_preserved_by_the_shared_adapter(tmp_path):
     source = descriptor(tmp_path)
-    data = json.loads(source.read_text())
+    data = json.loads(source.read_text(encoding="utf-8"))
     policy = {"loop": False, "hold_last": True, "end_frame": 4,
               "events": [{"frame": 2, "name": "impact"}], "blend": "add", "direction": "SW", "body_h": 32}
     data.update(policy)
-    source.write_text(json.dumps(data))
+    source.write_text(json.dumps(data), encoding="utf-8")
     seq = load_asset(source)
     assert {key: seq.metadata[key] for key in policy} == policy
 
@@ -325,7 +325,7 @@ def test_row_major_sheet_ignores_unused_cells_and_keeps_sidecar_policy(tmp_path)
     sheet.save(tmp_path / "grid.png")
     source = tmp_path / "grid.json"
     source.write_text(json.dumps({"columns": 2, "rows": 2, "frame_width": 6, "frame_height": 8,
-        "frames": 3, "delay_ms": 100, "order": "row-major", "loop": False, "anchor": [2, 7]}))
+        "frames": 3, "delay_ms": 100, "order": "row-major", "loop": False, "anchor": [2, 7]}), encoding="utf-8")
     seq = load_asset(source)
     assert seq.anchor == (2, 7) and seq.metadata["loop"] is False
     assert len(seq.frames) == 3
@@ -334,7 +334,7 @@ def test_row_major_sheet_ignores_unused_cells_and_keeps_sidecar_policy(tmp_path)
 
 def test_all_direction_rows_share_one_snapshot_decode(tmp_path, monkeypatch):
     source = tmp_path / "directions.json"
-    source.write_text(json.dumps({"cell": [6, 8], "frames": 2, "fps": 10, "rows": ["NE", "SW"]}))
+    source.write_text(json.dumps({"cell": [6, 8], "frames": 2, "fps": 10, "rows": ["NE", "SW"]}), encoding="utf-8")
     image = Image.new("RGBA", (12, 16), "red")
     image.paste(Image.new("RGBA", (12, 8), "blue"), (0, 8))
     image.save(tmp_path / "directions.png")
