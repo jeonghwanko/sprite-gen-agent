@@ -15,6 +15,7 @@ from sprite_gen.compose import compose_atlas, compose_cycle, compose_gif, export
 from sprite_gen.compose import game_pack
 from sprite_gen.qa import correction_loop, inspect, preview, score, motion
 from sprite_gen.qa import handed as handed_check
+from sprite_gen.qa import holds as inspect_holds
 from sprite_gen.qa import scale_check
 from sprite_gen.qa import decisions, decision_eval
 from sprite_gen.frames import cutout, extract, slice_sheet, ui_kit, unpack_atlas
@@ -54,6 +55,7 @@ COMMANDS: dict[str, tuple[str, Callable[[argparse.ArgumentParser], None], Callab
     "background-tile": ("Quilt a repeating RGBA background and measure its join.", tile.add_arguments, tile.run),
     "shadow": ("Project silhouette shadows from any supported asset.", shadow.add_arguments, shadow.run),
     "inspect-motion": ("Measure asset timing and contact evidence without changing animation.", motion.add_arguments, motion.run),
+    "inspect-holds": ("Count the frames on which a figure shows the picture of the frame before, by its alpha, a key, a box or a log of its cells; --gate fails on one no list of holds meant names.", inspect_holds.add_arguments, inspect_holds.run),
     "scale-check": ("Measure every frame's figure size against a reference frame by its head; the corrections game-pack applies.", scale_check.add_arguments, scale_check.run),
     "scene-render": ("Render referenced assets using scene placement, camera and lighting.", render.add_arguments, render.run),
     "scene-inspect": ("Measure scene loops, viewport clipping and repeated joins.", inspect_scene.add_arguments, inspect_scene.run),

@@ -32,6 +32,8 @@ sprite-gen scene-inspect --spec scene.json --out scene-check.json
 
 For animations, replace the PNG reference with an [external frame descriptor, loop strip or runtime atlas](asset-tools.md#shared-asset-input). Add `"state": "walk"` to an atlas reference when it has several states. Paths resolve relative to the scene spec; frame/image paths within asset descriptors resolve relative to those descriptors. Asset timing and anchors stay in the asset metadata.
 
+A loop strip's cells play at the strip's own rate, read off its `delay_ms`. A `delay_ms` with a fraction of a millisecond that lies within 0.01 ms of 1000 over a whole number is that rate (41.67 ms is 24 fps, 16.67 ms is 60 fps, `spec.assets.frame_seconds`); a whole number of milliseconds, and any other value, is read as it is. The same reading applies to a direction sheet's rows and a grid sheet's `delay_ms`. Read as 41.67 ms, a 24 fps strip drifted a scene a cell late: in a 24 fps scene its first cell showed twice and every cell after it one frame late; in a 20 fps scene every fifth frame showed the cell before the one its time falls on. A stride report measured on the rounded time still names the same cells.
+
 ## Spec ownership and units
 
 | Field | Contract |
