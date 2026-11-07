@@ -370,12 +370,13 @@ def test_real_rife_melts_legs_crossing_too_far_and_alignment_takes_the_nearer_fr
     a short step comes out outlined (under 3 % at any t). `--between auto` takes the nearer source
     frame for the first and keeps RIFE's for the second; `rife` keeps both and names the first."""
     from sprite_gen.video import align
+    from sprite_gen.video.interpolation_quality import OUTLINE_WARN
 
     interpolate = rife.Rife()
     far, near = (_walker(20, -20), _walker(-5, 5)), (_walker(10, -10), _walker(4, -4))
-    assert rife.smear(interpolate(*far, 0.5), *far)["outline_loss"] > align.OUTLINE_WARN
+    assert rife.smear(interpolate(*far, 0.5), *far)["outline_loss"] > OUTLINE_WARN
     for t in (0.25, 0.5, 0.75):
-        assert rife.smear(interpolate(*near, t), *near)["outline_loss"] < align.OUTLINE_WARN
+        assert rife.smear(interpolate(*near, t), *near)["outline_loss"] < OUTLINE_WARN
     out, facts = align.resample(list(far), 4, interpolate)  # times 0, 0.5, 1, 1.5: both made at t=0.5
     assert facts["between"] == "auto" and facts["made_by_rife"] == 0 and facts["nearest_at"] == [1, 3]
     assert out[1] is far[1] and out[3] is far[0]

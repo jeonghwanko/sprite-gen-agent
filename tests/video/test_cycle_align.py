@@ -22,6 +22,7 @@ from PIL import Image, ImageDraw
 
 from sprite_gen.video import align, legs, local_cycle
 from sprite_gen.video import loop as loop_mod
+from sprite_gen.video.interpolation_quality import OUTLINE_WARN, SMEAR_WARN
 from tests.video import test_walk_steps as walks
 
 W, H = 100, 120
@@ -490,7 +491,7 @@ def test_a_made_frame_darker_than_both_neighbours_is_named_in_the_warnings(tmp_p
     smears = [w for w in report["warnings"] if "more dark pixels inside the body" in w]
     assert len(smears) == report["made_by_rife"] > 0
     row = next(r for r in report["loops"] if Path(r["dir"]).name == "S")
-    assert len(row["smear"]) == row["made_by_rife"] and min(m["dark_excess"] for m in row["smear"]) > align.SMEAR_WARN
+    assert len(row["smear"]) == row["made_by_rife"] and min(m["dark_excess"] for m in row["smear"]) > SMEAR_WARN
     assert [m["at"] for m in row["smear"]] == sorted(row["made_at"])
 
 
@@ -513,8 +514,11 @@ def test_a_made_frame_that_lost_its_outline_is_replaced_by_the_nearer_source_fra
     row = next(r for r in report["loops"] if Path(r["dir"]).name == "S")
     assert report["between"] == "auto" and report["made_by_rife"] == 0 and row["made_at"] == []
     assert len(row["smear"]) == len(row["nearest_at"]) > 0
-    assert report["replaced"] == sum(len(r["smear"]) for r in report["loops"])
-    assert all(m["method"] == "nearest" and m["faults"] == ["outline"] and m["outline_loss"] > align.OUTLINE_WARN for m in row["smear"])
+    # `replaced` counts the frames given way to the nearer source frame. A loop whose beat still breaks after that is made
+    # of source frames only, its rows `source-plan`, and is not counted (E here; docs/loop-repair.md section 4).
+    methods = [m["method"] for r in report["loops"] for m in r["smear"]]
+    assert set(methods) <= {"nearest", "source-plan"} and report["replaced"] == methods.count("nearest")
+    assert all(m["method"] == "nearest" and m["faults"] == ["outline"] and m["outline_loss"] > OUTLINE_WARN for m in row["smear"])
     assert sorted(m["at"] for m in row["smear"]) == row["nearest_at"]
     named = [w for w in report["warnings"] if "lost its outline" in w and "the nearer source frame was taken there" in w]
     assert len(named) == report["replaced"]
