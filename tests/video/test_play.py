@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """How a motion plays is a request value (`video-set --play`, `video-prompt --play`, `sprite_gen.video.play`): a
 named state the request gives no mode plays as its preset, exactly as before; a mode the request gives decides the
 end-frame pin, the prompt's ending, the cut and the strip's metadata, whatever the motion is called. Synthetic

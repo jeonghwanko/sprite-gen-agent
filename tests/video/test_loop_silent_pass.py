@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """A walk loop that jumps where the seam gate does not look is not passed without a word.
 
 - The step gate: every step of a walk's or run's loop as it plays, read between its drawings (`loop.drawing_steps`), the

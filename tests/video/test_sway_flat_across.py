@@ -1,3 +1,4 @@
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """Two of the Sway layer's gaps: a region moved whole, and across apart from down.
 
 A region's weight is 1 at its centre and falls to 0 at its rim, so a large region moves its middle and presses the rest

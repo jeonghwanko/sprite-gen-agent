@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """The overlapped wrap (docs/loop-repair.md section 2, "The overlapped wrap"): a walk cut two steps long closes for the
 legs, and a tail on a beat of its own closes on no cut of two steps, so the seam gate refuses every one. The clip goes on
 past the cut; the frames beside the wrap are made again between the clip's frame a cycle apart and the cut's own, and

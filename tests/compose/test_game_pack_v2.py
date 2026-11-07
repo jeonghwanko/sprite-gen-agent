@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """Pack contract version 2 (docs/game-pack.md "Version 2"): images, tiles and ui sections.
 
 The manifest is checked field by field against the contract, with exact key sets, so a

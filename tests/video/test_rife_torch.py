@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """RIFE's torch backend (docs/loop-repair.md section 1): rife-v4.6 in PyTorch, from the binary's own model, run as one
 call of the binary runs it — the pair turned eight ways and run both ways in time, their flows averaged at every level.
 

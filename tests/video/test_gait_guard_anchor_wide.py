@@ -1,3 +1,4 @@
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """Synthetic regressions for the 2026-09 field fixes:
 
 * gait half-period guard — a walker whose two half-strides are pixel-identical must

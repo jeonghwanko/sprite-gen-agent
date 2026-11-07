@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """A clip made elsewhere (a video MCP on the user's agent, such as ZCRE) enters the loop pipeline
 through `video-prompt` and `video-frames`: the prompt is the one `video-set` sends, a source with no
 end frame cannot film a pinned state unless asked to film it unpinned, and a clip's audio track and

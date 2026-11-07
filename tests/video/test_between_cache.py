@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """Frames made between two source frames, kept and taken again (docs/loop-repair.md section 4,
 `video-cycle-align --between-cache`). An app aligns a set, then aligns it once more on a copy with
 the feet told (or a retake in place): the frames between are the same frames, made from the same

@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """Terminal-pose cuts retain their endpoint and never ask it to match the start."""
 import json
 from pathlib import Path

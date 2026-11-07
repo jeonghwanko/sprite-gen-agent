@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """Tests for the opt-in YCbCr chrominance matting path (chroma.mode: "ycbcr").
 
 Port of perfectpixel-studio internal/sprite/chroma.go (MIT — see NOTICE).

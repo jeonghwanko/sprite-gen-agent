@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """The redrawn wrap of a pinned clip (`video-loop --wrap-blend`, sprite_gen/video/wrap_blend.py, docs/loop-repair.md
 section 6). A video model given the first frame as the last draws it again; the loop's last half second takes the first
 frame's drawing back, and only a redraw: a part, a line, a dot the two ends hold in different places is never drawn a

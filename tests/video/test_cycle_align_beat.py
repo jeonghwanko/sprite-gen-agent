@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """The beat an aligned walk keeps, and the feet it steps with (docs/loop-repair.md section 4, sprite_gen/video/cadence.py).
 
 A frame `--between auto` cannot make gives way to the nearer source frame. Where a cut holds its drawings for three

@@ -1,3 +1,4 @@
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """An uncertain registration must not hide either its failure or a bad raw seam."""
 import json
 import math

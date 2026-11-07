@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """Direct API contract, offline: no credentials, network or Grok subprocess."""
 import base64
 import io

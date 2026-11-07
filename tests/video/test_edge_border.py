@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """A drawing cut by its own frame is not a clip framed too tight, and a refused run hands nothing over.
 
 * `video-frames` reads the drawing's own border on the clip's first frame: a side whose outermost row or column

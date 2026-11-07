@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """`slice-sheet` on a sheet that is already transparent (`--chroma-key none`) and with the
 shared alpha haze cleanup (`--alpha-floor`): a hazy ring around each prop would otherwise
 join the prop's part and enlarge its measured height."""

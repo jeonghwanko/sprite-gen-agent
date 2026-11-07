@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """A filmed ghost kept for want of a clean frame beside it is a take to film again (docs/loop-repair.md
 section 4): `video-cycle-align` names it in `retake`, reason `filmed-ghost`, beside `held-drawings` in
 one record, and says what became of each cell as it was.

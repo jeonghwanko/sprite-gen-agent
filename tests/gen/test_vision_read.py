@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """Every provider's one vision call takes the question it is asked (`inspect_image`).
 
 The facing check asks where a face points; `logo` asks what the lettering spells. Both go

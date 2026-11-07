@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """``--chroma-key auto`` candidate scoring over a base that carries a background.
 
 Every base in this pipeline is a subject drawn on a flat chroma background. The

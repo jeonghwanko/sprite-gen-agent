@@ -1,3 +1,4 @@
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """`video-follow-inspect`: where a follow-through carries its regions in every cell, on a synthetic figure."""
 import argparse
 import hashlib

@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """A loop whose foot the engine cannot name is told it, one loop at a time (docs/loop-repair.md
 section 4): the report lists it under `unnamed_feet` with its two strike frames in `cycle/`, and
 `--foot <loop>=left|right` — which own foot lands on the first — turns that loop alone to start as

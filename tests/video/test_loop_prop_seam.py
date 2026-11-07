@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """A thin part held above the head that sways on its own beat (docs/loop-repair.md section 3,
 "The seam pop").
 

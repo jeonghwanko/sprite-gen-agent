@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """`sprite-gen breathe --avoid-region` — 손을 비키는 숨 박자.
 
 손이 가슴 앞을 오르내리는 idle 에서 숨 박자(숨 수 또는 들숨 꼭대기 칸)를 칸에서 고른다: 손과 그 위 몸을 따라가

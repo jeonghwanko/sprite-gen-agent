@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """Curation-view display contract (run-contract.md §3/§4): imported `_base`/`_refs`
 sources surface as the base row + generation-material chips, the self-report `contract`
 field is populated, and filenames with URL-special characters are percent-encoded so

@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """Video -> sprite pipeline contracts on synthetic frames: canvas profiles, edge-contact
 keying, global-period cycle detection (incl. the 1.5-cycle trap), seam gate, GIF/WebP
 verification, and the batch runner's stagger/429 handling."""

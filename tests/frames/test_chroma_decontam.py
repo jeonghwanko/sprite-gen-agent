@@ -1,3 +1,4 @@
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """Synthetic regressions for the edge decontamination pass (`decontam: "palette"`, and
 `auto`, the default of `video-frames` and `video-set`).
 

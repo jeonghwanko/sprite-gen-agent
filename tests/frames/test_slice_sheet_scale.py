@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """`slice-sheet --scale sheet` keeps the sizes a sheet was drawn at, `--fit contain` keeps every cut whole
 on its canvas, and the report states the factor, each cell's size and where its subject stands
 (docs/sheet-slicing.md "Props and icons"). Synthetic sheets only: solid boxes of known sizes."""

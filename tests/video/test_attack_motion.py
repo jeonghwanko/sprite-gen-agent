@@ -1,3 +1,4 @@
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """Attack clips: one timed strike, the drawn grip, no turning, pinned to end where they start.
 
 A 4 s clip, the frame, camera and background rules without the "evenly paced" line, and a

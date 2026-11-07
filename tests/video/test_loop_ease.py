@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """The eased retime (docs/loop-repair.md section 2, "The eased retime"): where a part rushes — a run of one or
 two steps far faster than the steps around it, going the way it was going — the frames either side are made
 again at times the search chooses, so the part's speed rises and falls gradually; the body's feet, torso and

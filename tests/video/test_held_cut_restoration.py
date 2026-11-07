@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """A walk cut by hand (`--cycle fixed`) and held at its size and on its row (`size_hold`, docs/video-pipeline.md
 section 4) is restored from its source frames: the report records the move each frame of the cut was held by
 (`size_hold.cut_frames`), and `video-loop-repair` holds each source frame of the cut by it again before it reads it,

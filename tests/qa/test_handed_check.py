@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """`handed-check` on drawn figures: a body with two arms and a blue watch screen on its own left wrist.
 Each view is drawn as it should look (the table below, written out by hand), passes, and turned over
 (as a set that mirrors its left-hand views would) fails — the check catches a mirror by itself."""

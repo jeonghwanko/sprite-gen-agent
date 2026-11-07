@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """A walk slower than its window is cut one step long; the step screen says so, and a count of the
 steps cuts it again (docs/loop-repair.md section 3, "The step screen").
 

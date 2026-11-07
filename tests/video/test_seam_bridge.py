@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """The seam bridge (docs/loop-repair.md section 2, "The seam bridge"): a loop that is not a walk is not read for its
 flow, but its wrap is — the step from its last frame to its first against the mean of the three steps either side
 (`repair.SURGE_AROUND`), on the frames as they play. A wrap over `--seam-max` there, and over the re-render noise of a

@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """Idle holds its feet and is pinned: the clip ends on its first frame and `video-loop --cycle
 pinned` keeps the whole clip as the loop, gated on that pin rather than on the seam ratio."""
 

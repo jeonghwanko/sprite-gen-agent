@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """Scene specs: timing, placement defaults, planes and stride binding to the measured sequence."""
 
 import hashlib

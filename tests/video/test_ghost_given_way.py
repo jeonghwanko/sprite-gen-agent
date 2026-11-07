@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """A filmed ghost in a loop delivered as cut is given way in `video-loop`'s jump repair stage
 (docs/loop-repair.md sections 2 and 4): a walk filmed in one direction never meets the cycle
 alignment, so its cut is what is delivered. The ghost screen reads the cut as filmed, before the

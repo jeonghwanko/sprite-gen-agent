@@ -1,3 +1,4 @@
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """Synthetic return/repeat contracts; no private production images or measurements."""
 from pathlib import Path
 

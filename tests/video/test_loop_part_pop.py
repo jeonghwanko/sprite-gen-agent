@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """The part pop (docs/loop-repair.md section 2, "The part pop"): a part the size of a hand that jumps 2 to 5 % of the
 body's height at a walk loop's wrap and stays there passes the flow reading and the surge reading, which read the loop in
 windows half the body's box each way; the part reading follows the parts themselves and names it. The loop is cut as
