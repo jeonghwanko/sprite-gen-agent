@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (the missing-NumPy message is held to ASCII; see NOTICE).
 """Missing-NumPy contract for the agent-facing entrypoints.
 
 `tests/test_entrypoint_interpreter.py` locks the other half of the deployment
@@ -220,3 +221,14 @@ def test_the_gate_hands_back_the_real_numpy() -> None:
 
     assert _deps.np is _deps.numpy
     assert getattr(_deps.np, "__name__", None) == "numpy"
+
+def test_the_message_is_ascii_apart_from_its_paths() -> None:
+    """The message is raised at `import sprite_gen`, before an entry reopens stderr as UTF-8, so Python writes it in
+    the locale's code page. On a cp949 Windows its em dash and Korean section name came out as bytes the runs above,
+    which read stderr as UTF-8, could not decode. CI's UTF-8 Linux cannot see that, so the text itself is held here."""
+    from sprite_gen import _deps
+
+    message = _deps._missing_numpy_message()
+    for path in (sys.executable, str(_deps.REPO_ROOT), str(_deps.VENV_PYTHON)):
+        message = message.replace(path, "")
+    assert message.isascii(), [ch for ch in message if not ch.isascii()]

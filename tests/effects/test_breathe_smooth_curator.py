@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (a child's output read as UTF-8; see NOTICE).
 """큐레이터가 smooth 줄을 조용히 pixel 로 그리거나 지우지 않는지.
 
 큐레이터 미러(`breathe.js`)는 pixel 워프만 바이트 동일하게 따라 그린다. smooth 는 쌍선형

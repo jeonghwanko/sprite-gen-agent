@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (a child's output read as UTF-8; see NOTICE).
 """Serve the sprite-gen curation webview for a single run directory.
 
 Standalone — no server framework, just the standard library plus the dependencies

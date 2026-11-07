@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files and a child's output read as UTF-8; see NOTICE).
 """The torch backend's CUDA gates, on an NVIDIA T4 rented from Modal: the GPU run `scripts/linux_lane.sh` leaves to this
 lane (docs/release.md). GitHub-hosted CI is not used.
 

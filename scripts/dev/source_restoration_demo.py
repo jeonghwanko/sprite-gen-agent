@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files and a child's output read as UTF-8; see NOTICE).
 """A synthetic, public end-to-end example of source restoration (docs/loop-comparison.md).
 
 Everything here is drawn: a small round walker, twelve frames at twice the cell's size on a

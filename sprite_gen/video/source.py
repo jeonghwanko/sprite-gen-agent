@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (a child's output read as UTF-8; see NOTICE).
 """Byte receipts for extracted source files and a deliberately exact loop projection.
 
 A receipt is not a declaration that a loop matches its source. ``project`` must

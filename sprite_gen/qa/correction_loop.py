@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (a child's output read as UTF-8; see NOTICE).
 """Run a bounded inspect -> score -> correction-hint loop."""
 
 from __future__ import annotations

@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
-# Modified for sprite-gen-agent (the venv interpreter path follows the platform; see NOTICE).
+# Modified for sprite-gen-agent (the venv interpreter path follows the platform; the missing-NumPy message is ASCII
+# apart from its paths; see NOTICE).
 """The one module that imports NumPy — and the one place its absence is reported.
 
 NumPy is a declared runtime dependency (`pyproject.toml`), materialized by the
@@ -44,6 +45,12 @@ def _missing_numpy_message() -> str:
     `$SPRITE_GEN_ROOT/...` public register so the command is
     copy-pasteable in the shell that just failed; in a canonical deployment the
     two name the same directory.
+
+    Apart from those paths the text is ASCII. It is raised at `import sprite_gen`,
+    before any entry reopens stderr as UTF-8 (`util.console.utf8_streams`), so
+    Python writes it in the locale's code page. On a cp949 Windows an em dash came
+    out as `\\u2014` and a Korean section name as cp949 bytes that a reader of UTF-8
+    could not decode.
     """
     return (
         "sprite-gen requires NumPy and this interpreter cannot import it.\n"
@@ -53,9 +60,10 @@ def _missing_numpy_message() -> str:
         "that interpreter:\n"
         f"  {VENV_PYTHON} -m pip install -e {REPO_ROOT}\n"
         f"  {VENV_PYTHON} <script>.py ...\n"
-        "There is no pure-Python fallback — the extraction path carries a byte-identity "
+        "There is no pure-Python fallback: the extraction path carries a byte-identity "
         "contract and will not run twice as fast-and-loose scalar code "
-        "(SKILL.md '실행 인터프리터', SECURITY.md 'Current Dependency Surface')."
+        "(docs/interpreter.md, linked from SKILL.md's interpreter section; "
+        "SECURITY.md 'Current Dependency Surface')."
     )
 
 

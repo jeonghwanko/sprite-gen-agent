@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (the UTF-8 checks also cover scripts, tests and a child's output; see NOTICE).
 """A command prints UTF-8 on a stream opened in a legacy code page: a Windows console or pipe on cp949
 could not encode the em dash, Korean or a path a command prints, and the command died at the print."""
 

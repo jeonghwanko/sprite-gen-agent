@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (a child's output read as UTF-8; see NOTICE).
 """Serve the sprite-gen composition canvas — the "blank screen" assembly surface.
 
 This is the pre-run half of curation. The curation webview (`serve_curation.py`)

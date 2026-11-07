@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (a child's output read as UTF-8; see NOTICE).
 """Deterministic asset placement. No generation calls or sprite source writes.
 
 Every prerequisite (formats, codec constraints, GIF settings, ffmpeg, output

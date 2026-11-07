@@ -1,3 +1,4 @@
+# Modified for sprite-gen-agent (a child's output read as UTF-8; see NOTICE).
 """호흡 계약 변이 배터리 — 그물을 손대면 **전부** 다시 돌린다.
 
     python scripts/dev/breathe_mutation_battery.py

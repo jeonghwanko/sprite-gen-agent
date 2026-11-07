@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (a child's output read as UTF-8; see NOTICE).
 """Publish the GitHub release page for a tag, or rehearse it without touching anything.
 
 The gate this closes: a `vX.Y.Z` tag can be pushed, changelogged and announced while the
