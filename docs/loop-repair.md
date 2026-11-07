@@ -61,6 +61,15 @@ the binary's test-time augmentation, spatial and temporal (`-x -z`, `rife.TTA`;
 | `rife-v4.6/flownet.param` | `724569596bcd1e7b9fa50455c604777ebed99746d2ef40aa86e31b5725f1053c` |
 | `rife-v4.6/flownet.bin` | `f334ed2260149ce0188a6dcf049844e8b0cdd912e01cbcfb63553157d2508958` |
 
+The Windows zip holds the same `flownet.bin`, and the same `flownet.param` text with CRLF line ends:
+16,749 bytes, SHA-256 `28df14d57a225725ee5386f52eba422488450d37c9f40800ed4f62e8ba846692` (measured
+2026-11-07). The param is checked with its CRLF turned to LF (`rife.pinned_bytes`, `rife.MODEL_TEXT`),
+so the Windows zip's is the file pinned above, and `sprite-gen rife install` installs it with LF line
+ends — the same bytes on every platform; the report names it under `line_ends_turned`. The binary reads
+either alike: on an RTX 3050 Laptop GPU under Windows its `-x -z` frames from the two were the same
+bytes. A model unzipped by hand, `SPRITE_GEN_RIFE_MODEL` pointed at it, is read the same way.
+`flownet.bin` is weights and is never turned.
+
 #### The torch backend: `SPRITE_GEN_RIFE_BACKEND=torch`
 
 The binary is the default. `SPRITE_GEN_RIFE_BACKEND=torch` runs the same model in PyTorch instead

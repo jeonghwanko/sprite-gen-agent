@@ -444,6 +444,22 @@ def test_a_model_other_than_the_pinned_one_is_refused_and_one_not_there_is_not_i
         rife.model_bytes(model)
 
 
+def test_the_windows_zips_crlf_param_unzipped_by_hand_is_read_as_the_pinned_lf_bytes(monkeypatch, tmp_path):
+    """SPRITE_GEN_RIFE_MODEL may name the Windows zip's model unzipped by hand, its flownet.param with CRLF line ends
+    (`rife.MODEL_TEXT`): the torch backend reads it as the pinned LF bytes — what it is handed is what was checked, the
+    same on every platform — and the file is not written. flownet.bin is read as it is."""
+    param, weights = b"7767517\n2 2\nConvolution conv0 1 1 in0 out0 0=8\n", b"\x00\r\n\x01"
+    monkeypatch.setattr(rife, "MODEL_SHA256", {"flownet.param": hashlib.sha256(param).hexdigest(),
+                                               "flownet.bin": hashlib.sha256(weights).hexdigest()})
+    model = tmp_path / "unzipped" / rife.MODEL
+    model.mkdir(parents=True)
+    (model / "flownet.param").write_bytes(param.replace(b"\n", b"\r\n"))
+    (model / "flownet.bin").write_bytes(weights)
+    monkeypatch.setenv("SPRITE_GEN_RIFE_MODEL", str(model))
+    assert rife.model_bytes(rife.locate_model()) == {"flownet.param": param, "flownet.bin": weights}
+    assert (model / "flownet.param").read_bytes() == param.replace(b"\n", b"\r\n")
+
+
 # --- reports and keys: a runner stood in ------------------------------------------------------------------------------
 
 class FakeRunner:

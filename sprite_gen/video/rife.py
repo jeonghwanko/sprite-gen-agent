@@ -109,6 +109,11 @@ MODEL_SHA256 = {
     "flownet.param": "724569596bcd1e7b9fa50455c604777ebed99746d2ef40aa86e31b5725f1053c",
     "flownet.bin": "f334ed2260149ce0188a6dcf049844e8b0cdd912e01cbcfb63553157d2508958",
 }
+# The model's text files. The Windows zip ships flownet.param with CRLF line ends (sha256 28df14d5…, 16,749 bytes against
+# 16,532; measured 2026-11-07): the same text, which ncnn reads alike. A text file is checked, handed on and installed with
+# its CRLF turned to LF (`pinned_bytes`), so the Windows zip's is the file pinned. flownet.bin is weights and is taken
+# as it is: a CR LF pair in it is two bytes of a number, the same in all three zips.
+MODEL_TEXT = ("flownet.param",)
 TORCH_EXTRA = 'pip install "sprite-gen[torch]"'
 # `RemoteRunner`: the version of the requests and answers a host and its executor exchange (`pack`); another is refused.
 PROTOCOL = 1
@@ -446,20 +451,29 @@ def locate_model() -> Path:
     return model.resolve()
 
 
+def pinned_bytes(name: str, data: bytes) -> bytes:
+    """A model file's bytes as MODEL_SHA256 pins them: a text file of the model (MODEL_TEXT) with its CRLF line ends turned
+    to LF, as the Windows zip ships flownet.param; any other file as it is."""
+    return data.replace(b"\r\n", b"\n") if name in MODEL_TEXT else data
+
+
 def model_bytes(model: Path) -> dict[str, bytes]:
-    """The two files of the model in `model`, each read once and checked against MODEL_SHA256, so the bytes handed on are
-    the bytes checked: another model, or one cut short or written over, is refused by name, never read
-    (`RifeUnavailable`)."""
+    """The two files of the model in `model`, each read once and checked against MODEL_SHA256 as `pinned_bytes` gives them,
+    so the bytes handed on are the bytes checked — the pinned bytes, whichever zip the model came out of: another model,
+    or one cut short or written over, is refused by name, never read (`RifeUnavailable`)."""
     files = {}
     for name, pinned in MODEL_SHA256.items():
         try:
-            data = (model / name).read_bytes()
+            raw = (model / name).read_bytes()
         except OSError as exc:
             raise RifeUnavailable(f"RIFE model {model}: {name} could not be read: {exc}") from exc
+        data = pinned_bytes(name, raw)
         got = hashlib.sha256(data).hexdigest()
         if got != pinned:
+            turned = (f", read with its CRLF line ends as LF (the file as it is: sha256 {hashlib.sha256(raw).hexdigest()})"
+                      if data != raw else "")
             raise RifeUnavailable(f"RIFE model {model}: {name} has sha256 {got}, expected {pinned} ({MODEL} of "
-                                  f"{BINARY} {RELEASE}); install it again (`{INSTALL_COMMAND} --force`), or point "
+                                  f"{BINARY} {RELEASE}){turned}; install it again (`{INSTALL_COMMAND} --force`), or point "
                                   f"SPRITE_GEN_RIFE_MODEL at that {MODEL}")
         files[name] = data
     return files

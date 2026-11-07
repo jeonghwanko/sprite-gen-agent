@@ -10,7 +10,9 @@ somewhere else and prints the SPRITE_GEN_RIFE line that points the engine at it.
 
 Unpacked into a staging directory and renamed into place, so an interrupted install never leaves
 a half-written RIFE where the engine looks; the model's two files are checked against their pinned
-SHA-256 (`rife.MODEL_SHA256`) before it is. Running it again over a finished install of the same
+SHA-256 (`rife.MODEL_SHA256`) before it is. The Windows zip's `flownet.param` has CRLF line ends: it
+is checked, and installed, with LF ones (`rife.pinned_bytes`), the bytes the other zips ship, which
+the report names under `line_ends_turned`. Running it again over a finished install of the same
 zip does nothing but the check. The check makes one frame between two discs through the
 installed binary, so a machine that has the files but no working Vulkan finds out here.
 
@@ -130,6 +132,19 @@ def _unpack(zip_path: Path, staging: Path, platform: str) -> list[str]:
     return sorted(kept)
 
 
+def _as_pinned(model: Path, files: dict[str, bytes]) -> list[str]:
+    """The model's files in `model` written over with the bytes `rife.model_bytes` checked (`rife.pinned_bytes`: the
+    Windows zip's flownet.param with LF line ends), so an install holds the pinned bytes on every platform; the files
+    written. Turning CRLF to LF only ever shortens a file, so a file the size of its checked bytes is those bytes."""
+    turned = []
+    for name, data in files.items():
+        path = model / name
+        if path.stat().st_size != len(data):
+            path.write_bytes(data)
+            turned.append(f"{rife.MODEL}/{name}")
+    return turned
+
+
 def _complete(target: Path, platform: str, sha: str) -> bool:
     try:
         marker = json.loads((target / MARKER).read_text(encoding="utf-8"))
@@ -199,9 +214,10 @@ def install(*, dest: Path | None = None, zip_path: Path | None = None, platform:
             staging = work / target.name
             report["files"] = _unpack(zip_path, staging, name)
             try:
-                rife.model_bytes(staging / rife.MODEL)
+                model = rife.model_bytes(staging / rife.MODEL)
             except rife.RifeUnavailable as exc:
                 raise SystemExit(f"rife install: {exc}; nothing was installed") from exc
+            report["line_ends_turned"] = _as_pinned(staging / rife.MODEL, model)
             (staging / MARKER).write_text(json.dumps({"release": rife.RELEASE, "zip": zip_name(name), "sha256": sha}) + "\n",
                                           encoding="utf-8")
             if target.exists():
