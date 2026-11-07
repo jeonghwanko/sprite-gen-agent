@@ -335,6 +335,11 @@ in four steps; the tag of the first is public, its release a draft that only the
 3. Publish the draft.
 4. Pin the zips' SHA-256 in `rife_install.SERVE_ZIP_SHA256`; from that commit on, `sprite-gen rife install` installs it.
 
+The first, `rife-serve-20221029-1` (built from bb0ed0e2 by run 42326667616), is published and pinned. Its zips passed
+step 2 on 2026-11-07: Windows' on an NVIDIA RTX 3050 Laptop GPU (driver 545.92) and Linux's on an RTX 4060 (driver
+580) each installed with its check frame passing, and made the 66 frames between the 11 probe pairs above — all 132
+runs the release binary's, byte for byte.
+
 Each asset is `rife-ncnn-vulkan-serve-20221029-<windows|ubuntu>.zip`: the binary and `NOTICE.txt` — what it is built
 from (the release's commit, its ncnn's, this repository's) and the licences of each part, whole (serve.cpp's Apache-2.0;
 rife-ncnn-vulkan's MIT; ncnn's BSD 3-Clause with its third-party notices; glslang's; libwebp's BSD 3-Clause). Windows'
@@ -375,7 +380,7 @@ With the binary, an install of the binary's backend puts the resident binary bes
 pinned for the platform (`SERVE_ZIP_SHA256`): it downloads the zip, checks its SHA-256 before anything is unpacked,
 keeps the binary and its notice (`rife-ncnn-vulkan-serve.NOTICE.txt`), and makes the engine's own check — one frame of
 the check pair through it and through the binary, byte for byte. Nothing about it fails an install: with no release
-pinned for the platform (macOS; any platform before the first pin), a download that fails, a zip of another hash, or a
+pinned for the platform (macOS), a download that fails, a zip of another hash, or a
 frame of other bytes, none is left beside the binary — one refused by its check is removed again, so the engine never
 finds one it would refuse — and the binary runs once per run as before. The report says what became of it under
 `serve` (`installed`: `now`, `already`, `none` or `refused`, with `reason`). `--no-serve` installs none;
