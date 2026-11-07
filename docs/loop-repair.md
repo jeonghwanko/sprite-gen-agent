@@ -234,9 +234,9 @@ Measured on office-stable as above, the release binary against the resident bina
 | a walk loop, 20 frames made | 89.6 s, 69.2 s of it in 40 calls | 39.8 s | 47.2 s |
 | a walk cut, `--multi-cycle warn`, 101 frames made | 446.2 s, 349.3 s of it in 202 calls | 182.2 s | 221.2 s |
 
-`sprite-gen rife install` does not install it: no release ships it, and sprite-gen ships no binaries. It is built where
-the release's own build tools are — git, CMake, a C++ compiler, the Vulkan headers and loader (on macOS the Vulkan SDK's
-MoltenVK, `-- -DUSE_STATIC_MOLTENVK=ON`) — and put beside the binary, its check frame made at the end:
+It is built where the release's own build tools are — git, CMake, a C++ compiler, the Vulkan headers and loader (on
+macOS the Vulkan SDK's MoltenVK, `-- -DUSE_STATIC_MOLTENVK=ON`) — and put beside the binary, its check frame made at the
+end:
 
 ```bash
 .venv/bin/python native/rife-serve/build.py                  # beside the binary the engine runs
@@ -244,6 +244,28 @@ MoltenVK, `-- -DUSE_STATIC_MOLTENVK=ON`) — and put beside the binary, its chec
 ```
 
 Built and measured on Linux (x86-64, NVIDIA) only, so far.
+
+**Its release.** A machine without those tools gets it from this repository's releases: `sprite-gen rife install` puts it
+beside the binary it installs (below) where a release of it is pinned for the platform. Windows and Linux only — on
+macOS no binary built today makes the release binary's frames, so the engine would refuse it there. A release is made
+in four steps, and only the last two are public:
+
+1. Push the tag `rife_install.SERVE_TAG` (`rife-serve-20221029-1`; the next build of other bytes takes the next number).
+   `.github/workflows/rife-serve.yml` builds both platforms (`build.py --no-check --zip`: no GPU, so no check frame) and
+   opens a **draft** release with the zips and their `SHA256SUMS`. A run by hand builds them as artifacts only.
+2. On a real GPU of each platform, against the release binary installed there: install the draft's zip with its hash
+   put in `SERVE_ZIP_SHA256` locally (`sprite-gen rife install --serve-zip FILE` makes the check frame), and make the
+   probe pairs' frames through both, as measured above. A zip whose frames are not the binary's is not published.
+3. Publish the draft.
+4. Pin the zips' SHA-256 in `rife_install.SERVE_ZIP_SHA256`; from that commit on, `sprite-gen rife install` installs it.
+
+Each asset is `rife-ncnn-vulkan-serve-20221029-<windows|ubuntu>.zip`: the binary and `NOTICE.txt` — what it is built
+from (the release's commit, its ncnn's, this repository's) and the licences of each part, whole (serve.cpp's Apache-2.0;
+rife-ncnn-vulkan's MIT; ncnn's BSD 3-Clause with its third-party notices; glslang's; libwebp's BSD 3-Clause). Windows'
+is built with Visual Studio against the headers of Vulkan SDK 1.2.162.0 (Vulkan-Headers `v1.2.162`) and an import
+library made from that SDK's loader's export list (Vulkan-Loader `v1.2.162`, `loader/vulkan-1.def`), so it runs with
+any Vulkan loader since; Linux's in Ubuntu 20.04 (glibc 2.31) against the same headers and the distribution's
+`libvulkan`.
 
 ### Install — `sprite-gen rife install`
 
@@ -272,6 +294,16 @@ elsewhere and prints the `SPRITE_GEN_RIFE=…` line the engine then needs. Other
 on ARM, for one) have no release build: build it from the repository and set `SPRITE_GEN_RIFE`.
 Either backend's install checks the model's two files against their SHA-256 above once the zip is
 unpacked, and installs nothing where they differ.
+
+With the binary, an install of the binary's backend puts the resident binary beside it (above) where its release is
+pinned for the platform (`SERVE_ZIP_SHA256`): it downloads the zip, checks its SHA-256 before anything is unpacked,
+keeps the binary and its notice (`rife-ncnn-vulkan-serve.NOTICE.txt`), and makes the engine's own check — one frame of
+the check pair through it and through the binary, byte for byte. Nothing about it fails an install: with no release
+pinned for the platform (macOS; any platform before the first pin), a download that fails, a zip of another hash, or a
+frame of other bytes, none is left beside the binary — one refused by its check is removed again, so the engine never
+finds one it would refuse — and the binary runs once per run as before. The report says what became of it under
+`serve` (`installed`: `now`, `already`, `none` or `refused`, with `reason`). `--no-serve` installs none;
+`--serve-zip FILE` installs it from a zip already downloaded, checked against the pin the same way.
 
 The engine finds the binary by, in order: `SPRITE_GEN_RIFE` (the binary's path), then
 `rife-ncnn-vulkan` on `PATH`, then the install root above. The model is `SPRITE_GEN_RIFE_MODEL` or

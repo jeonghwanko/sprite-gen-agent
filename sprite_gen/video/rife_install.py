@@ -16,6 +16,13 @@ the report names under `line_ends_turned`. Running it again over a finished inst
 zip does nothing but the check. The check makes one frame between two discs through the
 installed binary, so a machine that has the files but no working Vulkan finds out here.
 
+With the binary it puts the resident binary (`rife.SERVE`, docs/loop-repair.md section 1, "The resident binary")
+beside it, where this repository has released one for the platform and pinned its zip's SHA-256 (`SERVE_ZIP_SHA256`;
+Windows and Linux, not macOS), and checks it as the engine does: one frame of the check pair through it and through
+the binary, byte for byte. None pinned, a download that fails, a zip of another hash or a frame of other bytes leaves
+none beside the binary and fails nothing: the binary runs once per run, as before. `--no-serve` skips it;
+`--serve-zip FILE` installs it from an asset already downloaded, checked against the pin the same way.
+
 `--backend torch` (the default where SPRITE_GEN_RIFE_BACKEND names torch) installs the same zip for the
 torch backend, which reads the model only (`rife.locate_model()`): a Linux machine the binary does not run
 on (aarch64) is not refused, and the check frame is made through PyTorch on SPRITE_GEN_RIFE_DEVICE
@@ -27,11 +34,13 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import platform as platform_mod
 import shutil
 import stat
 import sys
 import tempfile
+import time
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -54,6 +63,17 @@ ZIP_SHA256 = {
 ZIP_MACHINES = {"macos": None, "ubuntu": {"x86_64", "amd64"}, "windows": {"amd64", "x86_64"}}
 URL = "https://github.com/nihui/rife-ncnn-vulkan/releases/download/{release}/{name}"
 MARKER = ".sprite-gen-install.json"
+# The resident binary (`rife.SERVE`, native/rife-serve/serve.cpp) as this repository's releases ship it: built from the
+# release's tree by .github/workflows/rife-serve.yml (native/rife-serve/build.py --zip), checked on a real GPU of each
+# platform, then pinned here by the SHA-256 of its zip (docs/loop-repair.md section 1, "The resident binary"). A platform
+# with no pin gets none, and the binary runs once per run as before. macOS is not offered: no binary built today makes
+# the release's macOS binary's frames, so the engine would refuse it there.
+SERVE_TAG = f"rife-serve-{rife.RELEASE}-1"
+SERVE_URL = "https://github.com/jeonghwanko/sprite-gen-agent/releases/download/{tag}/{name}"
+SERVE_ZIP_SHA256: dict[str, str] = {}
+SERVE_PLATFORMS = ("windows", "ubuntu")
+SERVE_MARKER = ".sprite-gen-serve.json"
+SERVE_NOTICE = rife.SERVE + ".NOTICE.txt"
 CHUNK = 1 << 20
 TIMEOUT_SECONDS = 60
 
@@ -179,8 +199,127 @@ def check(binary: Path, model: Path, *, backend: str = "ncnn") -> dict[str, Any]
     return {"passed": True, "disc_centre_x": round(centre, 2)}
 
 
+def serve_zip_name(platform: str) -> str:
+    """The release asset of the resident binary for a platform (native/rife-serve/build.py `zip_name`)."""
+    return f"{rife.SERVE}-{rife.RELEASE}-{platform}.zip"
+
+
+def _serve_name(platform: str) -> str:
+    return rife.SERVE + (".exe" if platform == "windows" else "")
+
+
+def _serve_complete(target: Path, platform: str, sha: str) -> bool:
+    try:
+        marker = json.loads((target / SERVE_MARKER).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return marker.get("sha256") == sha and (target / _serve_name(platform)).is_file()
+
+
+def _serve_unpack(zip_path: Path, work: Path, platform: str) -> tuple[Path, Path]:
+    """The resident binary and its NOTICE.txt out of its release asset into `work`: nothing else in it is read."""
+    top = serve_zip_name(platform)[:-len(".zip")]
+    wanted = {f"{top}/{_serve_name(platform)}": work / _serve_name(platform), f"{top}/NOTICE.txt": work / SERVE_NOTICE}
+    with zipfile.ZipFile(zip_path) as zf:
+        names = set(zf.namelist())
+        missing = sorted(set(wanted) - names)
+        if missing:
+            raise ValueError(f"{zip_path.name} has no {', '.join(missing)}")
+        for member, dest in wanted.items():
+            with zf.open(member) as src, dest.open("wb") as out:
+                shutil.copyfileobj(src, out, CHUNK)
+    serve = wanted[f"{top}/{_serve_name(platform)}"]
+    serve.chmod(serve.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    return serve, wanted[f"{top}/NOTICE.txt"]
+
+
+def _serve_remove(target: Path, platform: str) -> None:
+    """The resident binary, its marker and its notice gone from `target`. Windows lets go of a process's executable a
+    moment after it ends (and a scanner may hold a new one): a removal it refuses is tried again for a few seconds."""
+    for name in (_serve_name(platform), SERVE_MARKER, SERVE_NOTICE):
+        for attempt in range(20):
+            try:
+                (target / name).unlink(missing_ok=True)
+                break
+            except PermissionError:
+                if attempt == 19:
+                    raise
+                time.sleep(0.25)
+
+
+def serve_check(serve: Path, binary: Path, model: Path) -> dict[str, Any]:
+    """The engine's own check of a resident binary (`rife.Served`): one frame of the check pair through it and through
+    `binary`, byte for byte. Raises `rife.RifeUnavailable` where they differ or it does not start."""
+    served = rife.Served(serve, binary, model)
+    try:
+        served.frame(*rife.inputs(*(Image.fromarray(x, "RGB").convert("RGBA") for x in rife.check_pair())), rife.CHECK_T)
+    finally:
+        served.close()
+    return {"passed": True, "gpu": served.gpu, "augmentation": " ".join(rife.tta()) or "none"}
+
+
+def install_serve(target: Path, platform: str, *, zip_path: Path | None = None, force: bool = False,
+                  run_check: bool = True) -> dict[str, Any]:
+    """The resident binary beside the installed binary in `target`, from its pinned release asset; what happened. It is
+    never what fails an install: a platform with no pin, a download that fails, a zip whose SHA-256 is another or a
+    binary whose check frame is not the binary's leaves none beside the binary (`installed: none` or `refused`, with
+    `reason`), and the binary runs once per run as before. One refused by its check is removed, so the engine never
+    finds one it would refuse."""
+    report: dict[str, Any] = {"zip": serve_zip_name(platform), "tag": SERVE_TAG}
+    if platform not in SERVE_PLATFORMS:
+        return {**report, "installed": "none", "reason": f"none is offered for {platform}: a binary built today does not "
+                "make the release's frames there (docs/loop-repair.md section 1, \"The resident binary\")"}
+    sha = SERVE_ZIP_SHA256.get(platform)
+    if not sha:
+        return {**report, "installed": "none", "reason": f"no release of it is pinned for {platform} yet"}
+    binary = target / rife.installed_binary(Path("."), platform).name
+    serve = target / _serve_name(platform)
+    if not force and sha and _serve_complete(target, platform, sha):
+        report["installed"] = "already"
+    else:
+        with tempfile.TemporaryDirectory(prefix=".rife-serve-", dir=target.parent) as td:
+            work = Path(td)
+            try:
+                if zip_path is None:
+                    url = SERVE_URL.format(tag=SERVE_TAG, name=serve_zip_name(platform))
+                    print(f"rife install: downloading {url}", file=sys.stderr, flush=True)
+                    zip_path = work / serve_zip_name(platform)
+                    _download(url, zip_path)
+                    report["source"] = url
+                else:
+                    report["source"] = str(zip_path)
+                got = _sha256(zip_path)
+                if got != sha:
+                    return {**report, "installed": "none",
+                            "reason": f"{zip_path.name} has SHA-256 {got}, expected {sha}; not installed"}
+                staged, notice = _serve_unpack(zip_path, work, platform)
+                _serve_remove(target, platform)
+                notice.replace(target / SERVE_NOTICE)
+                staged.replace(serve)
+                (target / SERVE_MARKER).write_text(json.dumps({"tag": SERVE_TAG, "zip": serve_zip_name(platform),
+                                                               "sha256": sha}) + "\n", encoding="utf-8")
+            except (OSError, ValueError, zipfile.BadZipFile) as exc:
+                _serve_remove(target, platform)
+                return {**report, "installed": "none", "reason": f"{type(exc).__name__}: {exc}; not installed"}
+        report["installed"] = "now"
+    report["path"] = str(serve)
+    if run_check:
+        try:
+            report["check"] = serve_check(serve, binary, target / rife.MODEL)
+        except rife.RifeUnavailable as exc:
+            _serve_remove(target, platform)
+            report.pop("path")
+            return {**report, "installed": "refused", "reason": f"{exc}; removed, so the binary runs once per run"}
+    named = os.environ.get("SPRITE_GEN_RIFE_SERVE")
+    if named is not None:
+        report["note"] = (f"SPRITE_GEN_RIFE_SERVE={named!r} is set, so the engine runs " +
+                          ("the binary once per run" if not named else named) + " instead of this one")
+    return report
+
+
 def install(*, dest: Path | None = None, zip_path: Path | None = None, platform: str | None = None,
-            force: bool = False, run_check: bool = True, backend: str | None = None) -> dict[str, Any]:
+            force: bool = False, run_check: bool = True, backend: str | None = None,
+            serve: bool = True, serve_zip: Path | None = None) -> dict[str, Any]:
     try:
         backend = backend or rife.backend()
     except rife.RifeUnavailable as exc:
@@ -226,6 +365,8 @@ def install(*, dest: Path | None = None, zip_path: Path | None = None, platform:
         report["installed"] = "now"
     if run_check:
         report["check"] = check(binary, target / rife.MODEL, backend=backend)
+    if backend == "ncnn" and serve:
+        report["serve"] = install_serve(target, name, zip_path=serve_zip, force=force, run_check=run_check)
     if backend == "torch":
         # What the torch backend will read: SPRITE_GEN_RIFE_MODEL before the install root.
         try:
@@ -257,7 +398,13 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     p.add_argument("--zip", type=Path, help=f"use this already-downloaded release zip ({zip_name('<platform>')}) instead of downloading it; "
                                             "its SHA-256 is checked all the same")
     p.add_argument("--force", action="store_true", help="unpack again over a finished install")
-    p.add_argument("--no-check", action="store_true", help="skip the check frame made through the installed binary")
+    p.add_argument("--no-check", action="store_true", help="skip the check frame made through the installed binary "
+                                                           "(and through the resident binary)")
+    p.add_argument("--no-serve", action="store_true", help=f"install no resident binary ({rife.SERVE}) beside it; the binary "
+                                                           "then runs once per run")
+    p.add_argument("--serve-zip", type=Path, help=f"use this already-downloaded resident binary release asset "
+                                                  f"({serve_zip_name('<platform>')}) instead of downloading it; its SHA-256 "
+                                                  "is checked against the pin all the same")
     p.add_argument("--backend", choices=rife.BACKENDS, help="what will run RIFE: ncnn (the binary) or torch (the model only, "
                                                             "its check frame through PyTorch on SPRITE_GEN_RIFE_DEVICE); "
                                                             "default SPRITE_GEN_RIFE_BACKEND, else ncnn")
@@ -267,9 +414,16 @@ def run(**kwargs: object) -> int:
     if kwargs.get("action") != "install":
         raise SystemExit(f"rife: unknown action {kwargs.get('action')!r}; expected install")
     report = install(dest=kwargs.get("dir"), zip_path=kwargs.get("zip"), force=bool(kwargs.get("force")),  # type: ignore[arg-type]
-                     run_check=not kwargs.get("no_check"), backend=kwargs.get("backend"))  # type: ignore[arg-type]
+                     run_check=not kwargs.get("no_check"), backend=kwargs.get("backend"),  # type: ignore[arg-type]
+                     serve=not kwargs.get("no_serve"), serve_zip=kwargs.get("serve_zip"))  # type: ignore[arg-type]
     if report.get("note"):
         print(f"rife install: note: {report['note']}", file=sys.stderr)
+    served = report.get("serve") or {}
+    if served.get("installed") in ("none", "refused"):
+        print(f"rife install: the resident binary ({rife.SERVE}): {served['installed']} — {served.get('reason')}",
+              file=sys.stderr)
+    if served.get("note"):
+        print(f"rife install: note: {served['note']}", file=sys.stderr)
     print(json.dumps({k: v for k, v in report.items() if k != "files"}, ensure_ascii=False, indent=2))
     return 0
 

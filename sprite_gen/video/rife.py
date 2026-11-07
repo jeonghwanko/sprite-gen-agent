@@ -1363,6 +1363,9 @@ class _Process:
         self.stopper.detach()
         with contextlib.suppress(OSError):
             self.proc.kill()
+        # reaped, so its executable is let go (Windows holds a running image open: it could not be removed or replaced)
+        with contextlib.suppress(OSError, subprocess.TimeoutExpired):
+            self.proc.wait(timeout=10)
         with contextlib.suppress(OSError):
             self.log.close()
 
