@@ -44,6 +44,8 @@ dev = [
     # is required — the default `thread` method cannot interrupt a blocked
     # subprocess.wait(), which is exactly the case that hangs here.
     "pytest-timeout>=2.3",
+    # CI runs the fast bundle on every core (`-n auto`, .github/workflows/test.yml); serial it took ~18 minutes there.
+    "pytest-xdist>=3.6",
 ]
 # RIFE's torch backend (SPRITE_GEN_RIFE_BACKEND=torch, docs/loop-repair.md section 1): rife-v4.6 in PyTorch, for a
 # GPU host the binary cannot run on (Vulkan-less CUDA). 2.13.0 is the release it was measured on. PyPI's Linux x86-64
