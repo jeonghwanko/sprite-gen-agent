@@ -78,3 +78,11 @@ their tests and docs) comes from sprite-gen 3.13.0 and 3.14.0 (upstream commits
 46cd5f1 to 2d50505, pull requests #162 and #163), ported by hand onto this fork's
 split loop modules; the parts of 3.5 to 3.12 it leans on upstream and this fork
 does not have were left out.
+
+From sprite-gen 4.0.0 (pull request #167), two pieces were ported on their own,
+without the release's fill of held cells (`--fill-held`) or its removal of
+game-pack, sound and ui-kit: a strip's cells read at their exact rate
+(sprite_gen/spec/assets.py `frame_seconds`, from commit 11c486a), and
+`inspect-holds` (sprite_gen/qa/holds.py and its test, as upstream has them, from
+commits 94d9189 and d2e1574), with only the reading half of
+sprite_gen/video/held_fill.py that it reads by.

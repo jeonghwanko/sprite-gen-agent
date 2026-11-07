@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (cells read at their exact rate, ported from upstream 4.0.0; see NOTICE).
 """Read-only adapters for external frames, loop strips and runtime atlases.
 
 The returned sequence is an in-memory snapshot, never another editable asset store.
@@ -70,10 +71,14 @@ def same_identity(reported, sequence) -> bool:
     for key in ("source", "state", "frame_count", "size"):
         if reported[key] != expected[key]:
             return False
-    for key in ("anchor_px", "durations_seconds"):
-        a, b = reported[key], expected[key]
-        if not isinstance(a, list) or len(a) != len(b) or not all(_close(x, y) for x, y in zip(a, b)):
-            return False
+    a, b = reported["anchor_px"], expected["anchor_px"]
+    if not isinstance(a, list) or len(a) != len(b) or not all(_close(x, y) for x, y in zip(a, b)):
+        return False
+    # A report measured when a strip's cells were read off `delay_ms` rounded to hundredths (0.04167 s for 24 fps)
+    # names the same cells read at their exact rate (`frame_seconds`).
+    a, b = reported["durations_seconds"], expected["durations_seconds"]
+    if not isinstance(a, list) or len(a) != len(b) or not all(_close(x, y) or _close(_snapped_seconds(x), y) for x, y in zip(a, b)):
+        return False
     return True
 
 
@@ -82,6 +87,30 @@ def _close(a, b) -> bool:
         return math.isclose(float(a), float(b), rel_tol=1e-9, abs_tol=1e-12)
     except (TypeError, ValueError):
         return False
+
+
+# A cell's time written in milliseconds rounded to hundredths (`video-loop`'s `delay_ms`, 41.67 for 24 fps) that lies
+# within SNAP_MS of a whole number of cells a second is that rate's: the rounding drifts a scene a frame late.
+SNAP_MS = 0.01
+
+
+def frame_seconds(delay_ms) -> float:
+    """One cell's time, seconds, of a sidecar's `delay_ms`: a value with a fraction of a millisecond within SNAP_MS of
+    1000 over a whole number is that rate's exact time (41.67 is 1/24 s); a whole number of milliseconds, and any
+    other value, is read as it is."""
+    ms = finite(delay_ms, "delay_ms", positive=True)
+    if ms != int(ms):
+        rate = round(1000 / ms)
+        if rate >= 1 and abs(ms - 1000 / rate) <= SNAP_MS:
+            return 1 / rate
+    return ms / 1000
+
+
+def _snapped_seconds(value) -> float:
+    try:
+        return frame_seconds(round(float(value) * 1000, 2))
+    except (TypeError, ValueError, OverflowError):
+        return float("nan")
 
 
 @dataclass(frozen=True)
@@ -314,7 +343,7 @@ def _load_asset(source, snapshot, *, state=None, fps=None, anchor=None):
             sheet = snapshot.image((source.parent / data["sheet"]).resolve())
             frames = _grid_frames(sheet, data["columns"], len(rows), data["cell_w"], data["cell_h"],
                                   selected["frames"], row=selected["row"])
-            durations = [finite(selected["delay_ms"], "delay_ms", positive=True)/1000] * len(frames)
+            durations = [frame_seconds(selected["delay_ms"])] * len(frames)
             meta.update({key: selected[key] for key in PLAYBACK_FIELDS if key in selected})
             meta.update(state=state, direction=state)
             declared_anchor = selected.get("anchor", declared_anchor)
@@ -333,7 +362,7 @@ def _load_asset(source, snapshot, *, state=None, fps=None, anchor=None):
                 raise ValueError("grid sheet requires row-major order and no --state")
             sheet = snapshot.image(source.with_suffix(".png"))
             frames = _grid_frames(sheet, data["columns"], data["rows"], data["frame_width"], data["frame_height"], data["frames"])
-            durations = [finite(data["delay_ms"], "delay_ms", positive=True)/1000] * len(frames)
+            durations = [frame_seconds(data["delay_ms"])] * len(frames)
         elif all(k in data for k in ("frames", "w", "h", "delay_ms")):
             if state is not None:
                 raise ValueError("--state is only valid for atlas input")
@@ -342,7 +371,7 @@ def _load_asset(source, snapshot, *, state=None, fps=None, anchor=None):
             if sheet.size != (n * w, h):
                 raise ValueError("loop strip size disagrees with its sidecar")
             frames = [sheet.crop((i*w, 0, (i+1)*w, h)) for i in range(n)]
-            durations = [finite(data["delay_ms"], "delay_ms", positive=True)/1000] * n
+            durations = [frame_seconds(data["delay_ms"])] * n
             # `video-loop` writes `loop: false` for a one-shot cut (rest -> action -> rest);
             # an older sidecar without the key is a loop, as every strip was before.
             meta["loop"] = data.get("loop", True)
