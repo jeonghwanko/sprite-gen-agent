@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """`sprite-gen rife install` without a network: a release-shaped zip built here, its SHA-256 put
 in place of the pinned one. The zip is checked before anything is unpacked, only what the engine
 runs is kept, the install lands where `rife.locate()` looks last, and a second run does nothing."""

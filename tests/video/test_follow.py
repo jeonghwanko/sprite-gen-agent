@@ -1,3 +1,4 @@
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """`video-follow`: a region of a walk loop follows the body's bob, on a synthetic walker."""
 import json
 import math

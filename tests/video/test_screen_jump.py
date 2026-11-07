@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """A take that jumps (docs/loop-repair.md section 4, sprite_gen/video/cadence.py `screen_record`).
 
 Two drawings filmed a pose apart move the feet little and change the picture much: the beat, read on the leg path, does

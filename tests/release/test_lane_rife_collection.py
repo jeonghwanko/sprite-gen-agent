@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """`scripts/linux_lane.sh --rife-unmeasured` runs the suite where no RIFE is reachable, and the tests
 that need one skip; `--rife-only` runs the tests marked `real_rife` or `torch_rife` (`pytest -m real_rife`,
 `-m torch_rife`), none skipped. A test that skips without RIFE and is not marked is measured by neither run.

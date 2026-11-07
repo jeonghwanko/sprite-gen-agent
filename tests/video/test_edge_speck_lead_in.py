@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """A fleck far from the body is not the subject touching the edge, a clip's first frames that reframe a
 small subject are not part of its walk, and a walk forced wide gets no room above.
 

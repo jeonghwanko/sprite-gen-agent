@@ -1,3 +1,4 @@
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """Automatic postprocessing exercised with known synthetic movement, no private assets."""
 import json
 import math

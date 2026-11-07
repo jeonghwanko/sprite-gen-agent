@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """Held drawings (docs/loop-repair.md section 4, sprite_gen/video/held.py): a clip that shows each
 drawing for two or three frames is told from one drawn every frame by the rhythm of its steps, the
 second frame of each pair redrawn a little as a video model does; `video-loop` records how many

@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """A plain `pytest` is the fast bundle: tests/conftest.py deselects the tests marked `slow`, and `pytest --full` runs
 every test. The release lane measures a commit on every test, so each pytest call of `scripts/linux_lane.sh` carries
 `--full` (docs/release.md)."""

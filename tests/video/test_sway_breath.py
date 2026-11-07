@@ -1,3 +1,4 @@
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """`video-sway --breathe <breathe.json>`: the Sway layer on the breath, not the body's outline.
 
 A breathing idle's head stays where it is and its body moves a pixel or two, so the damped mass on the outline answers

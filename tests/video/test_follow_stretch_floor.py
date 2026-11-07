@@ -1,3 +1,4 @@
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """`video-follow --stretch-floor`: a least area each region's move must leave, by the way the region moves, never a
 gain above the fold rule's; and what `video-follow-inspect` (schema 2) says a move does to the picture besides
 stretching it — the bend of a line, and where two regions meet, the seam. On a synthetic chest that bobs or sways."""

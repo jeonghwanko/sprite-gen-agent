@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (a child's output read as UTF-8; see NOTICE).
 """Deterministic asset placement. No generation calls or sprite source writes.
 
 Every prerequisite (formats, codec constraints, GIF settings, ffmpeg, output
@@ -121,7 +122,7 @@ def _ffmpeg_binary():
 def _ffmpeg(args):
     try:
         process = local_tool.run([_ffmpeg_binary(), "-hide_banner", "-loglevel", "error", "-y", *args],
-                                 seconds=local_tool.TOOL_SECONDS, what="scene render", capture_output=True, text=True)
+                                 seconds=local_tool.TOOL_SECONDS, what="scene render", capture_output=True, text=True, encoding="utf-8", errors="replace")
     except SystemExit as exc:
         raise ValueError(str(exc)) from exc
     if process.returncode:

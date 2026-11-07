@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (the UTF-8 checks also cover scripts, tests and a child's output; see NOTICE).
 """A command prints UTF-8 on a stream opened in a legacy code page: a Windows console or pipe on cp949
 could not encode the em dash, Korean or a path a command prints, and the command died at the print."""
 
@@ -59,16 +60,46 @@ def test_every_entry_reopens_its_streams_first():
     assert not missing
 
 
+def _calls():
+    """Every call in the package, its scripts and its tests, with where it is."""
+    for root in ("sprite_gen", "scripts", "tests"):
+        for path in sorted((ROOT / root).rglob("*.py")):
+            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+                if isinstance(node, ast.Call):
+                    yield f"{path.relative_to(ROOT).as_posix()}:{node.lineno}", node
+
+
 def test_every_text_file_is_read_and_written_as_utf8():
-    """A bare `read_text()` or `write_text(s)` uses the locale's code page: on a cp949 Windows a report holding an em dash
-    or a Korean prompt file stopped the run (`UnicodeDecodeError`), and a write of Korean text failed the same way."""
+    """A bare `read_text()`, `write_text(s)` or text-mode `open(p)` uses the locale's code page: on a cp949 Windows a
+    report holding an em dash or a Korean prompt file stopped the run (`UnicodeDecodeError`), and a write of Korean text
+    failed the same way. The tests read what the package writes, so they are held to it too: four of them failed on a
+    cp949 Windows that way while CI, on a UTF-8 Linux, passed."""
     bare = []
-    for path in sorted((ROOT / "sprite_gen").rglob("*.py")):
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-                    and node.func.attr in ("read_text", "write_text")):
-                continue
+    for where, node in _calls():
+        keywords = {k.arg for k in node.keywords}
+        if "encoding" in keywords or None in keywords:
+            continue
+        if isinstance(node.func, ast.Attribute) and node.func.attr in ("read_text", "write_text"):
             positional = 0 if node.func.attr == "read_text" else 1  # read_text(encoding) / write_text(data, encoding)
-            if "encoding" not in {k.arg for k in node.keywords} and len(node.args) <= positional:
-                bare.append(f"{path.relative_to(ROOT)}:{node.lineno}")
+            if len(node.args) <= positional:
+                bare.append(where)
+        elif isinstance(node.func, ast.Name) and node.func.id == "open" and len(node.args) < 4:  # open(file, mode, buffering, encoding)
+            mode = node.args[1] if len(node.args) > 1 else next((k.value for k in node.keywords if k.arg == "mode"), None)
+            if mode is None or (isinstance(mode, ast.Constant) and isinstance(mode.value, str) and "b" not in mode.value):
+                bare.append(where)
+    assert not bare
+
+
+def test_every_child_s_output_is_read_as_utf8():
+    """`text=True` without `encoding=` reads a child's output in the locale's code page. A sprite-gen child writes UTF-8
+    (`utf8_streams`), and so do ffmpeg, node, git and the claude CLI; on a cp949 Windows their em dash, Korean reply or
+    Korean path stopped the read (`UnicodeDecodeError`) or came back garbled."""
+    bare = []
+    for where, node in _calls():
+        keywords = {k.arg: k.value for k in node.keywords}
+        if "encoding" in keywords or None in keywords:
+            continue
+        if any(isinstance(keywords.get(flag), ast.Constant) and keywords[flag].value is True
+               for flag in ("text", "universal_newlines")):
+            bare.append(where)
     assert not bare

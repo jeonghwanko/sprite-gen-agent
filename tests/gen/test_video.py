@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """`sprite-gen video` contract: credential resolution, the api.x.ai call shape,
 verified mp4 publishing, and loud failures. No network — the HTTP layer is a fake."""
 

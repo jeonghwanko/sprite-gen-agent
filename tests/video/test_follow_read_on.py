@@ -1,3 +1,4 @@
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """`video-follow --read-on`: regions read on a cut are carried to the loop aligned from it, cell for cell, on a
 synthetic runner. And what a reading of outlines cannot say about whose pixels a region holds."""
 import hashlib

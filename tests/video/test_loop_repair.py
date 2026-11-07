@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """Jump-frame repair (docs/loop-repair.md section 2): the frames off the loop's flow are taken out
 and made again by the interpolator between the frames either side, each at its own time; at most
 three calls, never made from or beside a frame made; and `video-loop` records what it replaced and

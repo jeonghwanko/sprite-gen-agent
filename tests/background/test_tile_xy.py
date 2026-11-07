@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """`background-tile --axis xy`: one run, seamless on both axes, a report that measures both joins.
 
 Synthetic oracles: a doubly periodic texture (an exact tile exists), textures that can only be

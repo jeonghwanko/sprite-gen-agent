@@ -1,3 +1,4 @@
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """Behavior of explicit XY drift correction on synthetic, fully known motion."""
 import json
 import math

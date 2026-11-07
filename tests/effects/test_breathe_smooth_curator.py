@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (a child's output read as UTF-8; see NOTICE).
 """큐레이터가 smooth 줄을 조용히 pixel 로 그리거나 지우지 않는지.
 
 큐레이터 미러(`breathe.js`)는 pixel 워프만 바이트 동일하게 따라 그린다. smooth 는 쌍선형
@@ -46,7 +47,7 @@ def test_the_mirror_refuses_a_smooth_row_instead_of_drawing_pixel(tmp_path) -> N
     (tmp_path / "payload.json").write_text(json.dumps(payload), encoding="utf-8")
     (tmp_path / "harness.cjs").write_text(HARNESS, encoding="utf-8")
     proc = subprocess.run([shutil.which("node"), str(tmp_path / "harness.cjs"),
-                           str(tmp_path / "payload.json")], capture_output=True, text=True)
+                           str(tmp_path / "payload.json")], capture_output=True, text=True, encoding="utf-8")
     assert proc.returncode == 0, f"node 하네스 실패:\n{proc.stderr}"
     got = json.loads((tmp_path / "js.json").read_text(encoding="utf-8"))[0]
     assert not got["ok"] and got["refused"], f"smooth 줄을 미러가 그렸다(pixel 워프로): {got}"

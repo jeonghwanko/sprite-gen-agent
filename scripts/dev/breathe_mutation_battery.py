@@ -1,3 +1,4 @@
+# Modified for sprite-gen-agent (a child's output read as UTF-8; see NOTICE).
 """호흡 계약 변이 배터리 — 그물을 손대면 **전부** 다시 돌린다.
 
     python scripts/dev/breathe_mutation_battery.py
@@ -25,7 +26,7 @@ PY = os.environ.get("PYTEST_PYTHON", sys.executable)
 
 # 소스를 잠깐 망가뜨렸다 되돌린다 — 남의 변경 위에서 돌리면 복구가 그 변경을 덮는다.
 dirty = subprocess.run(["git", "-C", str(REPO), "status", "--porcelain"],
-                       capture_output=True, text=True).stdout.strip()
+                       capture_output=True, text=True, encoding="utf-8", errors="replace").stdout.strip()
 if dirty and not os.environ.get("BATTERY_ALLOW_DIRTY"):
     print("작업트리가 clean 이 아니다 — 변이 복구가 그 변경을 덮을 수 있다.\n"
           "커밋하거나 stash 한 뒤 다시 돌려라 (강행: BATTERY_ALLOW_DIRTY=1).")
@@ -197,7 +198,7 @@ for label, *rest in MUTS:
     try:
         r = subprocess.run([PY, "-m", "pytest", TARGET, "-q", "--no-header", "-x",
                             "-k", "breathe or migrate"],
-                           capture_output=True, text=True)
+                           capture_output=True, text=True, encoding="utf-8", errors="replace")
         bit = r.returncode != 0
         print(f"  {'물었다' if bit else '!! 안 물었다'}  {label}")
         if not bit:

@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """Two cycles in one loop are suspected, never cut on the pixels' word (docs/video-pipeline.md,
 "The fundamental period"; docs/loop-repair.md section 4).
 

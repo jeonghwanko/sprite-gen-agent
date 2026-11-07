@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (a child's output read as UTF-8; see NOTICE).
 """Byte receipts for extracted source files and a deliberately exact loop projection.
 
 A receipt is not a declaration that a loop matches its source. ``project`` must
@@ -32,7 +33,7 @@ def timestamps(clip: Path, stream_index: int) -> list[float]:
     from sprite_gen.video.frames import _require
     proc = subprocess.run([_require("ffprobe"), "-v", "error", "-select_streams", str(stream_index),
                            "-show_entries", "frame=best_effort_timestamp_time", "-of", "json", str(clip)],
-                          capture_output=True, text=True, timeout=60)
+                          capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
     if proc.returncode:
         raise ValueError(f"cannot read source timestamps: {proc.stderr[:300]}")
     return [float(row["best_effort_timestamp_time"]) for row in json.loads(proc.stdout)["frames"]]

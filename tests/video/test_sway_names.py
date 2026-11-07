@@ -1,3 +1,4 @@
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """The Sway layer under its new name and its old one.
 
 `video-follow` became `video-sway` (the module `sprite_gen.video.sway`, `sway_loop`, `video-sway-inspect`): a soft

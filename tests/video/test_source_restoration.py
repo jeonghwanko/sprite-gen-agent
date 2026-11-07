@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """Source-backed acceptance: actual bytes, an immutable origin, fixed source time, final exports.
 
 These are synthetic contract fixtures, not a production repair success claim.

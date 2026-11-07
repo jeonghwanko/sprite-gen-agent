@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """A sheet of a horse does not swing its arms, and a horse's attack is not made with its hands (`--body-plan`).
 
 The clip's walk, idle and still took a body plan in 2.32.0; the sheet rows `prepare` writes and the clip's

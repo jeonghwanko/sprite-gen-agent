@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """`ui-kit`: a transparent sheet drawn on the fixed layout becomes nine-slice elements.
 
 The sheet is synthetic and drawn into the layout's own boxes: frames with known corner

@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """One cycle length per set (docs/loop-repair.md section 4): every loop resampled to the median
 length at times k·L/L*, a time on a source frame keeping that frame as filmed and only the times
 between frames made by the interpolator; each loop turned to start where the body is lowest; the

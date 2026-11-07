@@ -273,7 +273,7 @@ def probe_duration_seconds(clip: Path, *, verb: str) -> float:
         raise SystemExit(f"{verb}: ffprobe is required to check the input clip's length before uploading (install ffmpeg)")
     proc = local_tool.run(
         [ffprobe, "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(clip)],
-        seconds=local_tool.PROBE_SECONDS, what=verb, capture_output=True, text=True,
+        seconds=local_tool.PROBE_SECONDS, what=verb, capture_output=True, text=True, encoding="utf-8", errors="replace",
     )
     text = proc.stdout.strip()
     if proc.returncode != 0 or not text:

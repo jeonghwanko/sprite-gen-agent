@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """The seam gate of a cut the body anchor ramps (`--anchor body`, a walk's or run's default).
 
 The body anchor reads the last frame's sideways offset against the first once and shifts frame k by that offset times

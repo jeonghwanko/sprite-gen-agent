@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """`video-canvas --fit tight` drops the empty rows around the subject and adds no room;
 `video-frames --allow-subject-edge-contact` accepts the clipping that follows but still
 refuses leftover key background at the edge."""

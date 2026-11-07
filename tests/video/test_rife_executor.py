@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """RIFE's torch backend on a GPU elsewhere (docs/loop-repair.md section 1): the host names a send it plugs in
 (SPRITE_GEN_RIFE_EXECUTOR=module:attr, from a request's bytes to its answer's), which reaches the executor's side of the
 same sprite-gen (`rife_torch.serve`, `rife.answer`) on a machine with the GPU. The engine knows nothing of what carries

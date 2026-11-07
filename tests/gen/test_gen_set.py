@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """`sprite-gen gen-set` — the atlas pipeline's row generation as a batch command.
 
 Contract pinned here: rows come from the prepared run (prompt + guide + identity ref),

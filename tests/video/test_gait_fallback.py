@@ -1,3 +1,4 @@
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """The gait fallback: a slow walk and a walk toward the camera, on synthetic frames."""
 import hashlib
 import json

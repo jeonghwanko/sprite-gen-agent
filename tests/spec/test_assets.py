@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """The shared read-only adapter: real writer formats, one-read snapshots, bound fingerprints."""
 
 import hashlib

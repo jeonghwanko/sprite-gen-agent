@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """Create one synthetic encoded bundle for render_playback.mjs; no provider calls."""
 import json
 from pathlib import Path

@@ -1,3 +1,4 @@
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """Synthetic regressions for the 3 s default and its consequences (2026-09-18/20 field tests):
 
 * `video-set` asks for 3 s clips by default (4 s for attack);

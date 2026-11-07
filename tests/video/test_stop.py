@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """`video-stop`: a run that stops, cut from the clip's own start played backwards — on synthetic runners.
 
 A synthetic clip opens on a standing runner, sets it off (its stride grows over a few frames) and runs it

@@ -211,7 +211,7 @@ def _driver() -> str:
     if smi:
         try:
             out = subprocess.run([smi, "--query-gpu=driver_version", "--format=csv,noheader"], capture_output=True,
-                                 text=True, timeout=30)
+                                 text=True, encoding="utf-8", errors="replace", timeout=30)
             if out.returncode == 0 and out.stdout.strip():
                 return out.stdout.strip().splitlines()[0].strip()
         except (OSError, subprocess.TimeoutExpired):

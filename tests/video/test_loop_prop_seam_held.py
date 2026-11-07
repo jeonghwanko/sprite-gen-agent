@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """A held staff that swings once a cycle closes below the hand only on a cut two steps long
 (docs/loop-repair.md section 3, "The held side").
 

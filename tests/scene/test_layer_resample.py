@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """A scene layer is scaled without a ring at its edge.
 
 `Renderer` brings every frame of a layer to the layer's raster size. It used LANCZOS over

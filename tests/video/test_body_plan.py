@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """A body that is not a person is not told a person's walk (`--body-plan`, `sprite_gen.video.body_plan`).
 
 The measured Lite walk calm swung the arms, the Lite back-diagonal head hold moved the arms, the idle

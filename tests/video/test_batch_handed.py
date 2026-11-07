@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """A set filmed facing right and left from stills drawn each way (no mirroring), with an asymmetric
 item's side in every clip prompt. Real canvases, an offline video runner, vision and loop."""
 import json

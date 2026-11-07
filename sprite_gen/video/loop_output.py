@@ -32,7 +32,7 @@ def img2webp_supports_exact(binary: str | None = None) -> bool:
     if not binary:
         return False
     try:
-        proc = subprocess.run([binary, "-h"], capture_output=True, text=True, timeout=10)
+        proc = subprocess.run([binary, "-h"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10)
     except (OSError, subprocess.TimeoutExpired):
         return False
     return "-exact" in (proc.stdout + proc.stderr)
@@ -59,7 +59,7 @@ def write_webp(frames: list[Image.Image], out: Path, *, delay_ms: int, loop: int
             im.save(p, compress_level=0)  # read once by img2webp, which encodes the pixels whatever the PNG's level
             paths.append(str(p))
         proc = local_tool.run([img2webp, "-loop", str(loop), "-lossless", "-exact", "-d", str(delay_ms), *paths, "-o", str(out)],
-                              seconds=local_tool.TOOL_SECONDS, what="video-loop", capture_output=True, text=True)
+                              seconds=local_tool.TOOL_SECONDS, what="video-loop", capture_output=True, text=True, encoding="utf-8", errors="replace")
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
     if proc.returncode != 0 or not out.is_file():

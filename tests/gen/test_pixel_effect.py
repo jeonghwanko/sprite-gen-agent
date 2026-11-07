@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """Effect grids have a lifetime and a centre, not a character's feet and fixed height."""
 import argparse
 import json

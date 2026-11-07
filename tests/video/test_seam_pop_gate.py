@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """The seam pop is a gate (docs/loop-repair.md section 3, "The seam pop"): a walk's or run's loop whose top — the head,
 or a part held above it — jumps into its first frame more than `--seam-pop-max` times its median step (default 10,
 `repair.SEAM_POP_REFERENCE`) is refused, a cut fixed by hand as one `--anchor motion-auto` chooses, by one reading:

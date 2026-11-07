@@ -155,7 +155,7 @@ def probe(clip: Path) -> dict[str, Any]:
     proc = local_tool.run(
         [ffprobe, "-v", "error", "-show_entries", "stream=index,codec_type,codec_name,pix_fmt,width,height,r_frame_rate,nb_frames",
          "-show_entries", "stream_disposition=attached_pic", "-show_entries", "format=duration", "-of", "json", str(clip)],
-        seconds=local_tool.PROBE_SECONDS, what="video-frames", capture_output=True, text=True,
+        seconds=local_tool.PROBE_SECONDS, what="video-frames", capture_output=True, text=True, encoding="utf-8", errors="replace",
     )
     if proc.returncode != 0:
         raise SystemExit(f"video-frames: ffprobe failed on {clip}: {proc.stderr.strip()[:300]}")
@@ -183,7 +183,7 @@ def extract(clip: Path, raw_dir: Path, stream_index: int | None = None) -> list[
         old.unlink()
     pick = ["-map", f"0:{stream_index}"] if stream_index is not None else []
     proc = local_tool.run([ffmpeg, "-v", "error", "-y", "-i", str(clip), *pick, str(raw_dir / "frame-%04d.png")],
-                          seconds=local_tool.TOOL_SECONDS, what="video-frames", capture_output=True, text=True)
+                          seconds=local_tool.TOOL_SECONDS, what="video-frames", capture_output=True, text=True, encoding="utf-8", errors="replace")
     if proc.returncode != 0:
         raise SystemExit(f"video-frames: ffmpeg failed on {clip}: {proc.stderr.strip()[:300]}")
     files = sorted(raw_dir.glob("frame-*.png"))

@@ -49,7 +49,7 @@ def git_commit() -> str | None:
     if not (_ROOT / ".git").exists() or shutil.which("git") is None:
         return None
     try:
-        done = subprocess.run(["git", "-C", str(_ROOT), "rev-parse", "HEAD"], capture_output=True, text=True,
+        done = subprocess.run(["git", "-C", str(_ROOT), "rev-parse", "HEAD"], capture_output=True, text=True, encoding="utf-8", errors="replace",
                               timeout=10)
     except (OSError, subprocess.SubprocessError):
         return None

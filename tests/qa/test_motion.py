@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """Synthetic motion measurements; no provider assets or real run directories."""
 
 from __future__ import annotations

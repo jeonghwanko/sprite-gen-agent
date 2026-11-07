@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """Run the batch wiring with a real canvas and an offline video runner."""
 import json
 from pathlib import Path

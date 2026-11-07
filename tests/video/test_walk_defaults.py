@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """Two measured walk defaults (2026-10-02/03): a Lite walk gets a calming clause after the walk
 sentence, and a head-steady one in the back-diagonal view; a front or back walk films from its
 base still redrawn mid-step. Pro prompts and every other state stay byte-for-byte as they were."""

@@ -1,3 +1,4 @@
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """`video-sway --frames <folder> --out <new folder>`: the Sway layer on a cycle's frames at their own size and count.
 
 A strip holds 64 cells and 32,000 px across at most, so a cycle of large frames is cut down to fit it. The frames path

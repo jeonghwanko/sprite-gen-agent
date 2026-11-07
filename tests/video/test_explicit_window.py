@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (text files read and written as UTF-8; see NOTICE).
 """An explicit window (--min-len / --max-len) is the window on every path that sets a cut's length:
 the first search, a window two steps long (the held side), a count of steps (`--steps 1`), the gait
 fallback, the one-shot failover and a fixed cut. Each path asks `loop.CutWindow` for its window, and

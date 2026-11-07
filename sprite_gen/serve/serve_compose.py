@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (a child's output read as UTF-8; see NOTICE).
 """Serve the sprite-gen composition canvas — the "blank screen" assembly surface.
 
 This is the pre-run half of curation. The curation webview (`serve_curation.py`)
@@ -170,7 +171,7 @@ def native_pick(kind: str = "folder") -> dict:
     script = _PICK_SCRIPTS.get(kind)
     if script is None:
         raise ValueError(f"unknown pick kind: {kind}")
-    proc = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
+    proc = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, encoding="utf-8")
     if proc.returncode != 0:
         if "-128" in (proc.stderr or ""):  # user canceled
             return {"cancelled": True}
