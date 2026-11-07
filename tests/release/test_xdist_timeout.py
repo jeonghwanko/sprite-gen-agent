@@ -3,8 +3,8 @@
 120 s (tests/conftest.py): there a timeout ends the worker's process, and tests of half a minute alone went over 120 s
 beside other workers. Elsewhere, outside a worker, or with --timeout named, the configured timeout stands.
 
-pytest-xdist is not a dev dependency, so a worker is stood in for by a plugin that gives the config the `workerinput`
-xdist gives each worker's."""
+A real worker on Windows is not something every run has, so a worker is stood in for by a plugin that gives the config
+the `workerinput` xdist gives each worker's."""
 
 from __future__ import annotations
 

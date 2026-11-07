@@ -73,7 +73,9 @@ If `.claude/worktrees/` exists, it holds other sessions' checkouts: never search
   default timeout is 120 s (`pyproject.toml`); long ones set their own. Under pytest-xdist on Windows it is
   600 s (`XDIST_WINDOWS_TIMEOUT` in `tests/conftest.py`): a timeout there ends the worker's process.
 - Run the areas you touched, not the whole suite (about an hour on a Windows checkout). CI runs the fast
-  bundle on every pull request (`.github/workflows/test.yml`: Ubuntu, Python 3.14, no RIFE).
+  bundle on every pull request that is not a draft (`.github/workflows/test.yml`: Ubuntu, Python 3.14, no RIFE,
+  `-n auto`). A push to main runs nothing, since the pull request's run already tested its merge; run the workflow
+  by hand (`workflow_dispatch`) to check main.
 
   ```bash
   PYTHONUTF8=1 .venv/Scripts/python.exe -m pytest -q -rfE -p no:cacheprovider tests/<area>
