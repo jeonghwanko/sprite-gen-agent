@@ -54,7 +54,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+      # apt takes 17 to 64 s here (twelve runs, 2026-11). Once (run 42276947741, 2026-11-06) it hung, and the job sat until
+      # its 40-minute limit; the step's own limit ends such a run in minutes.
       - name: ffmpeg
+        timeout-minutes: 5
         run: sudo apt-get update -q && sudo apt-get install -y -q ffmpeg
       - name: img2webp (libwebp 1.6.0, -exact)
         run: |
