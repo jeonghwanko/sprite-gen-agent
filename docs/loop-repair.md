@@ -66,9 +66,9 @@ The Windows zip holds the same `flownet.bin`, and the same `flownet.param` text 
 2026-11-07). The param is checked with its CRLF turned to LF (`rife.pinned_bytes`, `rife.MODEL_TEXT`),
 so the Windows zip's is the file pinned above, and `sprite-gen rife install` installs it with LF line
 ends — the same bytes on every platform; the report names it under `line_ends_turned`. The binary reads
-either alike: on an RTX 4060 under Windows its `-x -z` frames from the two were the same bytes. A model
-unzipped by hand, `SPRITE_GEN_RIFE_MODEL` pointed at it, is read the same way. `flownet.bin` is weights
-and is never turned.
+either alike: on an RTX 3050 Laptop GPU under Windows its `-x -z` frames from the two were the same
+bytes. A model unzipped by hand, `SPRITE_GEN_RIFE_MODEL` pointed at it, is read the same way.
+`flownet.bin` is weights and is never turned.
 
 #### The torch backend: `SPRITE_GEN_RIFE_BACKEND=torch`
 

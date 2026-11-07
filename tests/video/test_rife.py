@@ -253,7 +253,7 @@ def test_real_rife_makes_the_frame_between_in_colour_and_alpha():
 def test_real_rife_reads_the_model_alike_with_crlf_or_lf_line_ends(tmp_path):
     """The Windows zip ships flownet.param with CRLF line ends, the macOS and Ubuntu zips with LF, and `sprite-gen rife
     install` installs it with LF everywhere (`rife.pinned_bytes`): the binary makes the same frame from either, byte for
-    byte (measured too on an RTX 4060 under Windows, 2026-11-07, on three of tests/fixtures/rife-walkers)."""
+    byte (measured too on an RTX 3050 Laptop GPU under Windows, 2026-11-07, on three of tests/fixtures/rife-walkers)."""
     binary, model = rife.locate()
     lf = rife.pinned_bytes("flownet.param", (model / "flownet.param").read_bytes())
     frames = []
