@@ -206,3 +206,31 @@ def test_the_command_line_names_what_became_of_it(installed, monkeypatch, tmp_pa
     rc = cli.main(["rife", "install", "--zip", str(zip_path), "--no-serve", "--no-check"])
     out, _ = capsys.readouterr()
     assert rc == 0 and "serve" not in json.loads(out)
+
+
+def test_the_pins_name_released_zips_of_the_platforms_offered():
+    """What is pinned is one SHA-256 a platform the resident binary is offered for, of the tag the URL is made from."""
+    assert set(rife_install.SERVE_ZIP_SHA256) <= set(rife_install.SERVE_PLATFORMS) and "macos" not in rife_install.SERVE_ZIP_SHA256
+    for sha in rife_install.SERVE_ZIP_SHA256.values():
+        assert len(sha) == 64 and set(sha) <= set("0123456789abcdef")
+    assert rife_install.SERVE_TAG.startswith(f"rife-serve-{rife.RELEASE}-")
+    assert rife_install.SERVE_URL.format(tag=rife_install.SERVE_TAG, name=rife_install.serve_zip_name("windows")) == (
+        "https://github.com/jeonghwanko/sprite-gen-agent/releases/download/"
+        f"rife-serve-{rife.RELEASE}-1/rife-ncnn-vulkan-serve-{rife.RELEASE}-windows.zip")
+
+
+def test_a_pinned_platform_downloads_its_zip_from_the_tags_release(installed, monkeypatch, tmp_path):
+    zip_path, target = installed
+    asset = _asset(tmp_path)
+    _pin(monkeypatch, asset)
+    fetched = []
+
+    def download(url, dest):
+        fetched.append(url)
+        dest.write_bytes(asset.read_bytes())
+
+    monkeypatch.setattr(rife_install, "_download", download)
+    report = _install(zip_path)
+    url = rife_install.SERVE_URL.format(tag=rife_install.SERVE_TAG, name=rife_install.serve_zip_name(PLATFORM))
+    assert fetched == [url] and report["serve"]["source"] == url
+    assert report["serve"]["installed"] == "now" and (target / SERVE).is_file()
