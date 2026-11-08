@@ -17,6 +17,7 @@ import sys
 import textwrap
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -351,6 +352,62 @@ def test_sigterm_stops_the_set_writes_its_report_and_exits_143(tmp_path, monkeyp
     assert stopped.value.code == 143
     payload = _report(run_dir / "reports" / "gen-set" / "set.report.json")
     assert payload["interrupted"] == "stopped by SIGTERM" and payload["all_ok"] is False
+
+
+class _SlowSubmit(ThreadPoolExecutor):
+    """A pool that is slow to fill, so a stop raised by the first row lands while the rest are still being submitted."""
+
+    def submit(self, *args, **kwargs):
+        future = super().submit(*args, **kwargs)
+        time.sleep(0.3)
+        return future
+
+
+def test_a_stop_while_the_set_is_still_starting_its_rows_keeps_every_row_in_the_report(tmp_path, monkeypatch):
+    """CI, 2026-11-08 (PRs #66, #70): a stop that landed between two submits left `futures` unbound, so the set
+    report had no rows at all — not even the one whose child had run and may have been charged."""
+    run_dir = _prepared(tmp_path)
+
+    def runner(prompt_file, out, refs, report, *, provider, model, log) -> int:
+        signal.raise_signal(signal.SIGTERM)
+        return 1
+
+    monkeypatch.setattr(gen_set, "run_gen_cli", runner)
+    monkeypatch.setattr(gen_set, "ThreadPoolExecutor", _SlowSubmit)
+    with pytest.raises(SystemExit) as stopped:
+        gen_set.run(run_dir=run_dir, provider="codex", concurrency=2, states="idle,walk")
+    assert stopped.value.code == 143
+    items = {item["state"]: item for item in _report(run_dir / "reports" / "gen-set" / "set.report.json")["items"]}
+    assert set(items) == {"idle", "walk"}
+    assert items["idle"]["provider_submitted"] is True
+    assert all(e["code"] == "interrupted" and e["retryable"] is False for e in items["idle"]["errors"])
+
+
+def test_a_stop_while_video_set_is_still_starting_its_items_keeps_every_item_in_the_report(tmp_path, monkeypatch):
+    from PIL import Image as PILImage
+
+    from sprite_gen.video import batch
+
+    def canvas(still, out, **kw):
+        signal.raise_signal(signal.SIGTERM)
+        PILImage.new("RGB", (32, 32), (0, 255, 0)).save(out)
+        return {"fit": "state", "shape": "square", "canvas": [32, 32], "offset": [0, 0]}
+
+    monkeypatch.setattr(batch.facing_mod.vision, "grok_inspect", lambda *a, **kw: ("right", {}))
+    monkeypatch.setattr(batch.canvas_mod, "run_canvas", canvas)
+    monkeypatch.setattr(batch, "ThreadPoolExecutor", _SlowSubmit)
+    base = tmp_path / "base.png"
+    PILImage.new("RGB", (32, 32), (0, 255, 0)).save(base)
+    with outcome.recording("video-set"):
+        with pytest.raises((outcome.Interrupted, SystemExit)):
+            payload = batch.run_set(bases={"side": base}, states=["idle", "walk"], root=tmp_path / "set", character=None,
+                                    duration=None, resolution="480p", key="green", concurrency=2, force=False, gap=0.0,
+                                    video_runner=lambda *a, **kw: 1)
+            raise AssertionError(f"the set was not stopped: {payload}")
+    written = _report(tmp_path / "set" / "set.report.json") if (tmp_path / "set" / "set.report.json").exists() else None
+    assert written is not None, "no set report"
+
+    assert {item["state"] for item in written["items"]} == {"idle", "walk"}
 
 
 # --- video --------------------------------------------------------------------------------------------------------
