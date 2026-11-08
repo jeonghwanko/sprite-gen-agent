@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # Modified for sprite-gen-agent (machine-readable outcomes; reports read as UTF-8; the gait witness's
-# anchor_for and left_out ported from upstream 3.13/3.14; the clip model named and recorded; see NOTICE).
+# anchor_for and left_out ported from upstream 3.13/3.14; the clip model named and recorded; --key handed to the canvas; see NOTICE).
 """`sprite-gen video-set` — directions x states, end to end, one report per item.
 
 For every (direction, state) pair: canvas -> `sprite-gen video` -> frames -> loop.
@@ -861,7 +861,7 @@ def run_item(
                     still = item_dir / "facing.png"
                     facing_report = facing_mod.prepare_still(base, still, facing=facing, fix=facing_fix)
             # a lifetime is framed as an effect, whatever its name: on black, its centre kept
-            canvas_report = canvas_mod.run_canvas(still, canvas_png, state="effect" if lifetime else state, shape=shape, facing=facing if direction not in ("front", "back") else "right", headroom=None, lead=None, report_path=canvas_report_path, fit=fit)
+            canvas_report = canvas_mod.run_canvas(still, canvas_png, state="effect" if lifetime else state, shape=shape, facing=facing if direction not in ("front", "back") else "right", headroom=None, lead=None, report_path=canvas_report_path, key=key, fit=fit)
             if facing_report is not None:
                 canvas_report["facing_check"] = facing_report
                 atomic_write_text(canvas_report_path, json.dumps(canvas_report, ensure_ascii=False, indent=2) + "\n")

@@ -55,6 +55,12 @@ family), the still's background is repainted to the **exact declared key** and t
 padding is that same pure key. A corner that survives the matte fails loud
 (the still is not on a key the engine can cut). `--key white` keeps the old behaviour: no
 chroma key, the padding is the corner colour.
+A still with transparent pixels is first laid on a flat key, as a still generated on one would stand: on the key
+`--key green|magenta|white` names, or with `--key auto` on whichever of green and magenta is farther from the subject's
+colours (the 1st percentile of its opaque pixels' distance, as `prepare` ranks a row's key). The report's `transparent`
+says how many pixels were clear, what it was laid on and why (`null` for an opaque still); a still clear everywhere is
+refused. Before, transparency became black, which no key reads, and the clip was bought and then refused at
+`video-frames`. `video-set --key` reaches the canvas as well as `video-frames`, so the two agree on one key.
 
 ## 2. Clip — `sprite-gen video`
 

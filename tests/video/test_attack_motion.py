@@ -97,7 +97,7 @@ def test_video_set_gives_every_state_the_same_body_height(tmp_path: Path, monkey
     seen: list = []
     cycles: dict = {}
 
-    def fake_canvas(base, out, *, state, shape, facing, headroom, lead, report_path, fit="state"):
+    def fake_canvas(base, out, *, state, shape, facing, headroom, lead, report_path, key="auto", fit="state"):
         Image.new("RGB", (32, 32), (0, 255, 0)).save(out)
         return {"shape": "square", "canvas": [32, 32], "offset": [0, 0]}
 

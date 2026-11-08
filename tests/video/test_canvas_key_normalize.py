@@ -174,3 +174,73 @@ def test_mixed_contact_names_both(tmp_path: Path) -> None:
     keyed = Image.open(tmp_path / "keyed.refused" / files[1].name)
     split = frames_mod.classify_edge_contact(raw, keyed, GREEN)
     assert split["subject"] > 0 and split["residual"] > 0
+
+
+def _transparent_still(tmp_path: Path, subject: tuple[int, int, int], name: str = "clear.png") -> Path:
+    im = Image.new("RGBA", SIZE, (0, 0, 0, 0))
+    im.paste(Image.new("RGBA", (SUBJECT_BOX[2] - SUBJECT_BOX[0], SUBJECT_BOX[3] - SUBJECT_BOX[1]), (*subject, 255)), SUBJECT_BOX[:2])
+    path = tmp_path / name
+    im.save(path)
+    return path
+
+
+@pytest.mark.parametrize(("subject", "expected"), [((40, 200, 60), "magenta"), ((230, 40, 200), "green"), (SUBJECT, None)])
+def test_a_transparent_still_is_laid_on_the_key_farther_from_its_subject(tmp_path, subject, expected):
+    """Issue #1: transparency flattened to black, which no key reads, so the clip was bought and then refused."""
+    rep = canvas_mod.run_canvas(_transparent_still(tmp_path, subject), tmp_path / "c.png", state="walk", shape=None,
+                                facing="right", headroom=None, lead=None, report_path=None)
+    t = rep["transparent"]
+    assert t["transparent_px"] > 0 and t["chosen"] == "farther from the subject"
+    kind = expected or max(t["subject_distance"], key=t["subject_distance"].get)
+    assert t["flattened_on"] == kind and rep["key"] == kind
+    assert tuple(rep["corner_rgb"]) == tuple(rep["key_rgb"]) == (MAGENTA if kind == "magenta" else GREEN)
+    out = np.asarray(Image.open(tmp_path / "c.png").convert("RGB"))
+    assert (out[0, 0] != 0).any(), "the padding is black: the still was not laid on its key"
+
+
+@pytest.mark.parametrize(("key", "fill"), [("green", GREEN), ("magenta", MAGENTA), ("white", (255, 255, 255))])
+def test_a_transparent_still_is_laid_on_the_key_asked_for(tmp_path, key, fill):
+    rep = canvas_mod.run_canvas(_transparent_still(tmp_path, SUBJECT), tmp_path / "c.png", state="walk", shape=None,
+                                facing="right", headroom=None, lead=None, report_path=None, key=key)
+    assert rep["transparent"]["flattened_on"] == key and rep["transparent"]["chosen"] == "requested"
+    assert tuple(rep["corner_rgb"]) == fill and rep["key"] == (None if key == "white" else key)
+
+
+def test_a_transparent_still_comes_back_out_of_its_key_whole(tmp_path):
+    """What `video-frames` will erase is the background the still was laid on, and not the subject."""
+    canvas_mod.run_canvas(_transparent_still(tmp_path, SUBJECT), tmp_path / "c.png", state="walk", shape=None,
+                          facing="right", headroom=None, lead=None, report_path=None, key="green")
+    keyed, _ = canvas_mod.extract_route(Image.open(tmp_path / "c.png").convert("RGBA"), "green")
+    alpha = np.asarray(keyed)[..., 3]
+    assert alpha[0, 0] == 0 and int((alpha == 255).sum()) == (SUBJECT_BOX[2] - SUBJECT_BOX[0]) * (SUBJECT_BOX[3] - SUBJECT_BOX[1])
+
+
+def test_an_opaque_still_is_not_touched_and_a_still_clear_everywhere_is_refused(tmp_path):
+    rep = canvas_mod.run_canvas(_still(tmp_path, GREEN), tmp_path / "c.png", state="walk", shape=None,
+                                facing="right", headroom=None, lead=None, report_path=None)
+    assert rep["transparent"] is None
+    empty = tmp_path / "empty.png"
+    Image.new("RGBA", SIZE, (0, 0, 0, 0)).save(empty)
+    with pytest.raises(SystemExit, match="transparent everywhere"):
+        canvas_mod.run_canvas(empty, tmp_path / "e.png", state="walk", shape=None, facing="right", headroom=None, lead=None,
+                              report_path=None)
+
+
+def test_video_set_hands_its_key_to_the_canvas(tmp_path, monkeypatch):
+    """`--key` reached only `video-frames`; the canvas resolved `auto` whatever the set was asked for."""
+    from sprite_gen.video import batch as batch_mod
+
+    seen: dict[str, object] = {}
+
+    def canvas_stop(still, out, **kw):
+        seen["key"] = kw.get("key")
+        raise SystemExit("stop after the canvas")
+
+    monkeypatch.setattr(batch_mod.facing_mod.vision, "grok_inspect", lambda *a, **kw: ("right", {}))
+    monkeypatch.setattr(batch_mod.canvas_mod, "run_canvas", canvas_stop)
+    base = tmp_path / "base.png"
+    Image.new("RGB", (32, 32), MAGENTA).save(base)
+    batch_mod.run_set(bases={"side": base}, states=["idle"], root=tmp_path / "set", character=None, duration=None,
+                      resolution="480p", key="magenta", concurrency=1, force=False, gap=0.0,
+                      video_runner=lambda *a, **kw: pytest.fail("a clip was asked for"))
+    assert seen["key"] == "magenta"
