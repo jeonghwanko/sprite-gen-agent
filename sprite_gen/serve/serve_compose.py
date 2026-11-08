@@ -48,7 +48,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 from sprite_gen.frames.unpack_atlas import import_png_groups
-from sprite_gen.serve.origin import BodyRefused, body_length, cross_origin, drain_body
+from sprite_gen.serve.origin import BodyRefused, body_length, cross_origin, discard_refused_body, drain_body
 from sprite_gen.util.console import utf8_streams
 
 # The SPA assets are package data (declared in pyproject's `package-data`), so the one
@@ -306,6 +306,7 @@ class ComposeHandler(BaseHTTPRequestHandler):
                 payload = json.loads(self.rfile.read(body_length(self.headers)) or b"{}")
             except BodyRefused as exc:
                 self._send_json({"error": str(exc)}, exc.status)
+                discard_refused_body(self, exc)
                 return
             except json.JSONDecodeError:
                 self._send_json({"error": "invalid JSON body"}, 400)
@@ -343,6 +344,7 @@ class ComposeHandler(BaseHTTPRequestHandler):
                 payload = json.loads(self.rfile.read(body_length(self.headers)) or b"{}")
             except BodyRefused as exc:
                 self._send_json({"error": str(exc)}, exc.status)
+                discard_refused_body(self, exc)
                 return
             except json.JSONDecodeError:
                 self._send_json({"error": "invalid JSON body"}, 400)
@@ -384,6 +386,7 @@ class ComposeHandler(BaseHTTPRequestHandler):
                 payload = json.loads(self.rfile.read(body_length(self.headers)) or b"{}")
             except BodyRefused as exc:
                 self._send_json({"error": str(exc)}, exc.status)
+                discard_refused_body(self, exc)
                 return
             except json.JSONDecodeError:
                 self._send_json({"error": "invalid JSON body"}, 400)

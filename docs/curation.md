@@ -52,7 +52,7 @@ This launches a standalone local webview (no orchestrator dependency — usable 
 
 ### Limits the webview keeps
 
-- **POST bodies:** a `Content-Length` that is not a non-negative integer is refused with 400, and one over `SPRITE_GEN_SERVE_MAX_BODY` bytes (default 256 MiB; the largest legitimate body is `/api/gif`, up to 200 PNG frames) with 413, before the body is read. A client still sending a body far over the limit may see the connection closed instead of the 413.
+- **POST bodies:** a `Content-Length` that is not a non-negative integer is refused with 400, and one over `SPRITE_GEN_SERVE_MAX_BODY` bytes (default 256 MiB; the largest legitimate body is `/api/gif`, up to 200 PNG frames) with 413, before the body is read. A body still being sent is then read and dropped for up to 10 s, so the client reads the 413 instead of a reset connection; only a client still sending after that sees the connection closed. `Content-Length` is digits only (RFC 9110): `1_000` or `+5` is a 400. A value of either variable below that is not a non-negative number stops the server at start, naming the variable.
 - **Pipeline steps:** compose, export, GIF export, reroll and interpolate run as a child of the server, bounded by `SPRITE_GEN_SERVE_STEP_SECONDS` (default 1800). A step still running then is stopped with every process it started (the provider CLI a reroll began too), and the route answers 504 naming the step. A stopped reroll or interpolate says `provider_submitted: true`, `retryable: false`: its request may already have been sent and charged, so look before you press it again.
 
 ### Colourway (recolor) compare and pick

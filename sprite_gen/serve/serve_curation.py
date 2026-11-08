@@ -64,7 +64,7 @@ from sprite_gen.curate.curation import (CURATION_FILENAME, SCHEMA_VERSION, effec
 from sprite_gen.frames.extract import heal_run, load_consistent_frames_manifest
 from sprite_gen.spec.layout import frames_dir_rel, raw_rel, row_frame_rel, state_frame_total
 from sprite_gen.spec.runio import load_request, publish_guard, read_guard, write_request
-from sprite_gen.serve.origin import BodyRefused, body_length, cross_origin, drain_body
+from sprite_gen.serve.origin import BodyRefused, body_length, cross_origin, discard_refused_body, drain_body, env_number
 from sprite_gen.util.hexcolor import parse_hex
 from sprite_gen._modules import qualified
 from sprite_gen.util.console import utf8_streams
@@ -912,7 +912,7 @@ def build_download(run_dir: Path, kind: str) -> tuple[bytes, str] | dict:
 
 # Bound on one pipeline step run from the webview. reroll/interpolate call a provider, which has
 # its own per-call limit (gen.base.GEN_TIMEOUT_SECONDS), then re-extract the whole batch.
-STEP_SECONDS = float(os.environ.get("SPRITE_GEN_SERVE_STEP_SECONDS", str(local_tool.CHILD_SECONDS)))
+STEP_SECONDS = env_number("SPRITE_GEN_SERVE_STEP_SECONDS", local_tool.CHILD_SECONDS, float)
 
 
 def _text(out: str | bytes | None) -> str:
@@ -1589,6 +1589,7 @@ class CurationHandler(BaseHTTPRequestHandler):
                 return
         except BodyRefused as exc:
             self._send_json({"error": str(exc), "path": path}, exc.status)
+            discard_refused_body(self, exc)
             return
         # SystemExit too, as every GET route catches it: a refusal raised as SystemExit (a bad curation
         # payload, a fail-loud manifest read) must answer, not drop the connection with no response.

@@ -145,3 +145,45 @@ def test_a_provider_step_stopped_says_it_may_have_been_charged(tmp_path, monkeyp
     assert "charged" in result["error"]
     plain = serve_curation._run_module("compose_atlas", tmp_path)
     assert plain["provider_submitted"] is False and plain["retryable"] is True
+
+
+def _post_body(port: int, path: str, body: bytes) -> tuple[int, dict]:
+    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=30)
+    try:
+        conn.request("POST", path, body=body, headers={"Content-Type": "application/json"})
+        res = conn.getresponse()
+        return res.status, json.loads(res.read())
+    finally:
+        conn.close()
+
+
+def test_a_client_still_sending_a_body_over_the_limit_reads_the_413(tmp_path, monkeypatch):
+    """The body is sent, not only announced: closing with it unread would reset the socket under the client."""
+    monkeypatch.setattr(origin, "MAX_BODY", 1024)
+    with _serving(_curation_handler(tmp_path)) as port:
+        status, payload = _post_body(port, "/api/curation", b"x" * (8 << 20))
+    assert status == 413 and "too large" in payload["error"]
+    monkeypatch.setattr(serve_compose.ComposeHandler, "mount_root", None, raising=False)
+    with _serving(serve_compose.ComposeHandler) as port:
+        status, payload = _post_body(port, "/api/mount", b"x" * (8 << 20))
+    assert status == 413
+
+
+@pytest.mark.parametrize("raw", ["1_000", "+5", "0x10", "١٢", "-1", "lots"])
+def test_a_content_length_of_anything_but_digits_is_refused(raw):
+    with pytest.raises(origin.BodyRefused) as refused:
+        origin.body_length({"Content-Length": raw}, limit=10_000)
+    assert refused.value.status == 400
+
+
+def test_a_bad_limit_in_the_environment_names_the_variable(monkeypatch):
+    monkeypatch.setenv("SPRITE_GEN_SERVE_MAX_BODY", "big")
+    with pytest.raises(SystemExit, match="SPRITE_GEN_SERVE_MAX_BODY='big'"):
+        origin.env_number("SPRITE_GEN_SERVE_MAX_BODY", 1)
+    monkeypatch.setenv("SPRITE_GEN_SERVE_STEP_SECONDS", "-3")
+    with pytest.raises(SystemExit, match="non-negative number"):
+        origin.env_number("SPRITE_GEN_SERVE_STEP_SECONDS", 1.0, float)
+    monkeypatch.setenv("SPRITE_GEN_SERVE_STEP_SECONDS", "2.5")
+    assert origin.env_number("SPRITE_GEN_SERVE_STEP_SECONDS", 1.0, float) == 2.5
+    monkeypatch.delenv("SPRITE_GEN_SERVE_MAX_BODY")
+    assert origin.env_number("SPRITE_GEN_SERVE_MAX_BODY", 7) == 7
