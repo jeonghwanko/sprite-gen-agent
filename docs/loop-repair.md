@@ -3355,7 +3355,12 @@ sprite-gen video-cycle-align --loop-dir set/front-walk/loop --loop-dir set/side-
   `--foot`. The algorithm that names feet is not changed by it.
 - **Rebuilt in place**: `cycle/`, `<name>.strip.png` / `.strip.json`, `.gif`, `.webp` are rewritten at the
   loop's own cell rules (`cell_height_cap`, body-height target, anchor), at the loop's frame rate, so the
-  aligned cycle lasts L*/fps seconds. `strip.json` gains `cycle_align` (`from`, `to`, `between`, `taken`,
+  aligned cycle lasts L*/fps seconds. A loop cut far from L* therefore plays faster or slower than it was
+  filmed: `cycle_align.source_seconds` is how long its cycle lasted as cut (its frames over the rate) and
+  `pace` how many times as fast it now plays (cut length / L*). Where `--length` was asked for and a loop's
+  pace is more than 15 % off, a warning gives the rate that keeps the filmed pace (L* / `source_seconds`);
+  the median length of a set is not warned about, as matching the set is its purpose.
+  `strip.json` gains `cycle_align` (`from`, `to`, `between`, `taken`, `source_seconds`, `pace`,
   `made_by_rife`, `made_at`, `smear` and/or `nearest_at`, `ghost_screen`, `ghost_at`, `drawings`, `beat`,
   `same_foot` (back and back_diagonal views), `screen`, `retake`, `turned_by`, `turned_on`, `view`,
   `start_foot`, `start_foot_source`, `strikes`, the seam ratio of the rebuilt cells, `cells_from`, `origin`,
