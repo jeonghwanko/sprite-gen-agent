@@ -438,7 +438,9 @@ extraction removes it downstream — rows are generated **without** `--transpare
 the native strategy does not apply to them.
 The correction loop (`sprite-gen correction-loop --provider-command …`) can drive this
 `gen` command as its regeneration step so inspect → score → hint → regenerate closes
-against a real provider.
+against a real provider. One provider command may run `--provider-timeout` seconds (default 3600, `0` waits forever); a command still
+running then is stopped with every process it started, its output is kept in the attempt's log, and the loop exits
+saying its request may already have been charged. It does not send the request again.
 
 ## Speed
 

@@ -48,7 +48,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 from sprite_gen.frames.unpack_atlas import import_png_groups
-from sprite_gen.serve.origin import cross_origin, drain_body
+from sprite_gen.serve.origin import BodyRefused, body_length, cross_origin, drain_body
 from sprite_gen.util.console import utf8_streams
 
 # The SPA assets are package data (declared in pyproject's `package-data`), so the one
@@ -302,9 +302,11 @@ class ComposeHandler(BaseHTTPRequestHandler):
             self._send_json({"error": "cross-origin POST refused", "path": path}, 403)
             return
         if path == "/api/mount":
-            length = int(self.headers.get("Content-Length", 0))
             try:
-                payload = json.loads(self.rfile.read(length) or b"{}")
+                payload = json.loads(self.rfile.read(body_length(self.headers)) or b"{}")
+            except BodyRefused as exc:
+                self._send_json({"error": str(exc)}, exc.status)
+                return
             except json.JSONDecodeError:
                 self._send_json({"error": "invalid JSON body"}, 400)
                 return
@@ -337,9 +339,11 @@ class ComposeHandler(BaseHTTPRequestHandler):
             if self.mount_root is None:
                 self._send_json({"error": "no folder open"}, 409)
                 return
-            length = int(self.headers.get("Content-Length", 0))
             try:
-                payload = json.loads(self.rfile.read(length) or b"{}")
+                payload = json.loads(self.rfile.read(body_length(self.headers)) or b"{}")
+            except BodyRefused as exc:
+                self._send_json({"error": str(exc)}, exc.status)
+                return
             except json.JSONDecodeError:
                 self._send_json({"error": "invalid JSON body"}, 400)
                 return
@@ -376,9 +380,11 @@ class ComposeHandler(BaseHTTPRequestHandler):
             # Hand off to the curation view: launch a serve_curation process on the
             # built run dir and return its URL. A curation server is a legitimate
             # long-lived per-run-dir surface, not a workaround.
-            length = int(self.headers.get("Content-Length", 0))
             try:
-                payload = json.loads(self.rfile.read(length) or b"{}")
+                payload = json.loads(self.rfile.read(body_length(self.headers)) or b"{}")
+            except BodyRefused as exc:
+                self._send_json({"error": str(exc)}, exc.status)
+                return
             except json.JSONDecodeError:
                 self._send_json({"error": "invalid JSON body"}, 400)
                 return

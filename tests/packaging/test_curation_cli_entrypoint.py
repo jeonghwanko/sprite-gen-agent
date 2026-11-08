@@ -38,6 +38,7 @@ def test_subcommand_hands_the_parsed_arguments_to_the_server(fixture_run_dir, mo
     class FakeServer:
         def __init__(self, address, handler):
             seen["address"] = address
+            seen["handler"] = handler
             self.server_address = address
 
         def serve_forever(self):
@@ -47,10 +48,6 @@ def test_subcommand_hands_the_parsed_arguments_to_the_server(fixture_run_dir, mo
             seen["closed"] = True
 
     opened: list[str] = []
-    # The handler's config is class state; register it with monkeypatch so this test's
-    # `--lang ko` is restored and cannot leak into another test's run snapshot.
-    monkeypatch.setattr(serve_curation.CurationHandler, "lang", serve_curation.CurationHandler.lang)
-    monkeypatch.setattr(serve_curation.CurationHandler, "run_dir", serve_curation.CurationHandler.run_dir)
     monkeypatch.setattr(serve_curation, "ThreadingHTTPServer", FakeServer)
     monkeypatch.setattr(serve_curation.webbrowser, "open", opened.append)
 
@@ -61,6 +58,10 @@ def test_subcommand_hands_the_parsed_arguments_to_the_server(fixture_run_dir, mo
     assert seen["address"] == ("127.0.0.1", 8797)
     assert seen.get("closed") is True
     assert opened == [], "--no-open still opened a browser"
-    assert serve_curation.CurationHandler.lang == "ko"
-    assert serve_curation.CurationHandler.run_dir == fixture_run_dir.resolve()
+    assert seen["handler"].lang == "ko"
+    assert seen["handler"].run_dir == fixture_run_dir.resolve()
+    # The config is the server's own handler class, not CurationHandler's shared attributes.
+    assert seen["handler"] is not serve_curation.CurationHandler
+    assert "run_dir" not in vars(serve_curation.CurationHandler) or \
+        serve_curation.CurationHandler.run_dir != fixture_run_dir.resolve()
     assert "http://127.0.0.1:8797/" in capsys.readouterr().out

@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (a bounded, locked content-digest cache; see NOTICE).
 """Shared curation sidecar logic for sprite-gen.
 
 `curation.json` is an optional, non-destructive sidecar in a run directory. It
@@ -153,6 +154,8 @@ import hashlib
 import json
 import math
 import sys
+import threading
+from collections import OrderedDict
 from pathlib import Path
 from typing import Any
 
@@ -556,7 +559,11 @@ def run_revision(run_dir: Path) -> str:
 
 # raw/프레임 파일 내용 다이제스트 캐시 — (path, size, mtime_ns) 가 같으면 재해시하지
 # 않는다. state_revision 이 서버 요청마다 불리므로 MB 급 raw 재해시를 피한다.
-_CONTENT_DIGEST_CACHE: dict[tuple[str, int, int], str] = {}
+# LRU-bounded: the key holds mtime, so every re-bake adds entries a long-lived server would
+# otherwise keep forever. Locked because the curation server calls this from request threads.
+_CONTENT_DIGEST_CACHE: OrderedDict[tuple[str, int, int], str] = OrderedDict()
+_CONTENT_DIGEST_CACHE_MAX = 4096
+_CONTENT_DIGEST_LOCK = threading.Lock()
 
 
 def _file_content_digest(path: Path) -> str | None:
@@ -566,13 +573,19 @@ def _file_content_digest(path: Path) -> str | None:
     except OSError:
         return None
     key = (str(path), st.st_size, st.st_mtime_ns)
-    cached = _CONTENT_DIGEST_CACHE.get(key)
-    if cached is None:
-        try:
-            cached = hashlib.sha256(path.read_bytes()).hexdigest()[:12]
-        except OSError:
-            return None
+    with _CONTENT_DIGEST_LOCK:
+        cached = _CONTENT_DIGEST_CACHE.get(key)
+        if cached is not None:
+            _CONTENT_DIGEST_CACHE.move_to_end(key)
+            return cached
+    try:
+        cached = hashlib.sha256(path.read_bytes()).hexdigest()[:12]
+    except OSError:
+        return None
+    with _CONTENT_DIGEST_LOCK:
         _CONTENT_DIGEST_CACHE[key] = cached
+        while len(_CONTENT_DIGEST_CACHE) > _CONTENT_DIGEST_CACHE_MAX:
+            _CONTENT_DIGEST_CACHE.popitem(last=False)
     return cached
 
 

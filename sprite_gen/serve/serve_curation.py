@@ -50,7 +50,6 @@ try:
 except ImportError:  # pragma: no cover — 파이프라인 필수 의존성이지만 서버는 살아있게
     Image = None  # type: ignore[assignment]
 import webbrowser
-from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import cast
@@ -65,7 +64,7 @@ from sprite_gen.curate.curation import (CURATION_FILENAME, SCHEMA_VERSION, effec
 from sprite_gen.frames.extract import heal_run, load_consistent_frames_manifest
 from sprite_gen.spec.layout import frames_dir_rel, raw_rel, row_frame_rel, state_frame_total
 from sprite_gen.spec.runio import load_request, publish_guard, read_guard, write_request
-from sprite_gen.serve.origin import cross_origin, drain_body
+from sprite_gen.serve.origin import BodyRefused, body_length, cross_origin, drain_body
 from sprite_gen.util.hexcolor import parse_hex
 from sprite_gen._modules import qualified
 from sprite_gen.util.console import utf8_streams
@@ -390,16 +389,16 @@ def _read_op_progress(run_dir: Path) -> dict | None:
         return None
 
 
-def build_run_state(run_dir: Path) -> dict:
+def build_run_state(run_dir: Path, lang: str = "en") -> dict:
     """Assemble the run snapshot the SPA needs. Read under the run dir's shared read_guard
     so a concurrent `--force` re-import (which holds the exclusive publish_guard for its
     swap) can never expose a half-published state to `/api/run` — the reader sees either
     the complete prior run or the complete new run (reader isolation)."""
     with read_guard(run_dir):
-        return _build_run_state_impl(run_dir)
+        return _build_run_state_impl(run_dir, lang)
 
 
-def _build_run_state_impl(run_dir: Path) -> dict:
+def _build_run_state_impl(run_dir: Path, lang: str = "en") -> dict:
     """Assemble the run snapshot the SPA needs, from the canonical SSoT files."""
     request = load_request(run_dir)
     # No generation yet (no manifest AND no physical frames) → serve the request/state scaffold
@@ -611,7 +610,7 @@ def _build_run_state_impl(run_dir: Path) -> dict:
         # 쓰지 않고, 원문은 덮이는 순간 writer 가 백업한다 (`write_curation_atomic`).
         "curationDropped": curation_report["dropped"],
         "iso": request.get("iso"),
-        "lang": CurationHandler.lang,
+        "lang": lang,
         "hasAtlas": (run_dir / "sprite-sheet-alpha.png").is_file(),
         # 최종 산출물 섹션 (뷰 맨 아래, 아틀라스+manifest 좌우) — 파일이 실재할 때만.
         # 아틀라스는 다운로드/합성 시점 산출물이라 mtime 을 실어 시점을 표시한다.
@@ -911,7 +910,22 @@ def build_download(run_dir: Path, kind: str) -> tuple[bytes, str] | dict:
     return {"ok": False, "error": f"unknown download kind: {kind}"}
 
 
-def _run_module(name: str, run_dir: Path, *extra: str) -> dict:
+# Bound on one pipeline step run from the webview. reroll/interpolate call a provider, which has
+# its own per-call limit (gen.base.GEN_TIMEOUT_SECONDS), then re-extract the whole batch.
+STEP_SECONDS = float(os.environ.get("SPRITE_GEN_SERVE_STEP_SECONDS", str(local_tool.CHILD_SECONDS)))
+
+
+def _text(out: str | bytes | None) -> str:
+    return out.decode("utf-8", "replace") if isinstance(out, bytes) else (out or "")
+
+
+def _step_status(result: dict) -> int:
+    if result["ok"]:
+        return 200
+    return 504 if result.get("timeout") else 500
+
+
+def _run_module(name: str, run_dir: Path, *extra: str, provider: bool = False) -> dict:
     """Shell out to a pipeline step as a module of this package.
 
     `-m sprite_gen.<step>` resolves through the interpreter's own import path, so it finds
@@ -921,12 +935,22 @@ def _run_module(name: str, run_dir: Path, *extra: str) -> dict:
     export while still serving the SPA. The wrappers are re-exports of these same modules
     (`scripts/compose_sprite_atlas.py` -> `sprite_gen.compose.compose_atlas`), so this is the same
     program, reached by the path that survives installation.
+
+    A step still running after STEP_SECONDS is stopped with every process it started (`local_tool.run_tree`).
+    `provider`: the step sends a provider request (reroll, interpolate), so one stopped may already have been
+    charged; its result says so and is not retryable, as any request that may have been charged.
     """
-    proc = subprocess.run(
-        [sys.executable, "-m", qualified(name), "--run-dir", str(run_dir), *extra],
-        capture_output=True,
-        text=True, encoding="utf-8", errors="replace",
-    )
+    cmd = [sys.executable, "-m", qualified(name), "--run-dir", str(run_dir), *extra]
+    try:
+        proc = local_tool.run_tree(cmd, seconds=STEP_SECONDS, text=True, encoding="utf-8", errors="replace")
+    except subprocess.TimeoutExpired as exc:
+        # A stuck step must not hold the request thread forever; the webview gets a named failure.
+        error = f"{name}: no result in {STEP_SECONDS:g} s and was stopped"
+        if provider:
+            error += " — its provider request may already have been sent and charged; check before you send it again"
+        return {"ok": False, "returncode": None, "timeout": True, "error": error,
+                "provider_submitted": provider, "retryable": not provider,
+                "stdout": _text(exc.stdout), "stderr": _text(exc.stderr)}
     return {
         "ok": proc.returncode == 0,
         "returncode": proc.returncode,
@@ -952,7 +976,7 @@ def run_interpolate(run_dir: Path, state: str, index_a: int, index_b: int,
              "--provider", provider, "--t", str(t), "--extract"]
     if label:
         extra += ["--label", str(label)]
-    return _run_module("interpolate", run_dir, *extra)
+    return _run_module("interpolate", run_dir, *extra, provider=True)
 
 
 def run_reroll(run_dir: Path, state: str, provider: str = "codex") -> dict:
@@ -962,7 +986,7 @@ def run_reroll(run_dir: Path, state: str, provider: str = "codex") -> dict:
     "리롤버튼 눌러서 후보군에 추가"). 생성은 interpolate 와 같이 서버 머신의
     provider CLI 가 수행하고, 부분 추출 없이 전체 배치를 재추출한다."""
     return _run_module("reroll", run_dir,
-                       "--state", state, "--provider", provider, "--extract")
+                       "--state", state, "--provider", provider, "--extract", provider=True)
 
 
 def run_export(run_dir: Path) -> dict:
@@ -1033,7 +1057,7 @@ class CurationHandler(BaseHTTPRequestHandler):
         return candidate
 
     def _read_body(self) -> dict:
-        length = int(self.headers.get("Content-Length", 0))
+        length = body_length(self.headers)
         raw = self.rfile.read(length) if length else b"{}"
         return json.loads(raw.decode("utf-8"))
 
@@ -1053,10 +1077,10 @@ class CurationHandler(BaseHTTPRequestHandler):
                         "error": "re-extraction in progress — frames are being "
                                  "re-derived for the current engine; the view opens "
                                  "automatically when it finishes",
-                        "busy": True, "lang": CurationHandler.lang,
+                        "busy": True, "lang": self.lang,
                         "progress": _read_op_progress(self.run_dir)}, 503)
                     return
-                snapshot = build_run_state(self.run_dir)
+                snapshot = build_run_state(self.run_dir, self.lang)
                 heal = take_heal_report()  # 스냅샷 성공 뒤에만 소비 (단일 소비자)
                 if heal:
                     snapshot["heal"] = heal
@@ -1402,7 +1426,7 @@ class CurationHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/compose":
                 result = run_compose(self.run_dir)
-                self._send_json(result, 200 if result["ok"] else 500)
+                self._send_json(result, _step_status(result))
                 return
             if path == "/api/base-edit":
                 # 베이스(base-source) 픽셀 편집 — 프레임과 달리 사이드카가 아니라
@@ -1539,7 +1563,7 @@ class CurationHandler(BaseHTTPRequestHandler):
                     return
                 result = run_interpolate(self.run_dir, state, index_a, index_b,
                                          t_value, payload.get("label") or None, provider)
-                self._send_json(result, 200 if result["ok"] else 500)
+                self._send_json(result, _step_status(result))
                 return
             if path == "/api/reroll":
                 payload = self._read_body()
@@ -1553,16 +1577,19 @@ class CurationHandler(BaseHTTPRequestHandler):
                     self._send_json({"error": f"unknown provider: {provider}"}, 400)
                     return
                 result = run_reroll(self.run_dir, state, provider)
-                self._send_json(result, 200 if result["ok"] else 500)
+                self._send_json(result, _step_status(result))
                 return
             if path == "/api/export":
                 result = run_export(self.run_dir)
-                self._send_json(result, 200 if result["ok"] else 500)
+                self._send_json(result, _step_status(result))
                 return
             if path == "/api/export-gif":
                 result = run_export_gif(self.run_dir)
-                self._send_json(result, 200 if result["ok"] else 500)
+                self._send_json(result, _step_status(result))
                 return
+        except BodyRefused as exc:
+            self._send_json({"error": str(exc), "path": path}, exc.status)
+            return
         # SystemExit too, as every GET route catches it: a refusal raised as SystemExit (a bad curation
         # payload, a fail-loud manifest read) must answer, not drop the connection with no response.
         except (Exception, SystemExit) as exc:
@@ -1598,9 +1625,9 @@ def run(*, run_dir: Path, host: str = "127.0.0.1", port: int = 0,
     if not CURATOR_DIR.is_dir():
         raise SystemExit(f"missing curator SPA dir: {CURATOR_DIR}")
 
-    handler = partial(CurationHandler)
-    CurationHandler.run_dir = run_dir
-    CurationHandler.lang = lang
+    # A subclass per server, not CurationHandler's own attributes: two servers in one process
+    # (tests, an embedding caller) would otherwise share and overwrite one run dir.
+    handler = type("BoundCurationHandler", (CurationHandler,), {"run_dir": run_dir, "lang": lang})
     server = ThreadingHTTPServer((host, port), handler)
     host, port = cast(tuple[str, int], server.server_address)
     url = f"http://{host}:{port}/"
@@ -1609,7 +1636,7 @@ def run(*, run_dir: Path, host: str = "127.0.0.1", port: int = 0,
     # 뷰 계약 자가 보고 — base 참조 줄 / 생성 재료 칩 / 픽셀 격자 충족 여부를 한 줄로.
     # 셋 다 없으면 "소스 없는 뷰" 경고 (관측 가능하게 — No Silent Fallback).
     try:
-        snapshot = build_run_state(run_dir)
+        snapshot = build_run_state(run_dir, lang)
         c = snapshot.get("contract", {})
         n_states = len(snapshot.get("states", []))
         print(f"  view-contract: base={'yes' if c.get('base') else 'no'} · "
