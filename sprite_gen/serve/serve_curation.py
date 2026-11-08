@@ -925,7 +925,7 @@ def _step_status(result: dict) -> int:
     return 504 if result.get("timeout") else 500
 
 
-def _run_module(name: str, run_dir: Path, *extra: str) -> dict:
+def _run_module(name: str, run_dir: Path, *extra: str, provider: bool = False) -> dict:
     """Shell out to a pipeline step as a module of this package.
 
     `-m sprite_gen.<step>` resolves through the interpreter's own import path, so it finds
@@ -935,15 +935,21 @@ def _run_module(name: str, run_dir: Path, *extra: str) -> dict:
     export while still serving the SPA. The wrappers are re-exports of these same modules
     (`scripts/compose_sprite_atlas.py` -> `sprite_gen.compose.compose_atlas`), so this is the same
     program, reached by the path that survives installation.
+
+    A step still running after STEP_SECONDS is stopped with every process it started (`local_tool.run_tree`).
+    `provider`: the step sends a provider request (reroll, interpolate), so one stopped may already have been
+    charged; its result says so and is not retryable, as any request that may have been charged.
     """
     cmd = [sys.executable, "-m", qualified(name), "--run-dir", str(run_dir), *extra]
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                              timeout=STEP_SECONDS)
+        proc = local_tool.run_tree(cmd, seconds=STEP_SECONDS, text=True, encoding="utf-8", errors="replace")
     except subprocess.TimeoutExpired as exc:
         # A stuck step must not hold the request thread forever; the webview gets a named failure.
-        return {"ok": False, "returncode": None, "timeout": True,
-                "error": f"{name}: no result in {STEP_SECONDS:g} s and was stopped",
+        error = f"{name}: no result in {STEP_SECONDS:g} s and was stopped"
+        if provider:
+            error += " — its provider request may already have been sent and charged; check before you send it again"
+        return {"ok": False, "returncode": None, "timeout": True, "error": error,
+                "provider_submitted": provider, "retryable": not provider,
                 "stdout": _text(exc.stdout), "stderr": _text(exc.stderr)}
     return {
         "ok": proc.returncode == 0,
@@ -970,7 +976,7 @@ def run_interpolate(run_dir: Path, state: str, index_a: int, index_b: int,
              "--provider", provider, "--t", str(t), "--extract"]
     if label:
         extra += ["--label", str(label)]
-    return _run_module("interpolate", run_dir, *extra)
+    return _run_module("interpolate", run_dir, *extra, provider=True)
 
 
 def run_reroll(run_dir: Path, state: str, provider: str = "codex") -> dict:
@@ -980,7 +986,7 @@ def run_reroll(run_dir: Path, state: str, provider: str = "codex") -> dict:
     "리롤버튼 눌러서 후보군에 추가"). 생성은 interpolate 와 같이 서버 머신의
     provider CLI 가 수행하고, 부분 추출 없이 전체 배치를 재추출한다."""
     return _run_module("reroll", run_dir,
-                       "--state", state, "--provider", provider, "--extract")
+                       "--state", state, "--provider", provider, "--extract", provider=True)
 
 
 def run_export(run_dir: Path) -> dict:

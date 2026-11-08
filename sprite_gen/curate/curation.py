@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (a bounded, locked content-digest cache; see NOTICE).
 """Shared curation sidecar logic for sprite-gen.
 
 `curation.json` is an optional, non-destructive sidecar in a run directory. It

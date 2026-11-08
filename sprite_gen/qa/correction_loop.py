@@ -18,6 +18,7 @@ from sprite_gen.util.cli_kwargs import namespace_from_kwargs
 from sprite_gen.qa import inspect as inspect_mod
 from sprite_gen.qa import score as score_mod
 from sprite_gen.spec.runio import LOCK_FILENAME, atomic_write_text, refuse_overlap, relative_posix, same_folder
+from sprite_gen import local_tool
 from sprite_gen.util.console import utf8_streams
 
 BEST_CANDIDATE = "best-candidate"
@@ -205,12 +206,15 @@ def run_loop(
                 for arg in shlex.split(provider_command)]
         command = shlex.join(argv)
         try:
-            completed = subprocess.run(argv, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                                       timeout=provider_timeout or None)
+            # The whole tree, so a provider the command started does not keep running after it is stopped.
+            completed = local_tool.run_tree(argv, seconds=provider_timeout or None,
+                                            text=True, encoding="utf-8", errors="replace")
         except subprocess.TimeoutExpired as exc:
             atomic_write_text(files["log"], _text(exc.stdout) + "\n--- stderr ---\n" + _text(exc.stderr)
                               + f"\n--- stopped after {provider_timeout:g} s ---\n")
-            raise SystemExit(f"provider command gave no result in {provider_timeout:g} s and was stopped: {command}")
+            raise SystemExit(f"provider command gave no result in {provider_timeout:g} s and was stopped: {command} — "
+                             f"its request may already have been sent and charged; inspect {files['log']} and the "
+                             f"provider before you run the loop again")
         atomic_write_text(
             files["log"],
             completed.stdout + ("\n--- stderr ---\n" + completed.stderr if completed.stderr else ""),

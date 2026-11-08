@@ -50,6 +50,11 @@ $SPRITE_GEN_ROOT/.venv/bin/sprite-gen curation \
 
 This launches a standalone local webview (no orchestrator dependency — usable from Claude Code Desktop, the Codex app, or any host with the skill installed). It shows every state's frames side by side so you can compare them in parallel. Two rows per state: a **sequence** row (the selected play order, saved to `curation.json.selected`, baked left-to-right by compose) and a **candidate pool** row below it (unselected frames, e.g. an extra generated take). A per-frame transform corrects an off angle/position. A live preview animates the selected frames at the state fps, with play/pause, frame stepping, and a 0.25×–4× speed control.
 
+### Limits the webview keeps
+
+- **POST bodies:** a `Content-Length` that is not a non-negative integer is refused with 400, and one over `SPRITE_GEN_SERVE_MAX_BODY` bytes (default 256 MiB; the largest legitimate body is `/api/gif`, up to 200 PNG frames) with 413, before the body is read. A client still sending a body far over the limit may see the connection closed instead of the 413.
+- **Pipeline steps:** compose, export, GIF export, reroll and interpolate run as a child of the server, bounded by `SPRITE_GEN_SERVE_STEP_SECONDS` (default 1800). A step still running then is stopped with every process it started (the provider CLI a reroll began too), and the route answers 504 naming the step. A stopped reroll or interpolate says `provider_submitted: true`, `retryable: false`: its request may already have been sent and charged, so look before you press it again.
+
 ### Colourway (recolor) compare and pick
 
 When the run has a bake under `variants/` (`recolor.report.json` present), the view

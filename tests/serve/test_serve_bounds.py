@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import http.client
 import json
+import subprocess
 import sys
 import threading
+import time
 from contextlib import contextmanager
 from http.server import ThreadingHTTPServer
 from pathlib import Path
@@ -119,3 +121,27 @@ def test_correction_loop_stops_a_provider_that_never_finishes(fixture_run_dir: P
             provider_command=f'"{sys.executable}" -c "import time; time.sleep(60)"',
             provider_timeout=0.5,
         )
+
+
+def test_a_stopped_step_takes_the_provider_it_started_with_it(tmp_path):
+    from sprite_gen import local_tool
+
+    late = tmp_path / "written-after-the-stop"
+    grandchild = f"import time; time.sleep(1.5); open({str(late)!r}, 'w').close()"
+    child = f"import subprocess, sys, time; subprocess.Popen([sys.executable, '-c', {grandchild!r}]); time.sleep(60)"
+    with pytest.raises(subprocess.TimeoutExpired):
+        local_tool.run_tree([sys.executable, "-c", child], seconds=0.5)
+    time.sleep(2.5)
+    assert not late.exists(), "the provider the step started kept running after the step was stopped"
+
+
+def test_a_provider_step_stopped_says_it_may_have_been_charged(tmp_path, monkeypatch):
+    monkeypatch.setattr(serve_curation, "STEP_SECONDS", 0.5)
+    monkeypatch.setattr(serve_curation, "qualified", lambda name: "never_ending_step")
+    (tmp_path / "never_ending_step.py").write_text("import time\ntime.sleep(60)\n", encoding="utf-8")
+    monkeypatch.setenv("PYTHONPATH", str(tmp_path))
+    result = serve_curation.run_reroll(tmp_path, "idle")
+    assert result["timeout"] is True and result["provider_submitted"] is True and result["retryable"] is False
+    assert "charged" in result["error"]
+    plain = serve_curation._run_module("compose_atlas", tmp_path)
+    assert plain["provider_submitted"] is False and plain["retryable"] is True
