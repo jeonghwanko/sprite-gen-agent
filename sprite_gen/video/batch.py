@@ -1321,7 +1321,10 @@ def run_set(
     aligned: dict[str, Any] = {}
     try:
         with ThreadPoolExecutor(max_workers=max(1, concurrency)) as ex:
-            futures = {ex.submit(run_item, item=i, direction=d, state=s, base=b, root=root, character=character, duration=duration, resolution=resolution, key=key, force=force, gap=gap, video_runner=video_runner, shape=shape, anchor=anchor, spill=spill, facing=f, facing_fix=facing_fix, prepare_side=side_preparer(f), body_height=body_height, fit=fit, decontam=decontam, walk_start=walk_start, redraw_runner=redraw_runner, still_provider=still_provider, handed=handed, body_plan=body_plan, **({"end_frame": end_frames[i]} if end_frames and i in end_frames else {}), **({"play": plays[i]} if i in plays else {}), **({"motion": motions[i]} if i in motions else {}), **({"model": model} if model is not None else {})): i for i, d, s, f, b in items}  # type: ignore[arg-type]
+            # Held while the pool fills, as gen-set's: a stop between two submits would leave the items already
+            # started (a clip may have been bought) out of the set report. It is raised once all are in.
+            with outcome.deferred():
+                futures = {ex.submit(run_item, item=i, direction=d, state=s, base=b, root=root, character=character, duration=duration, resolution=resolution, key=key, force=force, gap=gap, video_runner=video_runner, shape=shape, anchor=anchor, spill=spill, facing=f, facing_fix=facing_fix, prepare_side=side_preparer(f), body_height=body_height, fit=fit, decontam=decontam, walk_start=walk_start, redraw_runner=redraw_runner, still_provider=still_provider, handed=handed, body_plan=body_plan, **({"end_frame": end_frames[i]} if end_frames and i in end_frames else {}), **({"play": plays[i]} if i in plays else {}), **({"motion": motions[i]} if i in motions else {}), **({"model": model} if model is not None else {})): i for i, d, s, f, b in items}  # type: ignore[arg-type]
             try:
                 for fut in as_completed(futures):
                     r = fut.result()
