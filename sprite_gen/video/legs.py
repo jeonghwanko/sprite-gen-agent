@@ -141,7 +141,7 @@ def strike_signals(frames: list[Image.Image]) -> dict[str, list[float]]:
             raise ValueError("a loop frame has no solid body")
         y0, y1 = int(rows[0]), int(rows[-1])
         height = y1 - y0 + 1
-        cols = solid[y1 + 1 - max(1, round(height * FOOT_BAND)) : y1 + 1].any(axis=0)
+        cols = np.asarray(solid[y1 + 1 - max(1, round(height * FOOT_BAND)) : y1 + 1].any(axis=0))
         xs = np.nonzero(cols)[0]
         runs = _longest_runs(solid)
         out["stride"].append((xs[-1] - xs[0] + 1) / height)
@@ -302,8 +302,8 @@ def feet_order(frame: Image.Image) -> dict[str, Any]:
     y0, y1 = int(rows[0]), int(rows[-1])
     height = y1 - y0 + 1
     contact = max(1, round(CONTACT * height))
-    read: dict[str, Any] = {"ground": _parts(solid[y1 + 1 - contact : y1 + 1].any(axis=0)), "height": height, "apart": False}
-    gap = _gap_at(solid[y1 + 1 - max(1, round(height * FOOT_BAND)) : y1 + 1].any(axis=0))
+    read: dict[str, Any] = {"ground": _parts(np.asarray(solid[y1 + 1 - contact : y1 + 1].any(axis=0))), "height": height, "apart": False}
+    gap = _gap_at(np.asarray(solid[y1 + 1 - max(1, round(height * FOOT_BAND)) : y1 + 1].any(axis=0)))
     if gap is None or gap[1] - gap[0] + 1 < FEET_APART * height:
         return read
     feet = {}

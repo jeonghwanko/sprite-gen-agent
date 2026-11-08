@@ -121,6 +121,7 @@ def _row_costs(reference: tuple, blocks: np.ndarray, at: np.ndarray, scratch: tu
         else:
             block[0] = total
             total = np.add.reduce(block[:c + 1], axis=0)  # type: ignore[call-overload]
+    assert total is not None  # n > 0: the loop above ran at least once
     mean = np.true_divide(total, np.intp(n), out=total, casting="unsafe")
     # The centered patches one after the other, a pixel copied as its bytes.
     pixels = laid[:count * n].reshape(count, n)

@@ -121,6 +121,9 @@ from sprite_gen.util.console import utf8_streams
 SNAP = 0.03  # a sample time within this of a source frame takes that frame
 SOURCE_DIR = loop_mod.CYCLE_SOURCE_DIR  # removed by video-loop whenever it cuts the loop again
 RATE_TOLERANCE = 0.002  # frame rates read back from the strip metadata agree within this
+# A requested --length that makes a loop play more than this share faster or slower than it was filmed is said
+# (issue #2): the cells are resampled at the loop's own rate, so the length alone sets the cycle's time.
+PACE_TOLERANCE = 0.15
 # The foot-strike turn (docs/loop-repair.md section 4) reads the legs as the two-cycle screen
 # records them (sprite_gen/video/legs.py). With a view the view picks the signal and the swings only
 # say whether there are legs to read (`foot_strike`).
@@ -1103,6 +1106,13 @@ def _rebuild(loop_dir: Path, meta_path: Path, meta: dict[str, Any], frames: list
     return merged
 
 
+def _pace_line(name: str, target: int, fps: float, row: dict[str, Any]) -> str:
+    source = row["source_seconds"]
+    how = f"{row['pace']:.2f} times as fast" if row["pace"] > 1 else f"{1 / row['pace']:.2f} times as slow"
+    return (f"{name}: --length {target} plays its cycle in {target / fps:.4g} s, filmed in {source:.4g} s ({how}); "
+            f"play it at {target / source:.4g} fps to keep the filmed pace (cycle_align.source_seconds)")
+
+
 def _unnamed_foot(row: dict[str, Any]) -> dict[str, Any]:
     """A loop whose foot nobody named, for whoever looks: its two strikes as frames of the rebuilt
     `cycle/` (the first is the frame it starts on), why the engine could not say, and the `--foot`
@@ -1389,6 +1399,8 @@ def align_set(loop_dirs: list[Path], *, length: int | None = None, interpolate: 
                   **{key: strike[key] for key in ("foot", "foot_why", "foot_given", "foot_unnamed_why", "foot_disagrees") if key in strike},
                   "stride_swing": strike["stride_swing"], "reach_swing": strike["reach_swing"],
                   "fps": round(fps, 4), "source": SOURCE_DIR, "cycles_given": given.get(i), "cycle_screen": screens[i],
+                  # the cycle as filmed lasted this long; at `target` frames and the same rate it plays `pace` times as fast
+                  "source_seconds": round(len(frames) / fps, 4), "pace": round(len(frames) / target, 4),
                   **({"cycle_taken": taken[i]} if i in taken else {}),
                   "made_at": [(k - start) % target for k in facts["made_at"]]}
         if "nearest_at" in facts:
@@ -1453,6 +1465,9 @@ def align_set(loop_dirs: list[Path], *, length: int | None = None, interpolate: 
                  for r in rows if not r["ghost_screen"]["reads"]]
     warnings = cycle_warnings + [_retake_line(r["dir"] if shared else r["name"], r["retake"], reason, r)
                                  for r in rows if r["retake"] for reason in r["retake"]["reasons"]] + warnings
+    if length is not None:
+        warnings += [_pace_line(r["dir"] if shared else r["name"], target, fps, r) for r in rows
+                     if abs(r["pace"] - 1) > PACE_TOLERANCE]
     unnamed = [_unnamed_foot(r) for r in rows if r["start_foot"] is None]
     if len(rows) > 1 and views is None and unnamed:
         warnings.append("no view given (--view): each loop " + ("not named by --foot " if told else "")
