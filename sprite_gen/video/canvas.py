@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Modified for sprite-gen-agent (a transparent still laid on a key before it is padded; see NOTICE).
 """`sprite-gen video-canvas` — pad a base still into the canvas a motion state needs.
 
 Grok Imagine keeps the input image's framing and ignores `aspect_ratio` on
@@ -131,6 +132,39 @@ def profile_for(state: str | None, shape: str | None = None) -> CanvasProfile:
     return STATE_CANVAS.get(key, STATE_CANVAS["default"])
 
 
+def flatten_transparent(image: Image.Image, key: str) -> tuple[Image.Image, dict[str, Any] | None]:
+    """A still with transparent pixels, laid on a flat key so the clip is filmed on one (issue #1); None for an opaque still.
+
+    Flattened as it was, transparency became black, which no key reads, and `video-frames` then refused the clip
+    after it was bought. `--key green|magenta|white` is the colour it is laid on; `auto` takes whichever of green and
+    magenta is farther from the subject's colours (1st percentile of the opaque pixels' distance, as `prepare` ranks a
+    row's key), so the matte later erases the background and not the subject."""
+    if "A" not in image.getbands() and "transparency" not in image.info:
+        return image, None
+    rgba = image.convert("RGBA")
+    data = np.asarray(rgba, dtype=np.uint8)
+    alpha = data[..., 3]
+    clear = int((alpha < 255).sum())
+    if clear == 0:
+        return image, None
+    if key == "white":
+        kind, fill, chosen, distances = "white", (255, 255, 255), "requested", None
+    elif key in KEY_TARGETS:
+        kind, fill, chosen, distances = key, KEY_TARGETS[key], "requested", None
+    else:
+        subject = data[..., :3][alpha >= 128].astype(np.float64)
+        if subject.size == 0:
+            raise SystemExit("video-canvas: the still is transparent everywhere; there is no subject to film")
+        distances = {name: round(float(np.percentile(np.linalg.norm(subject - np.array(rgb, dtype=np.float64), axis=1), 1)), 2)
+                     for name, rgb in KEY_TARGETS.items()}
+        kind = max(distances, key=lambda name: distances[name])
+        fill, chosen = KEY_TARGETS[kind], "farther from the subject"
+    flat = Image.new("RGBA", rgba.size, (*fill, 255))
+    flat.alpha_composite(rgba)
+    return flat.convert("RGB"), {"transparent_px": clear, "flattened_on": kind, "chosen": chosen,
+                                 **({"subject_distance": distances} if distances else {})}
+
+
 def corner_key(image: Image.Image) -> tuple[int, int, int]:
     """The still's flat background colour, read from its four corners; refuses a non-flat one."""
     rgb = image.convert("RGB")
@@ -261,6 +295,9 @@ def pad_canvas(
     On a green/magenta base the background is normalized to the exact key and
     the padding is that key; otherwise the padding is the corner colour.
     """
+    image, transparent = flatten_transparent(image, key)
+    if transparent is not None:
+        key = transparent["flattened_on"]  # the key it now stands on, which the corners read back
     corner = corner_key(image)
     kind = resolve_key(corner, key)
     if kind is None:
@@ -284,6 +321,7 @@ def pad_canvas(
             "key_rgb": list(fill),
             "corner_rgb": list(corner),
             **key_report,
+            "transparent": transparent,
             "why": "tight: no room for the motion; the subject fills the frame and a motion that leaves it is clipped",
         }
         return canvas, report
@@ -326,6 +364,7 @@ def pad_canvas(
         "key_rgb": list(fill),
         "corner_rgb": list(corner),
         **key_report,
+        "transparent": transparent,
         "why": profile.why,
     }
     return canvas, report

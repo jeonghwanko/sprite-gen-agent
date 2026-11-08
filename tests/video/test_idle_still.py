@@ -68,7 +68,7 @@ def test_the_cli_takes_pinned() -> None:
 def test_video_set_pins_idle_and_cuts_it_whole(tmp_path: Path, monkeypatch) -> None:
     seen: dict[str, object] = {}
 
-    def fake_canvas(base, out, *, state, shape, facing, headroom, lead, report_path, fit="state"):
+    def fake_canvas(base, out, *, state, shape, facing, headroom, lead, report_path, key="auto", fit="state"):
         Image.new("RGB", (32, 32), (0, 255, 0)).save(out)
         return {"fit": fit, "shape": "square", "canvas": [32, 32], "offset": [0, 0]}
 

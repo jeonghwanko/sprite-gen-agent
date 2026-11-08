@@ -190,7 +190,7 @@ def test_the_cli_takes_the_new_flags() -> None:
 def test_video_set_fit_tight_reaches_canvas_and_frames(tmp_path: Path, monkeypatch) -> None:
     seen: dict[str, object] = {}
 
-    def fake_canvas(base, out, *, state, shape, facing, headroom, lead, report_path, fit="state"):
+    def fake_canvas(base, out, *, state, shape, facing, headroom, lead, report_path, key="auto", fit="state"):
         seen["fit"] = fit
         Image.new("RGB", (32, 18), GREEN).save(out)
         return {"fit": fit, "shape": "wide", "canvas": [32, 18], "offset": [0, 0]}
