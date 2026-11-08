@@ -71,8 +71,10 @@ testpaths = ["tests"]
 # Tests are grouped into per-domain folders (tests/<domain>/) so a domain can be
 # run alone (`pytest tests/effects`). conftest.py stays at the tests/ root and is
 # imported by name (`from conftest import run_script`) from every subfolder, so the
-# tests/ dir must be on sys.path.
-pythonpath = ["tests"]
+# tests/ dir must be on sys.path. The repo root too: some tests import a sibling as
+# `tests.<domain>.<module>`, which a plain `pytest` (unlike `python -m pytest`, which puts the
+# working dir on sys.path) could not find — "No module named 'tests'".
+pythonpath = ["tests", "."]
 # A hung subprocess test must become a named failure, not a silent stall. 120s is
 # generous for the extract/compose subprocess tests. The method is left to
 # pytest-timeout, which takes signal (SIGALRM) where the platform has it — Linux and
