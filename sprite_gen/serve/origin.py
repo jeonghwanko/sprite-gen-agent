@@ -18,6 +18,7 @@ literal (`127.0.0.1`, `[::1]`, the LAN address of a `--host 0.0.0.0` server).
 from __future__ import annotations
 
 import ipaddress
+import os
 from email.message import Message
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlparse
@@ -49,6 +50,35 @@ def cross_origin(headers: Message) -> bool:
     if urlparse(origin).netloc.lower() != host:
         return True
     return not _pinned_host(urlparse(f"//{host}").hostname or "")
+
+
+# The largest POST body either webview reads. The biggest legitimate one is `/api/gif`: up to 200
+# frames as PNG data URLs. Anything larger is refused before it is read into memory.
+MAX_BODY = int(os.environ.get("SPRITE_GEN_SERVE_MAX_BODY", str(256 << 20)))
+
+
+class BodyRefused(ValueError):
+    """A POST body the server will not read: a malformed or too large `Content-Length`."""
+
+    def __init__(self, message: str, status: int):
+        super().__init__(message)
+        self.status = status
+
+
+def body_length(headers: Message, limit: int | None = None) -> int:
+    """The request's `Content-Length`, checked: BodyRefused (400) if it is not a non-negative
+    integer, (413) if it is over `limit` (default MAX_BODY)."""
+    limit = MAX_BODY if limit is None else limit
+    raw = headers.get("Content-Length") or "0"
+    try:
+        length = int(raw)
+    except ValueError:
+        raise BodyRefused(f"invalid Content-Length: {raw!r}", 400) from None
+    if length < 0:
+        raise BodyRefused(f"invalid Content-Length: {raw!r}", 400)
+    if length > limit:
+        raise BodyRefused(f"request body too large: {length} bytes (limit {limit})", 413)
+    return length
 
 
 def drain_body(handler: BaseHTTPRequestHandler) -> None:

@@ -22,6 +22,8 @@ from sprite_gen.util.console import utf8_streams
 
 BEST_CANDIDATE = "best-candidate"
 REPORT = "correction-loop.report.json"
+# One provider command makes a whole candidate run; a command still running after this is stopped.
+PROVIDER_TIMEOUT_SECONDS = 3600.0
 
 
 def add_arguments(parser: argparse.ArgumentParser) -> None:
@@ -32,6 +34,9 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--min-attempts", type=int, default=1)
     parser.add_argument("--pass-score", type=float, default=90.0)
     parser.add_argument("--provider-command", help="optional command template; {prompt_file}, {next_run_dir}, {attempt}")
+    parser.add_argument("--provider-timeout", type=float, default=PROVIDER_TIMEOUT_SECONDS,
+                        help=f"seconds one provider command may run before it is stopped "
+                             f"(default {PROVIDER_TIMEOUT_SECONDS:g}; 0 waits forever)")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--no-preserve-best", action="store_true")
 
@@ -128,9 +133,12 @@ def run_loop(
     min_attempts: int = 1,
     pass_score: float = 90.0,
     provider_command: str | None = None,
+    provider_timeout: float = PROVIDER_TIMEOUT_SECONDS,
     dry_run: bool = False,
     preserve_best: bool = True,
 ) -> dict[str, Any]:
+    if provider_timeout < 0:
+        raise SystemExit("--provider-timeout must be 0 (no limit) or more")
     if max_passes < 1:
         raise SystemExit("--max-passes must be at least 1")
     if min_attempts < 1 or min_attempts > max_passes:
@@ -196,7 +204,13 @@ def run_loop(
         argv = [arg.format(prompt_file=str(prompt_file), next_run_dir=str(next_run_dir), attempt=attempt + 1)
                 for arg in shlex.split(provider_command)]
         command = shlex.join(argv)
-        completed = subprocess.run(argv, capture_output=True, text=True, encoding="utf-8", errors="replace")
+        try:
+            completed = subprocess.run(argv, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                                       timeout=provider_timeout or None)
+        except subprocess.TimeoutExpired as exc:
+            atomic_write_text(files["log"], _text(exc.stdout) + "\n--- stderr ---\n" + _text(exc.stderr)
+                              + f"\n--- stopped after {provider_timeout:g} s ---\n")
+            raise SystemExit(f"provider command gave no result in {provider_timeout:g} s and was stopped: {command}")
         atomic_write_text(
             files["log"],
             completed.stdout + ("\n--- stderr ---\n" + completed.stderr if completed.stderr else ""),
@@ -227,6 +241,10 @@ def run_loop(
     return result
 
 
+def _text(out: str | bytes | None) -> str:
+    return out.decode("utf-8", "replace") if isinstance(out, bytes) else (out or "")
+
+
 def _run(args: argparse.Namespace) -> int:
     result = run_loop(
         args.run_dir,
@@ -236,6 +254,7 @@ def _run(args: argparse.Namespace) -> int:
         min_attempts=args.min_attempts,
         pass_score=args.pass_score,
         provider_command=args.provider_command,
+        provider_timeout=args.provider_timeout,
         dry_run=args.dry_run,
         preserve_best=not args.no_preserve_best,
     )
