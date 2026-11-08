@@ -564,3 +564,25 @@ def test_cutting_a_loop_again_drops_the_kept_source(tmp_path):
                       name="walk", report_path=None, cycle_mode="fixed", start=0, length=22, anchor="none", repair="off")
     assert not (dirs[0] / align.SOURCE_DIR).exists()
     assert align.align_set(dirs, interpolate=Recorder())["lengths"] == [22, 24]
+
+
+def test_a_requested_length_far_from_the_cut_says_the_cycle_plays_faster(tmp_path):
+    """Issue #2: a 27-frame walk at 24 fps (1.125 s) aligned at --length 16 plays its cycle in 0.667 s. The loop records how
+    long the cycle was filmed (`source_seconds`) and a warning gives the rate that keeps that pace."""
+    d = _cut(tmp_path, "W", 27)
+    report = align.align_set([d], interpolate=Recorder(), length=16)
+    row = report["loops"][0]
+    assert row["source_seconds"] == 1.125 and row["pace"] == round(27 / 16, 4)
+    meta = json.loads((d / "walk.strip.json").read_text(encoding="utf-8"))
+    assert meta["cycle_align"]["source_seconds"] == 1.125 and meta["cycle_seconds"] == round(16 / 24, 4)
+    pace = [w for w in report["warnings"] if "--length 16" in w]
+    assert len(pace) == 1 and "1.69 times as fast" in pace[0] and "14.22 fps" in pace[0]
+
+
+@pytest.mark.slow
+def test_a_requested_length_near_the_cut_or_the_median_says_nothing_of_pace(tmp_path):
+    near = align.align_set([_cut(tmp_path, "N", 26)], interpolate=Recorder(), length=24)
+    assert not [w for w in near["warnings"] if "filmed pace" in w] and near["loops"][0]["pace"] == round(26 / 24, 4)
+    dirs = [_cut(tmp_path, n, L) for n, L in (("S", 20), ("E", 24), ("M", 28))]
+    median = align.align_set(dirs, interpolate=Recorder())
+    assert not [w for w in median["warnings"] if "filmed pace" in w]

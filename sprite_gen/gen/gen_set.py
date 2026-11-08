@@ -299,7 +299,10 @@ def run_set(
     try:
         for stage in _stages(request, ordered):
             with ThreadPoolExecutor(max_workers=max(1, concurrency)) as ex:
-                futures = {ex.submit(run_item, run_dir=run_dir, request=request, state=s, provider=provider, model=model, force=force, gen_runner=gen_runner): s for s in stage}
+                # Held while the pool fills: a stop landing between two submits would leave `futures` unbound, and the
+                # rows already started (one may have sent its request) out of the report. It is raised once all are in.
+                with outcome.deferred():
+                    futures = {ex.submit(run_item, run_dir=run_dir, request=request, state=s, provider=provider, model=model, force=force, gen_runner=gen_runner): s for s in stage}
                 try:
                     for fut in as_completed(futures):
                         r = fut.result()

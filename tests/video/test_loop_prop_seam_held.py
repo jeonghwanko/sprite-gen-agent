@@ -425,6 +425,8 @@ GHOST_KEYS_2430 = {"ghost_screen", "ghost_at"}
 # Unreleased: every cut of the cut's length the clip holds, read for the same foot twice (video-loop), and the aligned
 # loop's beat and its cut's screen steps (docs/loop-repair.md section 4)
 CLIP_FEET_KEYS, BEAT_KEYS = {"clip_feet"}, {"beat", "screen"}
+# Unreleased: how long the cycle lasted as filmed and how many times as fast it now plays (issue #2)
+PACE_KEYS = {"source_seconds", "pace"}
 
 
 def test_cycle_align_writes_a_loop_without_a_held_part_as_before(tmp_path, staffless):
@@ -448,7 +450,7 @@ def test_cycle_align_writes_a_loop_without_a_held_part_as_before(tmp_path, staff
     for d in dirs:
         meta = json.loads((d / "loop.strip.json").read_text(encoding="utf-8"))
         assert set(meta) == STRIP_KEYS_2350 | SOURCE_KEYS_2390 | CLIP_FEET_KEYS
-        assert set(meta["cycle_align"]) == CYCLE_ALIGN_KEYS_2350 | CORRESPONDENCE_KEYS_2410 | GHOST_KEYS_2430 | BEAT_KEYS
+        assert set(meta["cycle_align"]) == CYCLE_ALIGN_KEYS_2350 | CORRESPONDENCE_KEYS_2410 | GHOST_KEYS_2430 | BEAT_KEYS | PACE_KEYS
         # The cut's source stays as the cut wrote it: `cycle_align` says the cells were turned after it, so it
         # no longer names each cell's frame (docs/loop-comparison.md). The rebuilt strip names its own cells —
         # the same frames, turned, under the same crop.
