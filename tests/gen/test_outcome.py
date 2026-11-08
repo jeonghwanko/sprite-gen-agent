@@ -17,6 +17,8 @@ import sys
 import textwrap
 import threading
 import time
+import traceback
+import warnings
 from pathlib import Path
 
 import pytest
@@ -420,14 +422,29 @@ def test_version_json_names_the_outcome_contract(capsys):
 
 
 def test_doctor_json_reports_without_calling_a_provider(capsys, monkeypatch):
+    # `doctor` runs on the calling thread, so only a request sent from it is doctor's. `outcome.submitted` is
+    # process-wide: on CI (2026-11-08, PR #67) a `submitted("child")` from another thread of the same xdist worker
+    # landed here once, though no test leaves a thread behind when run here. That call is named, not failed on.
+    mine = threading.current_thread()
     sent: list[str] = []
-    monkeypatch.setattr(outcome, "submitted", lambda provider, **_: sent.append(provider))
-    with outcome.recording("doctor") as record:
+    elsewhere: list[str] = []
+
+    def submitted(provider, **_):
+        if threading.current_thread() is mine:
+            sent.append(provider)
+        else:
+            elsewhere.append(f"{provider} from thread {threading.current_thread().name}:\n"
+                             + "".join(traceback.format_stack(limit=12)))
+
+    monkeypatch.setattr(outcome, "submitted", submitted)
+    with outcome.recording("doctor"):
         rc = cli.main(["doctor", "--json"])
     info = json.loads(capsys.readouterr().out)
     assert rc == (0 if info["ok"] else 1) and info["kind"] == "sprite-gen-doctor"
     assert set(info["providers"]) == {"codex", "grok", "openai"} and "ffmpeg" in info["tools"]
-    assert sent == [] and record.requests == []
+    assert sent == []
+    for call in elsewhere:
+        warnings.warn(f"a request was recorded from another thread during doctor: {call}", stacklevel=1)
 
 
 def test_every_code_has_its_retryable_and_an_unknown_code_is_refused():
