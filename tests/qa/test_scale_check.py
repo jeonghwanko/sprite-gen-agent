@@ -269,3 +269,62 @@ def test_a_frame_never_settles_itself_with_its_own_head(tmp_path):
     sequence = FrameSequence((fighter(scale=1.12), fighter(scale=0.9)), (0.1, 0.1), metadata={"state": "x", "source": "x"})
     report, _m, _t = scale_check.check(reference, 0, [{"x": sequence}], min_score=0.999)
     assert all(f["how"] == "check" for f in report["assets"][0]["frames"])
+
+
+def _one_by_one(searches, jobs, *, size_range, made=None):
+    """The frozen pre-change form (2026-11-12): every head search made in turn, none reused."""
+    return [scale_check._measure(frame, template, size_range=size_range, max_angle=max_angle)
+            for _key, frame, template, max_angle in searches]
+
+
+def _varied_sequences():
+    from sprite_gen.spec.assets import FrameSequence
+    poses = [{"scale": 1.12}, {"scale": 0.88}, {"crouch": 0.3}, {"tilt": 20}, {"scale": 1.01}, {"scale": 1.2, "tilt": -15}]
+    walk = [fighter(**pose) for pose in poses]
+    walk.insert(2, walk[1].copy())      # a held frame: the same pixels twice
+    for index in (0, 5):                # no head to find: these go on to the second pass
+        walk[index].paste(Image.new("RGBA", (90, 90), (90, 160, 90, 255)), (75, 40))
+    fall = [fighter(tilt=60), walk[1].copy()]
+    delays = lambda frames: tuple(0.1 for _ in frames)  # noqa: E731
+    return (FrameSequence((fighter(),), (0.1,)),
+            [{"walk": FrameSequence(tuple(walk), delays(walk), metadata={"state": "walk", "source": "walk"})},
+             {"fall": FrameSequence(tuple(fall), delays(fall), metadata={"state": "fall", "source": "fall"})}])
+
+
+def test_searches_run_at_once_give_the_report_of_searches_made_in_turn(monkeypatch):
+    reference, assets = _varied_sequences()
+    at_once = scale_check.check(reference, 0, assets, wide_states={"fall"}, jobs=8)
+    alone = scale_check.check(reference, 0, assets, wide_states={"fall"}, jobs=1)
+    monkeypatch.setattr(scale_check, "_measure_all", _one_by_one)
+    before = scale_check.check(reference, 0, assets, wide_states={"fall"})
+
+    def plain(result):
+        report, matches, template = result
+        return (json.dumps(report, sort_keys=True), template.tobytes(),
+                [(name, json.dumps(record, sort_keys=True), None if crop is None else (crop[0].tobytes(), *crop[1:]))
+                 for name, record, crop in matches])
+
+    assert plain(at_once) == plain(before) and plain(alone) == plain(before)
+    hows = {f["how"] for r in before[0]["assets"] for f in r["frames"]}
+    assert {"head", "check"} <= hows  # both passes ran: measured frames and frames no template settled
+
+
+def test_the_same_pixels_are_searched_once(monkeypatch):
+    reference, assets = _varied_sequences()
+    searched = []
+    measure = scale_check._measure
+    monkeypatch.setattr(scale_check, "_measure", lambda frame, template, **options: (
+        searched.append((scale_check.frame_sha256(frame), template.tobytes(), options["max_angle"])), measure(frame, template, **options))[1])
+    report, _matches, _template = scale_check.check(reference, 0, assets, wide_states={"fall"}, jobs=1)
+    assert len(searched) == len(set(searched))
+    walk, fall = (r["frames"] for r in report["assets"])
+    assert walk[1]["sha256"] == walk[2]["sha256"] == fall[1]["sha256"]
+    assert {k: walk[1][k] for k in ("score", "size", "how")} == {k: walk[2][k] for k in ("score", "size", "how")}
+    # the same pixels under another angle range are another search
+    assert sum(1 for sha, _t, _a in searched if sha == walk[1]["sha256"]) == 2
+
+
+def test_jobs_below_one_are_refused():
+    reference, assets = _varied_sequences()
+    with pytest.raises(ValueError, match="jobs"):
+        scale_check.check(reference, 0, assets, jobs=0)
