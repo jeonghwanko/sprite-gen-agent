@@ -37,6 +37,7 @@ from sprite_gen.spec.runio import atomic_save_image, atomic_write_text
 from sprite_gen.util.console import utf8_streams
 
 REPORT_KIND = "sprite-gen-scale-check"
+CACHE_KIND = "sprite-gen-scale-check-searches"
 METHOD = "head-ncc-v1"
 BACKGROUND = 128.0      # grey the cut-outs are composited on: neither the outline nor the highlight
 HEAD_ALPHA = 64         # opaque enough to belong to the figure's silhouette
@@ -286,6 +287,28 @@ def _measure_all(searches: list[tuple[Any, ...]], jobs: int, *, size_range, made
     return [made[key] for key, *_rest in searches]
 
 
+def load_searches(path: Path) -> dict:
+    """The head searches a `--cache` file holds, by (frame sha256, template, angle, low, high); none when there is no
+    file yet. A file of another kind or method is refused: its numbers are not this search's."""
+    if not path.exists():
+        return {}
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict) or data.get("kind") != CACHE_KIND or data.get("method") != METHOD:
+        raise ValueError(f"{path} is not a {CACHE_KIND} file of method {METHOD}; delete it or name another --cache")
+    made = {}
+    for entry in data["searches"]:
+        found = entry["found"]
+        made[tuple(entry["key"])] = None if found is None else (found[0], found[1], found[2], (found[3], found[4]))
+    return made
+
+
+def save_searches(path: Path, made: dict) -> None:
+    searches = [{"key": list(key), "found": None if found is None else
+                 [float(found[0]), float(found[1]), float(found[2]), float(found[3][0]), float(found[3][1])]}
+                for key, found in made.items()]
+    atomic_write_text(path, json.dumps({"kind": CACHE_KIND, "method": METHOD, "searches": searches}) + chr(10))
+
+
 def _at_edge(size: float, size_range) -> bool:
     """A best size on the edge of the searched range is the edge, not a measurement: the figure may lie beyond it."""
     lo, hi = size_range
@@ -322,10 +345,11 @@ def _decide(record: dict, *, min_score: float, deadband: float) -> dict:
 
 def check(reference, reference_frame: int, assets, *, wide_states=(), min_score=DEFAULTS["min_score"],
           deadband=DEFAULTS["deadband"], size_range=DEFAULTS["range"], angle=DEFAULTS["angle"],
-          wide_angle=DEFAULTS["wide_angle"], head_box=None, jobs: int | None = None) -> tuple[dict, list, np.ndarray]:
+          wide_angle=DEFAULTS["wide_angle"], head_box=None, jobs: int | None = None, searches: dict | None = None) -> tuple[dict, list, np.ndarray]:
     """The report for `assets` (a list of {state: FrameSequence}) against frame `reference_frame` of `reference`,
     the matched head crops for a board and the reference head template. `jobs` head searches run at once
-    (None: `default_jobs()`); the report is the same for every `jobs`."""
+    (None: `default_jobs()`); the report is the same for every `jobs`. `searches` holds searches made before
+    (`load_searches`) and takes the ones made here: a search it holds is not made again."""
     jobs = default_jobs() if jobs is None else int(jobs)
     if jobs < 1:
         raise ValueError("jobs must be at least 1")
@@ -368,10 +392,17 @@ def check(reference, reference_frame: int, assets, *, wide_states=(), min_score=
                     asked.append((len(records), record, frame, wide))
                 frames.append(record)
             records.append({"identity": sequence_identity(sequence), "frames": frames})
-    made: dict[Any, Any] = {}
-    reach = lambda wide: wide_angle if wide else angle  # noqa: E731
-    searches = [((record["sha256"], _named(template), reach(wide)), frame, template, reach(wide)) for _i, record, frame, wide in asked]
-    for (i, record, frame, wide), found in zip(asked, _measure_all(searches, jobs, size_range=(lo, hi), made=made)):
+    made: dict[Any, Any] = {} if searches is None else searches
+
+    def reach(wide: bool) -> int:
+        return wide_angle if wide else angle
+
+    def key(sha: str, name: str, wide: bool) -> tuple:
+        # everything `_measure` reads besides the constants METHOD names
+        return (sha, name, float(reach(wide)), float(lo), float(hi))
+
+    first = [(key(record["sha256"], _named(template), wide), frame, template, reach(wide)) for _i, record, frame, wide in asked]
+    for (i, record, frame, wide), found in zip(asked, _measure_all(first, jobs, size_range=(lo, hi), made=made)):
         if found is None:
             record["how"] = "empty"
         else:
@@ -391,7 +422,7 @@ def check(reference, reference_frame: int, assets, *, wide_states=(), min_score=
         if crop is not None:
             extra.append(((i, f["frame"]), _resize(crop, template.shape[0] / crop.shape[0])))
     again: list[tuple[int, dict[str, Any], Any, bool, tuple[int, str]]] = []
-    searches = []
+    second = []
     named = [_named(t) for _source, t in extra]
     for i, r in enumerate(records):
         for f in r["frames"]:
@@ -402,9 +433,9 @@ def check(reference, reference_frame: int, assets, *, wide_states=(), min_score=
                 if source == (i, f["frame"]):
                     continue
                 again.append((i, f, frame, wide, source))
-                searches.append(((f["sha256"], named[number], reach(wide)), frame, t, reach(wide)))
+                second.append((key(f["sha256"], named[number], wide), frame, t, reach(wide)))
     # taken in the order asked: a frame keeps the first template that beats what it has, as when searched one by one
-    for (i, f, frame, wide, source), found in zip(again, _measure_all(searches, jobs, size_range=(lo, hi), made=made)):
+    for (i, f, frame, wide, source), found in zip(again, _measure_all(second, jobs, size_range=(lo, hi), made=made)):
         if found is not None and found[0] > f["score"]:
             score, size, turn, centre = found
             f.update(score=round(score, 4), size=round(size, 4), angle=round(turn, 1), template=source[1],
@@ -550,6 +581,7 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--wide-angle", type=int, default=DEFAULTS["wide_angle"], help="the same for --wide-state (default %(default)s)")
     parser.add_argument("--head-box", type=_box, help="X,Y,W,H of the head in the reference frame, when the top of its ink is not the head (a raised weapon, a speck)")
     parser.add_argument("--jobs", type=int, default=None, help=f"head searches run at once (default: this process's CPUs, at most {MAX_JOBS}); the report is the same for every value")
+    parser.add_argument("--cache", type=Path, help="a file of head searches already made, read when it exists and written back: a run that measures the same frames again (a clip whose canvas grew, the rest unchanged) searches only the new ones")
     parser.add_argument("--out", type=Path, required=True, help="the report JSON")
     parser.add_argument("--board", type=Path, help="a review PNG: the reference head beside every matched head")
 
@@ -568,12 +600,16 @@ def run(**kwargs) -> int:
             assets.append(states)
         if not any(assets):
             raise ValueError("no asset state to measure: check --asset and --state")
+        cache = Path(kwargs["cache"]) if kwargs.get("cache") else None
+        made = load_searches(cache) if cache else None
         report, matches, template = check(
             reference, int(kwargs.get("reference_frame") or 0), assets, wide_states=set(kwargs.get("wide_state") or []),
             min_score=float(kwargs.get("min_score", DEFAULTS["min_score"])),
             deadband=float(kwargs.get("deadband", DEFAULTS["deadband"])), size_range=kwargs.get("range") or DEFAULTS["range"],
             angle=int(kwargs.get("angle", DEFAULTS["angle"])), wide_angle=int(kwargs.get("wide_angle", DEFAULTS["wide_angle"])),
-            head_box=kwargs.get("head_box"), jobs=kwargs.get("jobs"))
+            head_box=kwargs.get("head_box"), jobs=kwargs.get("jobs"), searches=made)
+        if cache is not None and made is not None:
+            save_searches(cache, made)
         if kwargs.get("board"):
             report["board"] = str(board(matches, template, Path(kwargs["board"])))
         atomic_write_text(Path(kwargs["out"]), json.dumps(report, ensure_ascii=False, indent=2) + "\n")
