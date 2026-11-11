@@ -1,0 +1,4 @@
+# Gitignored files Claude Code copies into the worktrees it makes (.gitignore syntax).
+# CLAUDE.md is local only; without it a Claude Code session in a worktree does not load AGENTS.md.
+CLAUDE.md
+CLAUDE.local.md
