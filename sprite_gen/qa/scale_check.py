@@ -20,9 +20,11 @@ Only NumPy and Pillow: no feature matcher, so an unsure frame is reported, never
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
 import sys
 from typing import Any
@@ -55,6 +57,10 @@ AGREE = 0.035           # sizes within this of the state's median agree
 AGREE_MIN = 3           # frames of the state that must agree, the weak ones among them included
 # A head template shorter than this cannot tell sizes apart finely enough: one of its pixels is more than the deadband.
 MIN_HEAD_PX = 24
+# Head searches run at once. NumPy's FFT and Pillow's resampling release the interpreter lock, the arithmetic between
+# them does not, so the gain levels off: 16 frames of 480 x 600 took 19.6 s one at a time, 6.0 s on four threads,
+# 5.7 s on eight and 6.8 s on sixteen (2026-11-12, 22 logical CPUs).
+MAX_JOBS = 8
 DEFAULTS = {"min_score": 0.8, "deadband": 0.02, "range": (0.7, 1.4), "angle": 45, "wide_angle": 90}
 
 
@@ -244,6 +250,42 @@ def _measure(frame: Image.Image, template: np.ndarray, *, size_range, max_angle)
     return score, scale, angle, (cx + px + x0, cy + py + y0)
 
 
+def default_jobs() -> int:
+    """Head searches run at once when `--jobs` is not given: this process's CPUs, at most MAX_JOBS."""
+    cpus = getattr(os, "process_cpu_count", os.cpu_count)() or 1
+    return max(1, min(MAX_JOBS, cpus))
+
+
+def _named(template: np.ndarray) -> str:
+    """A template by its pixels: a held frame matched well gives the same head twice, and a head can equal the reference's."""
+    return hashlib.sha256(repr(template.shape).encode() + template.tobytes()).hexdigest()
+
+
+def _measure_all(searches: list[tuple[Any, ...]], jobs: int, *, size_range, made: dict | None = None) -> list:
+    """`_measure` of every (key, frame, template, max angle), in the order given; `key` names the pixels searched
+    (the frame's sha256, the template's, the angle), so the same search asked twice is made once, and not at all when
+    `made` (filled here) already holds it. Each search reads only its own frame and template, so what it finds does
+    not depend on how many run at once."""
+    made = {} if made is None else made
+    first: dict[Any, int] = {}
+    for index, (key, *_rest) in enumerate(searches):
+        if key not in made:
+            first.setdefault(key, index)
+    todo = sorted(first.values())
+
+    def one(index: int):
+        _key, frame, template, max_angle = searches[index]
+        return _measure(frame, template, size_range=size_range, max_angle=max_angle)
+
+    if jobs > 1 and len(todo) > 1:
+        with ThreadPoolExecutor(max_workers=min(jobs, len(todo))) as pool:
+            results = list(pool.map(one, todo))
+    else:
+        results = [one(index) for index in todo]
+    made.update((searches[index][0], result) for index, result in zip(todo, results))
+    return [made[key] for key, *_rest in searches]
+
+
 def _at_edge(size: float, size_range) -> bool:
     """A best size on the edge of the searched range is the edge, not a measurement: the figure may lie beyond it."""
     lo, hi = size_range
@@ -280,9 +322,13 @@ def _decide(record: dict, *, min_score: float, deadband: float) -> dict:
 
 def check(reference, reference_frame: int, assets, *, wide_states=(), min_score=DEFAULTS["min_score"],
           deadband=DEFAULTS["deadband"], size_range=DEFAULTS["range"], angle=DEFAULTS["angle"],
-          wide_angle=DEFAULTS["wide_angle"], head_box=None) -> tuple[dict, list, np.ndarray]:
+          wide_angle=DEFAULTS["wide_angle"], head_box=None, jobs: int | None = None) -> tuple[dict, list, np.ndarray]:
     """The report for `assets` (a list of {state: FrameSequence}) against frame `reference_frame` of `reference`,
-    the matched head crops for a board and the reference head template."""
+    the matched head crops for a board and the reference head template. `jobs` head searches run at once
+    (None: `default_jobs()`); the report is the same for every `jobs`."""
+    jobs = default_jobs() if jobs is None else int(jobs)
+    if jobs < 1:
+        raise ValueError("jobs must be at least 1")
     lo, hi = (finite(v, "scale range", positive=True) for v in size_range)
     if not lo < 1 < hi:
         raise ValueError("scale range must enclose 1 (LOW,HIGH with LOW < 1 < HIGH)")
@@ -307,6 +353,7 @@ def check(reference, reference_frame: int, assets, *, wide_states=(), min_score=
     records: list[dict[str, Any]]
     crops: dict[tuple[int, str], tuple[Any, Any, Any, Any, Any]]
     records, crops = [], {}
+    asked: list[tuple[int, dict[str, Any], Any, bool]] = []     # (asset record, frame record, frame, wide) to search
     for states in assets:
         for state, sequence in states.items():
             frames = []
@@ -318,16 +365,20 @@ def check(reference, reference_frame: int, assets, *, wide_states=(), min_score=
                 if record["sha256"] == ref_sha:
                     record.update(how="reference", size=1.0, score=1.0, angle=0.0)
                 else:
-                    found = _measure(frame, template, size_range=(lo, hi), max_angle=wide_angle if wide else angle)
-                    if found is None:
-                        record["how"] = "empty"
-                    else:
-                        score, size, turn, centre = found
-                        record.update(how="measured", score=round(score, 4), size=round(size, 4), angle=round(turn, 1),
-                                      edge=_at_edge(size, (lo, hi)))
-                        crops[len(records), record["frame"]] = (frame, size, turn, centre, wide)
+                    asked.append((len(records), record, frame, wide))
                 frames.append(record)
             records.append({"identity": sequence_identity(sequence), "frames": frames})
+    made: dict[Any, Any] = {}
+    reach = lambda wide: wide_angle if wide else angle  # noqa: E731
+    searches = [((record["sha256"], _named(template), reach(wide)), frame, template, reach(wide)) for _i, record, frame, wide in asked]
+    for (i, record, frame, wide), found in zip(asked, _measure_all(searches, jobs, size_range=(lo, hi), made=made)):
+        if found is None:
+            record["how"] = "empty"
+        else:
+            score, size, turn, centre = found
+            record.update(how="measured", score=round(score, 4), size=round(size, 4), angle=round(turn, 1),
+                          edge=_at_edge(size, (lo, hi)))
+            crops[i, record["frame"]] = (frame, size, turn, centre, wide)
     # second pass: strongly matched heads become templates for the frames still unsure
     extra = []
     # crops are keyed by (asset record, frame): two sources can share a state name, never a crop
@@ -339,20 +390,26 @@ def check(reference, reference_frame: int, assets, *, wide_states=(), min_score=
         crop = _head_crop(*crops[i, f["frame"]][:4], template.shape)
         if crop is not None:
             extra.append(((i, f["frame"]), _resize(crop, template.shape[0] / crop.shape[0])))
+    again: list[tuple[int, dict[str, Any], Any, bool, tuple[int, str]]] = []
+    searches = []
+    named = [_named(t) for _source, t in extra]
     for i, r in enumerate(records):
         for f in r["frames"]:
             if f["how"] != "measured" or f["score"] >= min_score:
                 continue
             frame, *_rest, wide = crops[i, f["frame"]]
-            for source, t in extra:
+            for number, (source, t) in enumerate(extra):
                 if source == (i, f["frame"]):
                     continue
-                found = _measure(frame, t, size_range=(lo, hi), max_angle=wide_angle if wide else angle)
-                if found is not None and found[0] > f["score"]:
-                    score, size, turn, centre = found
-                    f.update(score=round(score, 4), size=round(size, 4), angle=round(turn, 1), template=source[1],
-                             edge=_at_edge(size, (lo, hi)))
-                    crops[i, f["frame"]] = (frame, size, turn, centre, wide)
+                again.append((i, f, frame, wide, source))
+                searches.append(((f["sha256"], named[number], reach(wide)), frame, t, reach(wide)))
+    # taken in the order asked: a frame keeps the first template that beats what it has, as when searched one by one
+    for (i, f, frame, wide, source), found in zip(again, _measure_all(searches, jobs, size_range=(lo, hi), made=made)):
+        if found is not None and found[0] > f["score"]:
+            score, size, turn, centre = found
+            f.update(score=round(score, 4), size=round(size, 4), angle=round(turn, 1), template=source[1],
+                     edge=_at_edge(size, (lo, hi)))
+            crops[i, f["frame"]] = (frame, size, turn, centre, wide)
     for r in records:
         _agree(r["frames"], min_score=min_score)
         for f in r["frames"]:
@@ -492,6 +549,7 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--angle", type=int, default=DEFAULTS["angle"], help="head tilt searched either way, degrees (default %(default)s)")
     parser.add_argument("--wide-angle", type=int, default=DEFAULTS["wide_angle"], help="the same for --wide-state (default %(default)s)")
     parser.add_argument("--head-box", type=_box, help="X,Y,W,H of the head in the reference frame, when the top of its ink is not the head (a raised weapon, a speck)")
+    parser.add_argument("--jobs", type=int, default=None, help=f"head searches run at once (default: this process's CPUs, at most {MAX_JOBS}); the report is the same for every value")
     parser.add_argument("--out", type=Path, required=True, help="the report JSON")
     parser.add_argument("--board", type=Path, help="a review PNG: the reference head beside every matched head")
 
@@ -515,7 +573,7 @@ def run(**kwargs) -> int:
             min_score=float(kwargs.get("min_score", DEFAULTS["min_score"])),
             deadband=float(kwargs.get("deadband", DEFAULTS["deadband"])), size_range=kwargs.get("range") or DEFAULTS["range"],
             angle=int(kwargs.get("angle", DEFAULTS["angle"])), wide_angle=int(kwargs.get("wide_angle", DEFAULTS["wide_angle"])),
-            head_box=kwargs.get("head_box"))
+            head_box=kwargs.get("head_box"), jobs=kwargs.get("jobs"))
         if kwargs.get("board"):
             report["board"] = str(board(matches, template, Path(kwargs["board"])))
         atomic_write_text(Path(kwargs["out"]), json.dumps(report, ensure_ascii=False, indent=2) + "\n")
