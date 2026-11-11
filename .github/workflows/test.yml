@@ -2,7 +2,7 @@
 # The fork's tests on GitHub (jeonghwanko/sprite-gen-agent, 2026-10-29). Upstream runs its gates on the maintainer's own
 # Linux runner (scripts/linux_lane.sh) and removed its workflows (3828e34); this fork's pull requests had no test run at all
 # and merged on a Windows checkout's results, where symlink and cp949 failures hide real ones. This job is the lane's suite
-# on a GitHub runner: Python 3.14, ffmpeg, img2webp from libwebp 1.6.0 (SHA-256 pinned, the creator kit's pin), Node.js,
+# on a GitHub runner: Python 3.14, a static ffmpeg 8.1 and img2webp from libwebp 1.6.0 (both SHA-256 pinned), Node.js,
 # `pip install -e ".[dev]"`, then the fast bundle (`pytest`, the slow tests deselected by tests/conftest.py). No RIFE is
 # installed: the tests marked real_rife and torch_rife skip, as the lane's `--rife-unmeasured` run lets them.
 #
@@ -55,6 +55,12 @@ jobs:
     env:
       LIBWEBP: libwebp-1.6.0-linux-x86-64
       LIBWEBP_SHA256: 1c5ffab71efecefa0e3c23516c3a3a1dccb45cc310ae1095c6f14ae268e38067
+      # BtbN/FFmpeg-Builds, a month-end build (those are kept two years; a daily one is removed after two weeks). The GPL
+      # build: the suite encodes with libx264. To move the pin, take a newer month-end tag, the 8.1 linux64-gpl asset's
+      # name and its line of that release's checksums.sha256.
+      FFMPEG_TAG: autobuild-2026-10-31-12-59
+      FFMPEG: ffmpeg-n8.1.3-27-g8dca1586f4-linux64-gpl-8.1
+      FFMPEG_SHA256: 41e9c565594c390622cf968d82fa4135d9e9a11d06c1515644288cbc844e3380
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -65,11 +71,19 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      # apt takes 17 to 64 s here (twelve runs, 2026-11). Once (run 42276947741, 2026-11-06) it hung, and the job sat until
-      # its 40-minute limit; the step's own limit ends such a run in minutes.
-      - name: ffmpeg
+      # One pinned static build, checked by SHA-256, as img2webp below. Until 2026-11-12 this was `apt-get install ffmpeg`:
+      # 99 packages from the runner's Ubuntu mirror, 17 to 64 s when it answered. Twice it did not (run 42276947741,
+      # 2026-11-06, sat until the job's 40-minute limit; run 43053375239, 2026-11-11, 20 s a package until the step's
+      # 5-minute limit), and a pull request failed with no test run. The step's limit still ends a download that hangs.
+      - name: ffmpeg (static 8.1, SHA-256 pinned)
         timeout-minutes: 5
-        run: sudo apt-get update -q && sudo apt-get install -y -q ffmpeg
+        run: |
+          curl -fsSL --retry 3 --retry-all-errors --connect-timeout 20 -o "$RUNNER_TEMP/$FFMPEG.tar.xz"             "https://github.com/BtbN/FFmpeg-Builds/releases/download/$FFMPEG_TAG/$FFMPEG.tar.xz"
+          echo "$FFMPEG_SHA256  $RUNNER_TEMP/$FFMPEG.tar.xz" | sha256sum -c -
+          tar -xJf "$RUNNER_TEMP/$FFMPEG.tar.xz" -C "$RUNNER_TEMP" "$FFMPEG/bin/ffmpeg" "$FFMPEG/bin/ffprobe"
+          echo "$RUNNER_TEMP/$FFMPEG/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/$FFMPEG/bin/ffmpeg" -hide_banner -version | head -1
+          "$RUNNER_TEMP/$FFMPEG/bin/ffmpeg" -hide_banner -encoders | grep -q libx264
       - name: img2webp (libwebp 1.6.0, -exact)
         run: |
           curl -fsSL -o "$RUNNER_TEMP/$LIBWEBP.tar.gz" "https://storage.googleapis.com/downloads.webmproject.org/releases/webp/$LIBWEBP.tar.gz"
