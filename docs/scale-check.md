@@ -21,6 +21,7 @@ sprite-gen scale-check --reference idle.strip.json --asset run/manifest.json \
 | `--range` | `LOW,HIGH` sizes searched (default `0.7,1.4`). A best size on the edge of the range is reported unsure (`edge`), not taken: the figure may lie beyond it. |
 | `--head-box` | `X,Y,W,H` of the head in the reference frame, when the top of its ink is not its head (a raised weapon, a speck above it). |
 | `--jobs` | Head searches run at once (default: this process's CPUs, at most 8). The report is the same for every value. |
+| `--cache` | A file of head searches already made: read when it exists, written back after the run. A run that measures the same frames again searches only what is new. A file of another kind or method is refused. |
 | `--out`, `--board` | The report JSON; a review PNG with the reference head beside every matched head at its own size (a yellow line marks the reference head's height). |
 
 The exit status is 0 when every frame is measured and 1 when a frame awaits an eye check; the report is written either way.
@@ -34,6 +35,8 @@ A face changes with the expression: a shout or shut eyes match the stance badly.
 There is no feature matcher behind the head match to give a second opinion (the engine's runtime is NumPy and Pillow only, [interpreter.md](interpreter.md)). The other frames of the same state take its place: a match below `--min-score` but at least 0.65 is a size when at least three distinct drawings of its state, each matched on its own, agree on the size within 3.5 % (`how: "agree"`). Frames drawn apart do not lock onto a wrong place at one shared size by chance; a held frame repeated in a clip counts once. Anything else is not guessed: it is reported for a person to look at. On a real GPT row the right head often scores 0.70–0.77, because the head is redrawn each time, and wrong locks have been seen at the same scores; that is why a weak match alone is never enough.
 
 Head searches run several at once (`--jobs`), and a search is made once: a held frame repeated in a clip, the same frame in two assets, or two templates with the same pixels cost one search. Neither changes a number in the report (`tests/qa/test_scale_check.py` holds the searches made one by one beside it). Measured 2026-11-12 on 72 frames of 480 × 600 with 12 heads hidden (22 logical CPUs): 229 s with `--jobs 1`, 63 s with the default 8. Threads level off near four, since only the FFT and the resampling run outside the interpreter lock.
+
+`--cache` carries the searches from one run to the next. A search is named by the frame's pixels, the template's pixels, the angle range and the size range, so a frame searched before is not searched again and the report is the one a run without the file writes. Its use is a set measured twice: when one clip's canvas grows and every clip is measured again, the unchanged clips cost nothing. A grown clip's frames are new pixels and are searched; a head matched well in one of them is a new template, and the frames still unsure are searched with it.
 
 ## Report
 

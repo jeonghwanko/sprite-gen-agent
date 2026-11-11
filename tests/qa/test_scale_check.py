@@ -328,3 +328,60 @@ def test_jobs_below_one_are_refused():
     reference, assets = _varied_sequences()
     with pytest.raises(ValueError, match="jobs"):
         scale_check.check(reference, 0, assets, jobs=0)
+
+
+def test_a_cache_of_searches_gives_the_same_report_and_searches_only_new_frames(tmp_path, monkeypatch):
+    reference, assets = _varied_sequences()
+    cache = tmp_path / "searches.json"
+    plain = lambda result: json.dumps(result[0], sort_keys=True)  # noqa: E731
+    without = scale_check.check(reference, 0, assets, wide_states={"fall"})
+    made = scale_check.load_searches(cache)
+    assert made == {}
+    first = scale_check.check(reference, 0, assets, wide_states={"fall"}, searches=made)
+    scale_check.save_searches(cache, made)
+
+    searched = []
+    measure = scale_check._measure
+    monkeypatch.setattr(scale_check, "_measure", lambda frame, template, **options: (
+        searched.append(scale_check.frame_sha256(frame)), measure(frame, template, **options))[1])
+    again = scale_check.check(reference, 0, assets, wide_states={"fall"}, searches=scale_check.load_searches(cache))
+    assert plain(first) == plain(without) == plain(again) and searched == []
+
+    # one clip's canvas grows, as the kit does before it measures again: only its frames are searched
+    from sprite_gen.spec.assets import FrameSequence
+    fall = assets[1]["fall"]
+    grown = []
+    for frame in fall.frames:
+        canvas = Image.new("RGBA", (frame.width + 20, frame.height + 10), (0, 0, 0, 0))
+        canvas.alpha_composite(frame.convert("RGBA"), (20, 10))
+        grown.append(canvas)
+    changed = [assets[0], {"fall": FrameSequence(tuple(grown), fall.durations, metadata={"state": "fall", "source": "fall"})}]
+    made = scale_check.load_searches(cache)
+    cached = scale_check.check(reference, 0, changed, wide_states={"fall"}, searches=made)
+    # the grown frames, and the frames still unsure: a head matched well in a grown frame is a template they have not met
+    unsure = {f["sha256"] for r in without[0]["assets"] for f in r["frames"] if f["how"] == "check"}
+    assert searched and set(searched) <= {scale_check.frame_sha256(frame) for frame in grown} | unsure
+    with_cache = len(searched)
+    searched.clear()
+    cold = scale_check.check(reference, 0, changed, wide_states={"fall"})
+    assert plain(cached) == plain(cold) and with_cache < len(searched)
+
+
+def test_a_cache_of_another_kind_is_refused(tmp_path):
+    cache = tmp_path / "searches.json"
+    cache.write_text(json.dumps({"kind": "sprite-gen-scale-check", "assets": []}), encoding="utf-8")
+    with pytest.raises(ValueError, match="delete it"):
+        scale_check.load_searches(cache)
+
+
+def test_the_command_reads_and_writes_its_cache(tmp_path):
+    idle, walk = assets(tmp_path)
+    command = [sys.executable, "-m", "sprite_gen.cli", "scale-check", "--reference", str(idle), "--asset", str(walk),
+               "--cache", str(tmp_path / "searches.json")]
+    reports = []
+    for name in ("one.json", "two.json"):
+        proc = subprocess.run([*command, "--out", str(tmp_path / name)], capture_output=True, encoding="utf-8")
+        assert proc.returncode == 0, proc.stderr
+        reports.append((tmp_path / name).read_text(encoding="utf-8"))
+    assert reports[0] == reports[1]
+    assert len(json.loads((tmp_path / "searches.json").read_text(encoding="utf-8"))["searches"]) == len(POSES)
