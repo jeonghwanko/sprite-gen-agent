@@ -514,7 +514,9 @@ same standing-height target and keeps the character one size across the set. At 
 `--resolution`, `--fit tight` frames every item without room so that target is reached by
 scaling down rather than up, and lets the subject reach the frame edge. Items
 are idempotent (an existing clip is reused unless `--force`); one failure stops only
-its item and is listed in `table.md` with its stage and error. Exit code is non-zero
+its item and is listed in `table.md` with its stage and error. Keep `--resolution` at 720p or lower for a set that pins a clip's
+end (idle, attack, `--play once-return`, a diagonal walk or run): xAI refuses 1080p with a pinned last frame, and every such item
+then fails at its clip ([video](video.md), the `--last-frame` row). Exit code is non-zero
 when any item failed: 3 when nothing in the set sent a provider request, 1 otherwise.
 `set.report.json` gains `all_ok`, `errors` (`{state, item, code, retryable, message}`, each
 child's own when it wrote them) and `provider_submitted`. A SIGTERM stops the clips that are

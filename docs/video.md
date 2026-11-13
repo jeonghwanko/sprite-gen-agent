@@ -20,7 +20,7 @@ forms, and every run reports which one it used.
 | Verb / flags | Endpoint · model | Body fields | Options allowed | Local pre-checks (before any call) | `mode` |
 |---|---|---|---|---|---|
 | `video --image A` | `POST /v1/videos/generations` · `grok-imagine-video-1.5` (`--model` free) | `image{url}` | duration 1–15, resolution, aspect, audio | still exists | `image-to-video` |
-| `video --image A --last-frame B` | same · 1.5 only | `image{url}`, `last_frame{url}` | same | both stills exist; classic `grok-imagine-video` rejected | `first-last` |
+| `video --image A --last-frame B` | same · 1.5 only | `image{url}`, `last_frame{url}` | same, but xAI refuses **1080p** with a pinned last frame (observed 2026-11-12 on the grok login: HTTP 400 `1080p video resolution is not supported for reference-to-video requests`; no clip is made, and nothing here checks it before the call) | both stills exist; classic `grok-imagine-video` rejected | `first-last` |
 | `video --last-frame B` | same · 1.5 only | `last_frame{url}` | same | classic rejected | `last-frame` |
 | `video --reference X [--reference Y …]` (+ optional `--image`) | same · 1.5 (classic accepts references alone but not `--image` + references) | `reference_images:[{url}…]` (+ `image{url}`) | duration, aspect, audio; resolution **480p/720p only** | 1–7 references; prompt tags `<IMAGE_n>` with `0 ≤ n < count` (0-based); `--resolution 1080p` rejected; classic + `--image` + references rejected | `reference` |
 | `video-extend --video in.mp4 --duration N` | `POST /v1/videos/extensions` · **`grok-imagine-video` forced** | `video{url}`, `duration` | duration 2–10 (extension length only; default 6). No resolution / aspect / model flags: output inherits the input's, capped at 720p | `.mp4` with an `ftyp` box; ffprobe duration 2–15 s | `extend` |
@@ -67,7 +67,7 @@ sprite-gen video \
   --prompt "Camera locked. Gentle idle sway, tail flick." \   # or --prompt-file
   --out clip.mp4 \
   [--duration 6]                     # 1..15 seconds (default 6)
-  [--resolution 720p]                # 480p | 720p | 1080p (default 720p; 1080p is refused with --reference)
+  [--resolution 720p]                # 480p | 720p | 1080p (default 720p; 1080p is refused with --reference, and by xAI with --last-frame)
   [--aspect-ratio 1:1]               # 1:1 16:9 9:16 4:3 3:4 3:2 2:3 (default: the still's ratio)
   [--audio | --no-audio]             # default: the API's default (audio on)
   [--model grok-imagine-video-1.5]
