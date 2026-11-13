@@ -51,20 +51,36 @@ Some files are too big to read whole. No markdown line is over 2,000 characters;
 
 | File | Size | How |
 |---|---|---|
-| `CHANGELOG.md` | ~170 KB (3.0.0 on, and `Unreleased`) | grep it; read only the `Unreleased` section or the version asked about |
+| `CHANGELOG.md` | ~185 KB (3.0.0 on, and `Unreleased`) | grep it; read only the `Unreleased` section or the version asked about |
 | `CHANGELOG-before-3.0.md` | ~380 KB (1.x and 2.x) | grep only, for history |
-| `docs/loop-repair.md` | ~290 KB, 2,800+ lines | read its "Reading this doc" table at the top, then only the part it points to |
+| `docs/loop-repair.md` | ~360 KB, 3,500+ lines | read its "Reading this doc" table at the top, then only the part it points to |
 | `docs/video-pipeline.md`, `docs/run-contract.md` | ~60 KB each | grep `^#` for the outline, then read one section with an offset |
-| `sprite_gen/video/align.py`, `repair.py`, `batch.py`, `rife.py`, `sprite_gen/frames/extract.py`, `sprite_gen/video/loop.py` | 85–135 KB each | grep for the function, read around it |
+| `sprite_gen/video/loop.py`, `rife.py`, `align.py`, `repair.py`, `batch.py`, `local_cycle.py`, `sprite_gen/frames/extract.py`, `sprite_gen/serve/serve_curation.py` | 95–140 KB each | grep for the function, read around it |
 
 If `.claude/worktrees/` exists, it holds other sessions' checkouts: never search or edit there.
+
+## Which file each agent reads
+
+| Agent | Reads | Notes |
+|---|---|---|
+| Codex | `AGENTS.md` | Nothing else is needed |
+| Grok | `AGENTS.md` | It skips files `.gitignore` names, so it never sees the local `CLAUDE.md` |
+| Claude Code | `CLAUDE.md`, local and gitignored: one line, `@AGENTS.md` | With a `CLAUDE.md` in a folder above the checkout it does not read `AGENTS.md` by itself. `.worktreeinclude` copies the file into the worktrees Claude Code makes; in a new clone, or a worktree made another way, write it again |
+
+Shared rules go in this file only. A note for one agent goes in that agent's own local file (`CLAUDE.local.md`,
+`.grok/rules/`), never in a second copy of these rules.
 
 ## Environment
 
 - Run everything with the repo venv, never a global `python3`: `.venv/Scripts/python.exe` on Windows,
   `.venv/bin/python` elsewhere. Bootstrap: `python -m venv .venv`, then `pip install -e ".[dev]"`.
 - On Windows set `PYTHONUTF8=1`. Many tests read reports in the locale encoding and fail under cp949
-  before their real assertion, which hides real failures.
+  before their real assertion, which hides real failures. `tests/conftest.py` refuses to start pytest on
+  Windows without it. In PowerShell (Codex and Grok on Windows) the `NAME=value command` form is not valid:
+  run `$env:PYTHONUTF8 = '1'` first, then the command.
+- A git worktree has no `.venv`. Run the main checkout's interpreter by its full path, from the worktree's
+  root and as `python -m …`: the worktree's `sprite_gen` is then the one imported. From any other folder, or
+  through the `sprite-gen` console script, the main checkout's code runs instead.
 
 ## Tests
 

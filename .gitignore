@@ -27,3 +27,7 @@ CLAUDE.md
 # build artifacts of an in-place release build (scripts/release_publish.py without --prebuilt)
 /build/
 /dist/
+
+# other sessions' checkouts and each person's own agent notes (never track)
+.claude/worktrees/
+CLAUDE.local.md

@@ -125,6 +125,24 @@ def _torch_rife_missing() -> str | None:
     return None
 
 
+def utf8_mode_missing(windows: bool = os.name == "nt", utf8_mode: bool = bool(sys.flags.utf8_mode)) -> str | None:
+    """Why this run may not start, None where it may: on Windows without Python's UTF-8 mode many tests read
+    reports in the locale encoding (cp949 on a Korean Windows) and fail before their real assertion."""
+    if windows and not utf8_mode:
+        return (
+            "PYTHONUTF8=1 is not set: on Windows the tests must run in Python's UTF-8 mode. "
+            "Bash: `PYTHONUTF8=1 .venv/Scripts/python.exe -m pytest ...`; "
+            "PowerShell: `$env:PYTHONUTF8 = '1'`, then the command (AGENTS.md, Environment)"
+        )
+    return None
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    refusal = utf8_mode_missing()
+    if refusal:
+        raise pytest.UsageError(refusal)
+
+
 def pytest_report_header(config: pytest.Config) -> str | None:
     if not config.getoption("full"):
         return "fast bundle: the tests marked slow are deselected; `pytest --full` runs every test"
